@@ -40,18 +40,9 @@ func readHeader(buf *bytes.Buffer) (header, error) {
 		return header{}, errors.New("unexpected version")
 	}
 
-	// TODO: Check h.ControlHash and h.SetHash.
-
-	if h.VolumeNumber != 0 {
-		return header{}, errors.New("not a PAR file")
-	}
-
 	if h.FileListOffset != expectedFileListOffset {
 		return header{}, errors.New("unexpected file list offset")
 	}
-
-	// TODO: Check count of files saved in volume set, and other
-	// offsets and bytes.
 
 	return h, nil
 }

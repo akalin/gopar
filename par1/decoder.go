@@ -1,8 +1,10 @@
 package par1
 
 import (
-	"bytes"
-	"io/ioutil"
+	"errors"
+	"fmt"
+	"os"
+	"path"
 )
 
 // A Decoder keeps track of all information needed to check the
@@ -10,33 +12,64 @@ import (
 // missing/corrupted data files from the parity files (.P00, .P01,
 // etc.).
 type Decoder struct {
-	header  header
-	entries []fileEntry
+	indexFile   string
+	indexVolume volume
+	parityData  [][]byte
 }
 
 // NewDecoder reads the given index file, which usually has a .PAR
 // extension.
 func NewDecoder(indexFile string) (*Decoder, error) {
-	indexBytes, err := ioutil.ReadFile(indexFile)
+	indexVolume, err := readVolume(indexFile)
 	if err != nil {
 		return nil, err
 	}
 
-	buf := bytes.NewBuffer(indexBytes)
-
-	header, err := readHeader(buf)
-	if err != nil {
-		return nil, err
+	if indexVolume.header.VolumeNumber != 0 {
+		// TODO: Relax this check.
+		return nil, errors.New("expected volume number 0 for index volume")
 	}
 
-	entries := make([]fileEntry, header.FileCount)
-	for i := uint64(0); i < header.FileCount; i++ {
-		var err error
-		entries[i], err = readFileEntry(buf)
-		if err != nil {
-			return nil, err
+	return &Decoder{indexFile, indexVolume, nil}, nil
+}
+
+// LoadParityData searches for parity volumes and loads them into
+// memory.
+func (d *Decoder) LoadParityData() error {
+	ext := path.Ext(d.indexFile)
+	base := d.indexFile[:len(d.indexFile)-len(ext)]
+
+	// TODO: Support searching for volume data without relying on
+	// filenames.
+
+	// TODO: Count only files saved in volume set.
+	fileCount := d.indexVolume.header.FileCount
+	maxParityVolumeCount := 256 - fileCount
+	// TODO: Support more than 99 parity volumes.
+	if maxParityVolumeCount > 99 {
+		maxParityVolumeCount = 99
+	}
+	parityData := make([][]byte, maxParityVolumeCount)
+	var maxI uint64
+	for i := uint64(0); i < maxParityVolumeCount; i++ {
+		// TODO: Find the file case-insensitively.
+		volumePath := base + fmt.Sprintf(".p%02d", i+1)
+		parityVolume, err := readVolume(volumePath)
+		// TODO: Check set hash.
+		if os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			// TODO: Relax this check.
+			return err
+		} else if parityVolume.header.VolumeNumber != uint64(i+1) {
+			// TODO: Relax this check.
+			return errors.New("unexpected volume number for parity volume")
 		}
+
+		parityData[i] = parityVolume.data
+		maxI = i
 	}
 
-	return &Decoder{header, entries}, nil
+	d.parityData = parityData[:maxI+1]
+	return nil
 }

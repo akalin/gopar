@@ -14,4 +14,9 @@ func main() {
 	}
 
 	fmt.Printf("decoder = %+v\n", decoder)
+
+	err = decoder.LoadParityData()
+	if err != nil {
+		panic(err)
+	}
 }
