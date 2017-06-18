@@ -3,8 +3,10 @@ package par1
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path"
+	"path/filepath"
 )
 
 // A Decoder keeps track of all information needed to check the
@@ -14,6 +16,7 @@ import (
 type Decoder struct {
 	indexFile   string
 	indexVolume volume
+	fileData    [][]byte
 	parityData  [][]byte
 }
 
@@ -30,7 +33,30 @@ func NewDecoder(indexFile string) (*Decoder, error) {
 		return nil, errors.New("expected volume number 0 for index volume")
 	}
 
-	return &Decoder{indexFile, indexVolume, nil}, nil
+	return &Decoder{indexFile, indexVolume, nil, nil}, nil
+}
+
+// LoadFileData loads existing file data into memory.
+func (d *Decoder) LoadFileData() error {
+	fileData := make([][]byte, len(d.indexVolume.entries))
+
+	dir := filepath.Dir(d.indexFile)
+	for i, entry := range d.indexVolume.entries {
+		// TODO: Check file status and skip if necessary.
+		path := filepath.Join(dir, entry.filename)
+		data, err := ioutil.ReadFile(path)
+		if os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			// TODO: Relax this check.
+			return err
+		}
+		// TODO: Check file checksum.
+		fileData[i] = data
+	}
+
+	d.fileData = fileData
+	return nil
 }
 
 // LoadParityData searches for parity volumes and loads them into

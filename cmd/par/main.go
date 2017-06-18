@@ -15,6 +15,11 @@ func main() {
 
 	fmt.Printf("decoder = %+v\n", decoder)
 
+	err = decoder.LoadFileData()
+	if err != nil {
+		panic(err)
+	}
+
 	err = decoder.LoadParityData()
 	if err != nil {
 		panic(err)
