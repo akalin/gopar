@@ -24,4 +24,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	ok, err := decoder.Verify()
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Verify result: %t\n", ok)
 }
