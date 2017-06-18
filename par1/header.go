@@ -12,3 +12,9 @@ type header struct {
 	DataOffset     uint64
 	DataBytes      uint64
 }
+
+var expectedID = [8]byte{'P', 'A', 'R'}
+
+const expectedVersion uint64 = 0x00010000
+
+const expectedFileListOffset uint64 = 0x00000060

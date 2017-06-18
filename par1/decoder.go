@@ -3,6 +3,7 @@ package par1
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"io/ioutil"
 )
 
@@ -30,7 +31,26 @@ func NewDecoder(indexFile string) (*Decoder, error) {
 		return nil, err
 	}
 
-	// TODO: Sanity-check header fields.
+	if header.ID != expectedID {
+		return nil, errors.New("unexpected ID string")
+	}
+
+	if (header.VersionNumber & 0xffffffff) != expectedVersion {
+		return nil, errors.New("unexpected version")
+	}
+
+	// TODO: Check header.ControlHash and header.SetHash.
+
+	if header.VolumeNumber != 0 {
+		return nil, errors.New("not a PAR file")
+	}
+
+	if header.FileListOffset != expectedFileListOffset {
+		return nil, errors.New("unexpected file list offset")
+	}
+
+	// TODO: Check count of files saved in volume set, and other
+	// offsets and bytes.
 
 	return &Decoder{header}, nil
 }
