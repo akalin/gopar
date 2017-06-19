@@ -31,4 +31,11 @@ func main() {
 	}
 
 	fmt.Printf("Verify result: %t\n", ok)
+
+	repairedFiles, err := decoder.Repair()
+	if err != nil {
+		fmt.Printf("Repair error: %s\n", err)
+	}
+
+	fmt.Printf("Repaired files: %v\n", repairedFiles)
 }

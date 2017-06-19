@@ -12,7 +12,7 @@ import (
 )
 
 // A Decoder keeps track of all information needed to check the
-// integrity of a set of data files, and possibly reconstruct any
+// integrity of a set of data files, and possibly repair any
 // missing/corrupted data files from the parity files (.P00, .P01,
 // etc.).
 type Decoder struct {
@@ -64,12 +64,18 @@ func (d *Decoder) LoadFileData() error {
 	return nil
 }
 
+func (d *Decoder) volumePath(volumeNumber uint64) string {
+	if volumeNumber == 0 {
+		panic("unexpected zero volume number")
+	}
+	ext := path.Ext(d.indexFile)
+	base := d.indexFile[:len(d.indexFile)-len(ext)]
+	return base + fmt.Sprintf(".p%02d", volumeNumber)
+}
+
 // LoadParityData searches for parity volumes and loads them into
 // memory.
 func (d *Decoder) LoadParityData() error {
-	ext := path.Ext(d.indexFile)
-	base := d.indexFile[:len(d.indexFile)-len(ext)]
-
 	// TODO: Support searching for volume data without relying on
 	// filenames.
 
@@ -86,15 +92,15 @@ func (d *Decoder) LoadParityData() error {
 	var maxI uint64
 	for i := uint64(0); i < maxParityVolumeCount; i++ {
 		// TODO: Find the file case-insensitively.
-		volumePath := base + fmt.Sprintf(".p%02d", i+1)
-		parityVolume, err := readVolume(volumePath)
+		volumeNumber := i + 1
+		parityVolume, err := readVolume(d.volumePath(volumeNumber))
 		// TODO: Check set hash.
 		if os.IsNotExist(err) {
 			continue
 		} else if err != nil {
 			// TODO: Relax this check.
 			return err
-		} else if parityVolume.header.VolumeNumber != uint64(i+1) {
+		} else if parityVolume.header.VolumeNumber != volumeNumber {
 			// TODO: Relax this check.
 			return errors.New("unexpected volume number for parity volume")
 		}
@@ -117,6 +123,30 @@ func (d *Decoder) LoadParityData() error {
 	return nil
 }
 
+func (d *Decoder) buildShards() [][]byte {
+	shards := make([][]byte, len(d.fileData)+len(d.parityData))
+	for i, data := range d.fileData {
+		if data == nil {
+			continue
+		}
+		padding := make([]byte, d.shardByteCount-len(data))
+		shards[i] = append(data, padding...)
+	}
+
+	for i, parityVolume := range d.parityData {
+		if parityVolume == nil {
+			continue
+		}
+		shards[len(d.fileData)+i] = parityVolume
+	}
+
+	return shards
+}
+
+func (d *Decoder) newReedSolomon() (reedsolomon.Encoder, error) {
+	return reedsolomon.New(len(d.fileData), len(d.parityData), reedsolomon.WithPAR1Matrix())
+}
+
 // Verify checks that all file and parity data are consistent with
 // each other, and returns the result. If any files or parity volumes
 // are missing, Verify returns false.
@@ -133,20 +163,67 @@ func (d *Decoder) Verify() (bool, error) {
 		}
 	}
 
-	rs, err := reedsolomon.New(len(d.fileData), len(d.parityData), reedsolomon.WithPAR1Matrix())
+	shards := d.buildShards()
+
+	rs, err := d.newReedSolomon()
 	if err != nil {
 		return false, err
 	}
 
-	shards := make([][]byte, len(d.fileData)+len(d.parityData))
-	for i, data := range d.fileData {
-		padding := make([]byte, d.shardByteCount-len(data))
-		shards[i] = append(data, padding...)
-	}
-
-	for i, data := range d.parityData {
-		shards[len(d.fileData)+i] = data
-	}
-
 	return rs.Verify(shards)
+}
+
+// Repair tries to repair any missing or corrupted data, using the
+// parity volumes. Returns a list of files that were successfully
+// repaired, which is present even if an error is returned.
+func (d *Decoder) Repair() ([]string, error) {
+	shards := d.buildShards()
+
+	rs, err := d.newReedSolomon()
+	if err != nil {
+		return nil, err
+	}
+
+	err = rs.Reconstruct(shards)
+	if err != nil {
+		return nil, err
+	}
+
+	ok, err := rs.Verify(shards)
+	if err != nil {
+		return nil, err
+	}
+
+	if !ok {
+		return nil, errors.New("repair failed")
+	}
+
+	dir := filepath.Dir(d.indexFile)
+
+	var repairedFiles []string
+
+	for i, data := range d.fileData {
+		if data != nil {
+			continue
+		}
+
+		entry := d.indexVolume.entries[i]
+		data = shards[i][:entry.header.FileBytes]
+		// TODO: Check hash of data.
+
+		filename := d.indexVolume.entries[i].filename
+		path := filepath.Join(dir, filename)
+		err = ioutil.WriteFile(path, data, 0600)
+		if err != nil {
+			return repairedFiles, err
+		}
+
+		repairedFiles = append(repairedFiles, filename)
+		d.fileData[i] = data
+	}
+
+	// TODO: Repair missing parity volumes, too, and then make
+	// sure d.Verify() passes.
+
+	return repairedFiles, nil
 }
