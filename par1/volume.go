@@ -2,6 +2,8 @@ package par1
 
 import (
 	"bytes"
+	"crypto/md5"
+	"errors"
 	"io/ioutil"
 )
 
@@ -30,7 +32,12 @@ func readVolume(path string) (volume, error) {
 		return volume{}, err
 	}
 
-	// TODO: Check h.ControlHash and h.SetHash.
+	controlHash := md5.Sum(volumeBytes[0x20:])
+	if controlHash != header.ControlHash {
+		return volume{}, errors.New("invalid control hash")
+	}
+
+	// TODO: Check h.SetHash.
 
 	// TODO: Check count of files saved in volume set, and other
 	// offsets and bytes.
