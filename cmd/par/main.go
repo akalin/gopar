@@ -7,13 +7,31 @@ import (
 	"github.com/akalin/gopar/par1"
 )
 
+type logDelegate struct{}
+
+func (logDelegate) OnDataFileLoad(path string, err error) {
+	if err != nil {
+		fmt.Printf("Loading data file %q failed: %+v\n", path, err)
+	} else {
+		fmt.Printf("Loaded data file %q\n", path)
+	}
+}
+
+func (logDelegate) OnVolumeFileLoad(path string, err error) {
+	if os.IsNotExist(err) {
+		// Do nothing.
+	} else if err != nil {
+		fmt.Printf("Loading volume file %q failed: %+v\n", path, err)
+	} else {
+		fmt.Printf("Loaded volume file %q\n", path)
+	}
+}
+
 func main() {
-	decoder, err := par1.NewDecoder(os.Args[1])
+	decoder, err := par1.NewDecoder(logDelegate{}, os.Args[1])
 	if err != nil {
 		panic(err)
 	}
-
-	fmt.Printf("decoder = %+v\n", decoder)
 
 	err = decoder.LoadFileData()
 	if err != nil {

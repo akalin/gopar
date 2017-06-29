@@ -33,6 +33,18 @@ func (io testFileIO) WriteFile(path string, data []byte) error {
 	return nil
 }
 
+type testDelegate struct {
+	t *testing.T
+}
+
+func (d testDelegate) OnDataFileLoad(path string, err error) {
+	d.t.Logf("OnDataFileLoad(%s, %v)", path, err)
+}
+
+func (d testDelegate) OnVolumeFileLoad(path string, err error) {
+	d.t.Logf("OnVolumeFileLoad(%s, %v)", path, err)
+}
+
 func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 	dataShardCount := len(io.fileData)
 	rs, err := reedsolomon.New(dataShardCount, parityShardCount, reedsolomon.WithPAR1Matrix())
@@ -123,7 +135,7 @@ func TestVerify(t *testing.T) {
 
 	buildPARData(t, io, 3)
 
-	decoder, err := newDecoder(io, "file.par")
+	decoder, err := newDecoder(io, testDelegate{t}, "file.par")
 	require.NoError(t, err)
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
@@ -180,7 +192,7 @@ func TestRepair(t *testing.T) {
 
 	buildPARData(t, io, 3)
 
-	decoder, err := newDecoder(io, "file.par")
+	decoder, err := newDecoder(io, testDelegate{t}, "file.par")
 	require.NoError(t, err)
 
 	delete(io.fileData, "file.r03")

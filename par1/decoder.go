@@ -16,7 +16,8 @@ import (
 // missing/corrupted data files from the parity files (.P00, .P01,
 // etc.).
 type Decoder struct {
-	fileIO fileIO
+	fileIO   fileIO
+	delegate DecoderDelegate
 
 	indexFile   string
 	indexVolume volume
@@ -32,8 +33,16 @@ type fileIO interface {
 	WriteFile(path string, data []byte) error
 }
 
-func newDecoder(fileIO fileIO, indexFile string) (*Decoder, error) {
+// DecoderDelegate holds methods that are called during the decode
+// process.
+type DecoderDelegate interface {
+	OnDataFileLoad(path string, err error)
+	OnVolumeFileLoad(path string, err error)
+}
+
+func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexFile string) (*Decoder, error) {
 	bytes, err := fileIO.ReadFile(indexFile)
+	delegate.OnVolumeFileLoad(indexFile, err)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +58,7 @@ func newDecoder(fileIO fileIO, indexFile string) (*Decoder, error) {
 	}
 
 	return &Decoder{
-		fileIO,
+		fileIO, delegate,
 		indexFile, indexVolume,
 		nil,
 		0, nil,
@@ -68,8 +77,8 @@ func (io defaultFileIO) WriteFile(path string, data []byte) error {
 
 // NewDecoder reads the given index file, which usually has a .PAR
 // extension.
-func NewDecoder(indexFile string) (*Decoder, error) {
-	return newDecoder(defaultFileIO{}, indexFile)
+func NewDecoder(delegate DecoderDelegate, indexFile string) (*Decoder, error) {
+	return newDecoder(defaultFileIO{}, delegate, indexFile)
 }
 
 // LoadFileData loads existing file data into memory.
@@ -81,6 +90,7 @@ func (d *Decoder) LoadFileData() error {
 		// TODO: Check file status and skip if necessary.
 		path := filepath.Join(dir, entry.filename)
 		data, err := d.fileIO.ReadFile(path)
+		d.delegate.OnDataFileLoad(path, err)
 		if os.IsNotExist(err) {
 			continue
 		} else if err != nil {
@@ -130,7 +140,9 @@ func (d *Decoder) LoadParityData() error {
 	for i := uint64(0); i < maxParityVolumeCount; i++ {
 		// TODO: Find the file case-insensitively.
 		volumeNumber := i + 1
-		volumeBytes, err := d.fileIO.ReadFile(d.volumePath(volumeNumber))
+		volumePath := d.volumePath(volumeNumber)
+		volumeBytes, err := d.fileIO.ReadFile(volumePath)
+		d.delegate.OnVolumeFileLoad(volumePath, err)
 		if os.IsNotExist(err) {
 			continue
 		} else if err != nil {
