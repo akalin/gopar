@@ -16,6 +16,8 @@ import (
 // missing/corrupted data files from the parity files (.P00, .P01,
 // etc.).
 type Decoder struct {
+	fileIO fileIO
+
 	indexFile   string
 	indexVolume volume
 
@@ -25,10 +27,18 @@ type Decoder struct {
 	parityData     [][]byte
 }
 
-// NewDecoder reads the given index file, which usually has a .PAR
-// extension.
-func NewDecoder(indexFile string) (*Decoder, error) {
-	indexVolume, err := readVolume(indexFile)
+type fileIO interface {
+	ReadFile(path string) ([]byte, error)
+	WriteFile(path string, data []byte) error
+}
+
+func newDecoder(fileIO fileIO, indexFile string) (*Decoder, error) {
+	bytes, err := fileIO.ReadFile(indexFile)
+	if err != nil {
+		return nil, err
+	}
+
+	indexVolume, err := readVolume(bytes)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +48,28 @@ func NewDecoder(indexFile string) (*Decoder, error) {
 		return nil, errors.New("expected volume number 0 for index volume")
 	}
 
-	return &Decoder{indexFile, indexVolume, nil, 0, nil}, nil
+	return &Decoder{
+		fileIO,
+		indexFile, indexVolume,
+		nil,
+		0, nil,
+	}, nil
+}
+
+type defaultFileIO struct{}
+
+func (io defaultFileIO) ReadFile(path string) ([]byte, error) {
+	return ioutil.ReadFile(path)
+}
+
+func (io defaultFileIO) WriteFile(path string, data []byte) error {
+	return ioutil.WriteFile(path, data, 0600)
+}
+
+// NewDecoder reads the given index file, which usually has a .PAR
+// extension.
+func NewDecoder(indexFile string) (*Decoder, error) {
+	return newDecoder(defaultFileIO{}, indexFile)
 }
 
 // LoadFileData loads existing file data into memory.
@@ -49,7 +80,7 @@ func (d *Decoder) LoadFileData() error {
 	for i, entry := range d.indexVolume.entries {
 		// TODO: Check file status and skip if necessary.
 		path := filepath.Join(dir, entry.filename)
-		data, err := ioutil.ReadFile(path)
+		data, err := d.fileIO.ReadFile(path)
 		if os.IsNotExist(err) {
 			continue
 		} else if err != nil {
@@ -93,11 +124,16 @@ func (d *Decoder) LoadParityData() error {
 	for i := uint64(0); i < maxParityVolumeCount; i++ {
 		// TODO: Find the file case-insensitively.
 		volumeNumber := i + 1
-		parityVolume, err := readVolume(d.volumePath(volumeNumber))
-		// TODO: Check set hash.
+		volumeBytes, err := d.fileIO.ReadFile(d.volumePath(volumeNumber))
 		if os.IsNotExist(err) {
 			continue
 		} else if err != nil {
+			return err
+		}
+
+		parityVolume, err := readVolume(volumeBytes)
+		// TODO: Check set hash.
+		if err != nil {
 			// TODO: Relax this check.
 			return err
 		} else if parityVolume.header.VolumeNumber != volumeNumber {
@@ -133,11 +169,11 @@ func (d *Decoder) buildShards() [][]byte {
 		shards[i] = append(data, padding...)
 	}
 
-	for i, parityVolume := range d.parityData {
-		if parityVolume == nil {
+	for i, data := range d.parityData {
+		if data == nil {
 			continue
 		}
-		shards[len(d.fileData)+i] = parityVolume
+		shards[len(d.fileData)+i] = data
 	}
 
 	return shards
@@ -213,7 +249,7 @@ func (d *Decoder) Repair() ([]string, error) {
 
 		filename := d.indexVolume.entries[i].filename
 		path := filepath.Join(dir, filename)
-		err = ioutil.WriteFile(path, data, 0600)
+		err = d.fileIO.WriteFile(path, data)
 		if err != nil {
 			return repairedFiles, err
 		}

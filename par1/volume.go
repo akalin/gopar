@@ -19,12 +19,7 @@ type volume struct {
 	data    []byte
 }
 
-func readVolume(path string) (volume, error) {
-	volumeBytes, err := ioutil.ReadFile(path)
-	if err != nil {
-		return volume{}, err
-	}
-
+func readVolume(volumeBytes []byte) (volume, error) {
 	buf := bytes.NewBuffer(volumeBytes)
 
 	header, err := readHeader(buf)
