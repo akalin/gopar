@@ -1,6 +1,7 @@
 package par1
 
 import (
+	"crypto/md5"
 	"errors"
 	"fmt"
 	"os"
@@ -30,7 +31,7 @@ type Decoder struct {
 // DecoderDelegate holds methods that are called during the decode
 // process.
 type DecoderDelegate interface {
-	OnDataFileLoad(path string, err error)
+	OnDataFileLoad(path string, corrupt bool, err error)
 	OnDataFileWrite(path string, err error)
 	OnVolumeFileLoad(path string, err error)
 }
@@ -74,21 +75,30 @@ func (d *Decoder) LoadFileData() error {
 	for i, entry := range d.indexVolume.entries {
 		// TODO: Check file status and skip if necessary.
 		path := filepath.Join(dir, entry.filename)
-		data, err := d.fileIO.ReadFile(path)
-		d.delegate.OnDataFileLoad(path, err)
-		if os.IsNotExist(err) {
+		data, corrupt, err := func() ([]byte, bool, error) {
+			data, err := d.fileIO.ReadFile(path)
+			if os.IsNotExist(err) {
+				return nil, true, err
+			} else if err != nil {
+				return nil, false, err
+			} else if md5.Sum(data) != entry.header.Hash {
+				return nil, true, errors.New("hash mismatch")
+			}
+			return data, false, nil
+		}()
+		d.delegate.OnDataFileLoad(path, corrupt, err)
+		if corrupt {
 			continue
 		} else if err != nil {
-			// TODO: Relax this check.
 			return err
 		}
+
 		// We use nil to mark missing entries, but ReadFile
 		// might return nil, so convert that to a non-nil
 		// empty slice.
 		if data == nil {
 			data = make([]byte, 0)
 		}
-		// TODO: Check file checksum.
 		fileData[i] = data
 	}
 
@@ -248,7 +258,9 @@ func (d *Decoder) Repair() ([]string, error) {
 
 		entry := d.indexVolume.entries[i]
 		data = shards[i][:entry.header.FileBytes]
-		// TODO: Check hash of data.
+		if md5.Sum(data) != entry.header.Hash {
+			return repairedFiles, errors.New("hash mismatch in reconstructed data")
+		}
 
 		filename := d.indexVolume.entries[i].filename
 		path := filepath.Join(dir, filename)

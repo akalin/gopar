@@ -1,6 +1,7 @@
 package par1
 
 import (
+	"crypto/md5"
 	"fmt"
 	"path"
 	"path/filepath"
@@ -98,11 +99,12 @@ func (e *Encoder) ComputeParityData() error {
 func (e *Encoder) Write(indexPath string) error {
 	var entries []fileEntry
 	for i, k := range e.filePaths {
+		data := e.fileData[i]
 		entry := fileEntry{
 			header: fileEntryHeader{
-				FileBytes: uint64(len(e.fileData[i])),
-				// TODO: Compute Hash and SixteenKHash
-				// properly.
+				FileBytes: uint64(len(data)),
+				Hash:      md5.Sum(data),
+				// TODO: Also fill in header.SixteenKHash.
 			},
 			filename: filepath.Base(k),
 		}

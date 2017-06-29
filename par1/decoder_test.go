@@ -1,6 +1,7 @@
 package par1
 
 import (
+	"crypto/md5"
 	"fmt"
 	"os"
 	"path"
@@ -36,8 +37,8 @@ type testDecoderDelegate struct {
 	t *testing.T
 }
 
-func (d testDecoderDelegate) OnDataFileLoad(path string, err error) {
-	d.t.Logf("OnDataFileLoad(%s, %v)", path, err)
+func (d testDecoderDelegate) OnDataFileLoad(path string, corrupt bool, err error) {
+	d.t.Logf("OnDataFileLoad(%s, corrupt=%t, %v)", path, corrupt, err)
 }
 
 func (d testDecoderDelegate) OnDataFileWrite(path string, err error) {
@@ -77,9 +78,12 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 
 	var entries []fileEntry
 	for _, k := range keys {
+		data := io.fileData[k]
 		entry := fileEntry{
 			header: fileEntryHeader{
-				FileBytes: uint64(len(io.fileData[k])),
+				FileBytes: uint64(len(data)),
+				Hash:      md5.Sum(data),
+				// TODO: Also fill in header.SixteenKHash.
 			},
 			filename: k,
 		}

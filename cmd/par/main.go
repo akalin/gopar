@@ -9,9 +9,9 @@ import (
 	"github.com/akalin/gopar/par1"
 )
 
-type logDelegate struct{}
+type logEncoderDelegate struct{}
 
-func (logDelegate) OnDataFileLoad(path string, err error) {
+func (logEncoderDelegate) OnDataFileLoad(path string, err error) {
 	if err != nil {
 		fmt.Printf("Loading data file %q failed: %+v\n", path, err)
 	} else {
@@ -19,7 +19,29 @@ func (logDelegate) OnDataFileLoad(path string, err error) {
 	}
 }
 
-func (logDelegate) OnDataFileWrite(path string, err error) {
+func (logEncoderDelegate) OnVolumeFileWrite(path string, err error) {
+	if err != nil {
+		fmt.Printf("Writing volume file %q failed: %+v\n", path, err)
+	} else {
+		fmt.Printf("Wrote volume file %q\n", path)
+	}
+}
+
+type logDecoderDelegate struct{}
+
+func (logDecoderDelegate) OnDataFileLoad(path string, corrupt bool, err error) {
+	if err != nil {
+		if corrupt {
+			fmt.Printf("Loading data file %q failed; marking as corrupt and skipping: %+v\n", path, err)
+		} else {
+			fmt.Printf("Loading data file %q failed: %+v\n", path, err)
+		}
+	} else {
+		fmt.Printf("Loaded data file %q\n", path)
+	}
+}
+
+func (logDecoderDelegate) OnDataFileWrite(path string, err error) {
 	if err != nil {
 		fmt.Printf("Writing data file %q failed: %+v\n", path, err)
 	} else {
@@ -27,21 +49,13 @@ func (logDelegate) OnDataFileWrite(path string, err error) {
 	}
 }
 
-func (logDelegate) OnVolumeFileLoad(path string, err error) {
+func (logDecoderDelegate) OnVolumeFileLoad(path string, err error) {
 	if os.IsNotExist(err) {
 		// Do nothing.
 	} else if err != nil {
 		fmt.Printf("Loading volume file %q failed: %+v\n", path, err)
 	} else {
 		fmt.Printf("Loaded volume file %q\n", path)
-	}
-}
-
-func (logDelegate) OnVolumeFileWrite(path string, err error) {
-	if err != nil {
-		fmt.Printf("Writing volume file %q failed: %+v\n", path, err)
-	} else {
-		fmt.Printf("Wrote volume file %q\n", path)
 	}
 }
 
@@ -66,8 +80,6 @@ func main() {
 	cmd := os.Args[1]
 	parFile := os.Args[2]
 
-	delegate := logDelegate{}
-
 	switch strings.ToLower(cmd) {
 	case "c":
 		fallthrough
@@ -77,7 +89,7 @@ func main() {
 		}
 
 		// TODO: Add option to set number of parity volumes.
-		encoder, err := par1.NewEncoder(delegate, os.Args[3:], 3)
+		encoder, err := par1.NewEncoder(logEncoderDelegate{}, os.Args[3:], 3)
 		if err != nil {
 			panic(err)
 		}
@@ -101,7 +113,7 @@ func main() {
 	case "v":
 		fallthrough
 	case "verify":
-		decoder, err := par1.NewDecoder(delegate, parFile)
+		decoder, err := par1.NewDecoder(logDecoderDelegate{}, parFile)
 		if err != nil {
 			panic(err)
 		}
@@ -129,7 +141,7 @@ func main() {
 	case "r":
 		fallthrough
 	case "repair":
-		decoder, err := par1.NewDecoder(logDelegate{}, parFile)
+		decoder, err := par1.NewDecoder(logDecoderDelegate{}, parFile)
 		if err != nil {
 			panic(err)
 		}
