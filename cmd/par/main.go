@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/akalin/gopar/par1"
 )
@@ -27,33 +29,82 @@ func (logDelegate) OnVolumeFileLoad(path string, err error) {
 	}
 }
 
+func printUsageAndExit(name string) {
+	name = filepath.Base(name)
+	fmt.Printf(`
+Usage:
+  %s v(erify) <PAR file>
+  %s r(epair) <PAR file>
+
+`, name, name)
+	os.Exit(-1)
+}
+
 func main() {
-	decoder, err := par1.NewDecoder(logDelegate{}, os.Args[1])
-	if err != nil {
-		panic(err)
+	name := os.Args[0]
+	if len(os.Args) <= 2 {
+		printUsageAndExit(name)
 	}
 
-	err = decoder.LoadFileData()
-	if err != nil {
-		panic(err)
+	cmd := os.Args[1]
+	parFile := os.Args[2]
+
+	switch strings.ToLower(cmd) {
+	case "v":
+		fallthrough
+	case "verify":
+		decoder, err := par1.NewDecoder(logDelegate{}, parFile)
+		if err != nil {
+			panic(err)
+		}
+
+		err = decoder.LoadFileData()
+		if err != nil {
+			panic(err)
+		}
+
+		err = decoder.LoadParityData()
+		if err != nil {
+			panic(err)
+		}
+
+		ok, err := decoder.Verify()
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Printf("Verify result: %t\n", ok)
+		if !ok {
+			os.Exit(-1)
+		}
+
+	case "r":
+		fallthrough
+	case "repair":
+		decoder, err := par1.NewDecoder(logDelegate{}, parFile)
+		if err != nil {
+			panic(err)
+		}
+
+		err = decoder.LoadFileData()
+		if err != nil {
+			panic(err)
+		}
+
+		err = decoder.LoadParityData()
+		if err != nil {
+			panic(err)
+		}
+
+		repairedFiles, err := decoder.Repair()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Repair error: %s\n", err)
+			os.Exit(-1)
+		}
+
+		fmt.Printf("Repaired files: %v\n", repairedFiles)
+
+	default:
+		printUsageAndExit(name)
 	}
-
-	err = decoder.LoadParityData()
-	if err != nil {
-		panic(err)
-	}
-
-	ok, err := decoder.Verify()
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("Verify result: %t\n", ok)
-
-	repairedFiles, err := decoder.Repair()
-	if err != nil {
-		fmt.Printf("Repair error: %s\n", err)
-	}
-
-	fmt.Printf("Repaired files: %v\n", repairedFiles)
 }
