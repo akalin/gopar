@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -63,37 +64,45 @@ func (logDecoderDelegate) OnVolumeFileLoad(path string, err error) {
 	}
 }
 
-func printUsageAndExit(name string) {
+func printUsageAndExit(name string, flagSet *flag.FlagSet) {
 	name = filepath.Base(name)
 	fmt.Printf(`
 Usage:
-  %s c(reate) <PAR file> [files]
-  %s v(erify) <PAR file>
-  %s r(epair) <PAR file>
+  %s c(reate) [options] <PAR file> [files]
+  %s v(erify) [options] <PAR file>
+  %s r(epair) [options] <PAR file>
 
+Options:
 `, name, name, name)
-	os.Exit(-1)
+	flagSet.PrintDefaults()
+	fmt.Printf("\n")
+	os.Exit(2)
 }
 
 func main() {
 	name := os.Args[0]
-	if len(os.Args) <= 2 {
-		printUsageAndExit(name)
+	flagSet := flag.NewFlagSet(name, flag.ExitOnError)
+	flagSet.SetOutput(os.Stdout)
+	usage := flagSet.Bool("h", false, "print usage info")
+	numParityShards := flagSet.Int("n", 3, "number of parity volumes to create")
+	flagSet.Parse(os.Args[1:])
+
+	if flagSet.NArg() < 2 || *usage {
+		printUsageAndExit(name, flagSet)
 	}
 
-	cmd := os.Args[1]
-	parFile := os.Args[2]
+	cmd := flagSet.Arg(0)
+	parFile := flagSet.Arg(1)
 
 	switch strings.ToLower(cmd) {
 	case "c":
 		fallthrough
 	case "create":
-		if len(os.Args) == 2 {
-			printUsageAndExit(name)
+		if flagSet.NArg() == 2 {
+			printUsageAndExit(name, flagSet)
 		}
 
-		// TODO: Add option to set number of parity volumes.
-		encoder, err := par1.NewEncoder(logEncoderDelegate{}, os.Args[3:], 3)
+		encoder, err := par1.NewEncoder(logEncoderDelegate{}, flagSet.Args()[2:], *numParityShards)
 		if err != nil {
 			panic(err)
 		}
@@ -172,6 +181,6 @@ func main() {
 		}
 
 	default:
-		printUsageAndExit(name)
+		printUsageAndExit(name, flagSet)
 	}
 }
