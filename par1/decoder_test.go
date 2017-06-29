@@ -194,6 +194,10 @@ func TestRepair(t *testing.T) {
 	decoder, err := newDecoder(io, testDecoderDelegate{t}, "file.par")
 	require.NoError(t, err)
 
+	r02Data := io.fileData["file.r02"]
+	r02DataCopy := make([]byte, len(r02Data))
+	copy(r02DataCopy, r02Data)
+	r02Data[len(r02Data)-1]++
 	delete(io.fileData, "file.r03")
 	r04Data := io.fileData["file.r04"]
 	delete(io.fileData, "file.r04")
@@ -206,7 +210,8 @@ func TestRepair(t *testing.T) {
 	repaired, err := decoder.Repair()
 	require.NoError(t, err)
 
-	require.Equal(t, []string{"file.r03", "file.r04"}, repaired)
+	require.Equal(t, []string{"file.r02", "file.r03", "file.r04"}, repaired)
+	require.Equal(t, r02DataCopy, io.fileData["file.r02"])
 	require.Equal(t, 0, len(io.fileData["file.r03"]))
 	require.Equal(t, r04Data, io.fileData["file.r04"])
 }
