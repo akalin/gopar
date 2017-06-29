@@ -7,6 +7,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type testEncoderDelegate struct {
+	t *testing.T
+}
+
+func (d testEncoderDelegate) OnDataFileLoad(path string, err error) {
+	d.t.Logf("OnDataFileLoad(%s, %v)", path, err)
+}
+
+func (d testEncoderDelegate) OnVolumeFileWrite(path string, err error) {
+	d.t.Logf("OnVolumeFileWrite(%s, %v)", path, err)
+}
+
 func TestEncodeParity(t *testing.T) {
 	io := testFileIO{
 		t: t,
@@ -21,7 +33,7 @@ func TestEncodeParity(t *testing.T) {
 
 	paths := []string{"file.rar", "file.r01", "file.r02", "file.r03", "file.r04"}
 
-	encoder, err := newEncoder(io, paths, 3)
+	encoder, err := newEncoder(io, testEncoderDelegate{t}, paths, 3)
 	require.NoError(t, err)
 
 	err = encoder.LoadFileData()
@@ -59,7 +71,7 @@ func TestWriteParity(t *testing.T) {
 
 	paths := []string{"file.rar", "file.r01", "file.r02", "file.r03", "file.r04"}
 
-	encoder, err := newEncoder(io, paths, 3)
+	encoder, err := newEncoder(io, testEncoderDelegate{t}, paths, 3)
 	require.NoError(t, err)
 
 	err = encoder.LoadFileData()
@@ -71,7 +83,7 @@ func TestWriteParity(t *testing.T) {
 	err = encoder.Write("parity.par")
 	require.NoError(t, err)
 
-	decoder, err := newDecoder(io, testDelegate{t}, "parity.par")
+	decoder, err := newDecoder(io, testDecoderDelegate{t}, "parity.par")
 	require.NoError(t, err)
 
 	err = decoder.LoadFileData()

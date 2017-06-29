@@ -29,6 +29,14 @@ func (logDelegate) OnVolumeFileLoad(path string, err error) {
 	}
 }
 
+func (logDelegate) OnVolumeFileWrite(path string, err error) {
+	if err != nil {
+		fmt.Printf("Writing volume file %q failed: %+v\n", path, err)
+	} else {
+		fmt.Printf("Wrote volume file %q\n", path)
+	}
+}
+
 func printUsageAndExit(name string) {
 	name = filepath.Base(name)
 	fmt.Printf(`
@@ -50,6 +58,8 @@ func main() {
 	cmd := os.Args[1]
 	parFile := os.Args[2]
 
+	delegate := logDelegate{}
+
 	switch strings.ToLower(cmd) {
 	case "c":
 		fallthrough
@@ -59,7 +69,7 @@ func main() {
 		}
 
 		// TODO: Add option to set number of parity volumes.
-		encoder, err := par1.NewEncoder(os.Args[3:], 3)
+		encoder, err := par1.NewEncoder(delegate, os.Args[3:], 3)
 		if err != nil {
 			panic(err)
 		}
@@ -83,7 +93,7 @@ func main() {
 	case "v":
 		fallthrough
 	case "verify":
-		decoder, err := par1.NewDecoder(logDelegate{}, parFile)
+		decoder, err := par1.NewDecoder(delegate, parFile)
 		if err != nil {
 			panic(err)
 		}
