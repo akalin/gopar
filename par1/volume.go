@@ -19,6 +19,8 @@ type volume struct {
 	data    []byte
 }
 
+const controlHashOffset = 0x20
+
 func readVolume(volumeBytes []byte) (volume, error) {
 	buf := bytes.NewBuffer(volumeBytes)
 
@@ -27,7 +29,7 @@ func readVolume(volumeBytes []byte) (volume, error) {
 		return volume{}, err
 	}
 
-	controlHash := md5.Sum(volumeBytes[0x20:])
+	controlHash := md5.Sum(volumeBytes[controlHashOffset:])
 	if controlHash != header.ControlHash {
 		return volume{}, errors.New("invalid control hash")
 	}
@@ -52,4 +54,30 @@ func readVolume(volumeBytes []byte) (volume, error) {
 	}
 
 	return volume{header, entries, data}, nil
+}
+
+func writeVolume(v volume) ([]byte, error) {
+	headerData, err := writeHeader(v.header)
+	if err != nil {
+		return nil, err
+	}
+
+	var restData []byte
+	for _, entry := range v.entries {
+		fileEntryData, err := writeFileEntry(entry)
+		if err != nil {
+			return nil, err
+		}
+		restData = append(restData, fileEntryData...)
+	}
+	restData = append(restData, v.data...)
+
+	header := v.header
+	header.ControlHash = md5.Sum(append(headerData[controlHashOffset:], restData...))
+	headerData, err = writeHeader(header)
+	if err != nil {
+		return nil, err
+	}
+
+	return append(headerData, restData...), nil
 }

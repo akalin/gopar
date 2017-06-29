@@ -46,3 +46,12 @@ func readHeader(buf *bytes.Buffer) (header, error) {
 
 	return h, nil
 }
+
+func writeHeader(h header) ([]byte, error) {
+	buf := bytes.NewBuffer(nil)
+	err := binary.Write(buf, binary.LittleEndian, h)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}

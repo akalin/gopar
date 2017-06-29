@@ -40,6 +40,22 @@ func decodeUTF16LEString(bs []byte) string {
 	return buf.String()
 }
 
+func encodeUTF16LEString(s string) []byte {
+	var runes []rune
+	for _, r := range s {
+		runes = append(runes, r)
+	}
+
+	u16s := utf16.Encode(runes)
+
+	bs := make([]byte, 2*len(u16s))
+	for i := 0; i < len(u16s); i++ {
+		bs[2*i] = byte(u16s[i])
+		bs[2*i+1] = byte(u16s[i] >> 8)
+	}
+	return bs
+}
+
 func readFileEntry(buf *bytes.Buffer) (fileEntry, error) {
 	var header fileEntryHeader
 	err := binary.Read(buf, binary.LittleEndian, &header)
@@ -58,4 +74,14 @@ func readFileEntry(buf *bytes.Buffer) (fileEntry, error) {
 	filename := decodeUTF16LEString(buf.Next(int(filenameByteCount)))
 
 	return fileEntry{header, filename}, nil
+}
+
+func writeFileEntry(entry fileEntry) ([]byte, error) {
+	buf := bytes.NewBuffer(nil)
+	err := binary.Write(buf, binary.LittleEndian, entry.header)
+	if err != nil {
+		return nil, err
+	}
+	encodedFilename := encodeUTF16LEString(entry.filename)
+	return append(buf.Bytes(), encodedFilename...), nil
 }
