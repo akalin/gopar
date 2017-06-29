@@ -3,7 +3,6 @@ package par1
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -26,11 +25,6 @@ type Decoder struct {
 
 	shardByteCount int
 	parityData     [][]byte
-}
-
-type fileIO interface {
-	ReadFile(path string) ([]byte, error)
-	WriteFile(path string, data []byte) error
 }
 
 // DecoderDelegate holds methods that are called during the decode
@@ -63,16 +57,6 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexFile string) (*Dec
 		nil,
 		0, nil,
 	}, nil
-}
-
-type defaultFileIO struct{}
-
-func (io defaultFileIO) ReadFile(path string) ([]byte, error) {
-	return ioutil.ReadFile(path)
-}
-
-func (io defaultFileIO) WriteFile(path string, data []byte) error {
-	return ioutil.WriteFile(path, data, 0600)
 }
 
 // NewDecoder reads the given index file, which usually has a .PAR
