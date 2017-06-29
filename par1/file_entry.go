@@ -9,9 +9,23 @@ import (
 	"unicode/utf8"
 )
 
+type fileEntryStatus uint64
+
+func (s fileEntryStatus) savedInVolumeSet() bool {
+	return (s & 0x1) != 0
+}
+
+func (s *fileEntryStatus) setSavedInVolumeSet(saved bool) {
+	if saved {
+		*s |= 0x1
+	} else {
+		*s &= 0x0
+	}
+}
+
 type fileEntryHeader struct {
 	EntryBytes   uint64
-	Status       uint64
+	Status       fileEntryStatus
 	FileBytes    uint64
 	Hash         [16]byte
 	SixteenKHash [16]byte

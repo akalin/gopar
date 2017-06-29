@@ -69,11 +69,14 @@ func NewDecoder(delegate DecoderDelegate, indexFile string) (*Decoder, error) {
 
 // LoadFileData loads existing file data into memory.
 func (d *Decoder) LoadFileData() error {
-	fileData := make([][]byte, len(d.indexVolume.entries))
+	fileData := make([][]byte, 0, len(d.indexVolume.entries))
 
 	dir := filepath.Dir(d.indexFile)
-	for i, entry := range d.indexVolume.entries {
-		// TODO: Check file status and skip if necessary.
+	for _, entry := range d.indexVolume.entries {
+		if !entry.header.Status.savedInVolumeSet() {
+			continue
+		}
+
 		path := filepath.Join(dir, entry.filename)
 		data, corrupt, err := func() ([]byte, bool, error) {
 			data, err := d.fileIO.ReadFile(path)
@@ -88,6 +91,7 @@ func (d *Decoder) LoadFileData() error {
 		}()
 		d.delegate.OnDataFileLoad(path, corrupt, err)
 		if corrupt {
+			fileData = append(fileData, nil)
 			continue
 		} else if err != nil {
 			return err
@@ -99,7 +103,11 @@ func (d *Decoder) LoadFileData() error {
 		if data == nil {
 			data = make([]byte, 0)
 		}
-		fileData[i] = data
+		fileData = append(fileData, data)
+	}
+
+	if len(fileData) == 0 {
+		return errors.New("no file data found")
 	}
 
 	d.fileData = fileData

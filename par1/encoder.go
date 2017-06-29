@@ -100,8 +100,11 @@ func (e *Encoder) Write(indexPath string) error {
 	var entries []fileEntry
 	for i, k := range e.filePaths {
 		data := e.fileData[i]
+		var status fileEntryStatus
+		status.setSavedInVolumeSet(true)
 		entry := fileEntry{
 			header: fileEntryHeader{
+				Status:    status,
 				FileBytes: uint64(len(data)),
 				Hash:      md5.Sum(data),
 				// TODO: Also fill in header.SixteenKHash.

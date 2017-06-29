@@ -79,8 +79,11 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 	var entries []fileEntry
 	for _, k := range keys {
 		data := io.fileData[k]
+		var status fileEntryStatus
+		status.setSavedInVolumeSet(true)
 		entry := fileEntry{
 			header: fileEntryHeader{
+				Status:    status,
 				FileBytes: uint64(len(data)),
 				Hash:      md5.Sum(data),
 				// TODO: Also fill in header.SixteenKHash.
