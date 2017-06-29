@@ -87,6 +87,12 @@ func (d *Decoder) LoadFileData() error {
 			// TODO: Relax this check.
 			return err
 		}
+		// We use nil to mark missing entries, but ReadFile
+		// might return nil, so convert that to a non-nil
+		// empty slice.
+		if data == nil {
+			data = make([]byte, 0)
+		}
 		// TODO: Check file checksum.
 		fileData[i] = data
 	}

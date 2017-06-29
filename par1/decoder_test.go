@@ -44,14 +44,18 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 	}
 	sort.Strings(keys)
 
+	shardByteCount := 0
+	for _, k := range keys {
+		if len(io.fileData[k]) > shardByteCount {
+			shardByteCount = len(io.fileData[k])
+		}
+	}
 	var shards [][]byte
 	for _, k := range keys {
-		shards = append(shards, io.fileData[k])
+		shards = append(shards, append(io.fileData[k], make([]byte, shardByteCount-len(io.fileData[k]))...))
 	}
-
-	dataLen := len(shards[0])
 	for i := 0; i < parityShardCount; i++ {
-		shards = append(shards, make([]byte, dataLen))
+		shards = append(shards, make([]byte, shardByteCount))
 	}
 	err = rs.Encode(shards)
 	require.NoError(t, err)
@@ -63,7 +67,7 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 		entry := fileEntry{
 			header: fileEntryHeader{
 				EntryBytes: entryByteCount,
-				FileBytes:  uint64(dataLen),
+				FileBytes:  uint64(len(io.fileData[k])),
 			},
 			filename: k,
 		}
@@ -110,10 +114,10 @@ func TestVerify(t *testing.T) {
 		t: t,
 		fileData: map[string][]byte{
 			"file.rar": {0x1, 0x2, 0x3, 0x4},
-			"file.r01": {0x5, 0x6, 0x7, 0x8},
-			"file.r02": {0x9, 0xa, 0xb, 0xc},
-			"file.r03": {0xd, 0xe, 0xf, 0x10},
-			"file.r04": {0x11, 0x12, 0x13, 0x14},
+			"file.r01": {0x5, 0x6, 0x7},
+			"file.r02": {0x8, 0x9, 0xa, 0xb, 0xc},
+			"file.r03": nil,
+			"file.r04": {0xd},
 		},
 	}
 
@@ -167,10 +171,10 @@ func TestRepair(t *testing.T) {
 		t: t,
 		fileData: map[string][]byte{
 			"file.rar": {0x1, 0x2, 0x3, 0x4},
-			"file.r01": {0x5, 0x6, 0x7, 0x8},
-			"file.r02": {0x9, 0xa, 0xb, 0xc},
-			"file.r03": {0xd, 0xe, 0xf, 0x10},
-			"file.r04": {0x11, 0x12, 0x13, 0x14},
+			"file.r01": {0x5, 0x6, 0x7},
+			"file.r02": {0x8, 0x9, 0xa, 0xb, 0xc},
+			"file.r03": nil,
+			"file.r04": {0xd},
 		},
 	}
 
@@ -179,8 +183,9 @@ func TestRepair(t *testing.T) {
 	decoder, err := newDecoder(io, "file.par")
 	require.NoError(t, err)
 
-	r03Data := io.fileData["file.r03"]
 	delete(io.fileData, "file.r03")
+	r04Data := io.fileData["file.r04"]
+	delete(io.fileData, "file.r04")
 
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
@@ -190,6 +195,7 @@ func TestRepair(t *testing.T) {
 	repaired, err := decoder.Repair()
 	require.NoError(t, err)
 
-	require.Equal(t, []string{"file.r03"}, repaired)
-	require.Equal(t, r03Data, io.fileData["file.r03"])
+	require.Equal(t, []string{"file.r03", "file.r04"}, repaired)
+	require.Equal(t, 0, len(io.fileData["file.r03"]))
+	require.Equal(t, r04Data, io.fileData["file.r04"])
 }
