@@ -31,6 +31,7 @@ type Decoder struct {
 // DecoderDelegate holds methods that are called during the decode
 // process.
 type DecoderDelegate interface {
+	OnHeaderLoad(headerInfo string)
 	OnDataFileLoad(path string, corrupt bool, err error)
 	OnDataFileWrite(path string, err error)
 	OnVolumeFileLoad(path string, err error)
@@ -52,6 +53,8 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexFile string) (*Dec
 		// TODO: Relax this check.
 		return nil, errors.New("expected volume number 0 for index volume")
 	}
+
+	delegate.OnHeaderLoad(indexVolume.header.String())
 
 	return &Decoder{
 		fileIO, delegate,

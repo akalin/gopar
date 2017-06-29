@@ -10,7 +10,7 @@ import (
 func TestHeaderRoundTrip(t *testing.T) {
 	h := header{
 		ID:             expectedID,
-		VersionNumber:  expectedVersion,
+		VersionNumber:  makeVersionNumber(expectedVersion),
 		ControlHash:    [16]byte{0x1, 0x2},
 		SetHash:        [16]byte{0x3, 0x4},
 		VolumeNumber:   5,

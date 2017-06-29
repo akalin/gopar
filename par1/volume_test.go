@@ -15,7 +15,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 	v := volume{
 		header: header{
 			ID:            expectedID,
-			VersionNumber: expectedVersion,
+			VersionNumber: makeVersionNumber(expectedVersion),
 			SetHash:       setHash,
 			VolumeNumber:  5,
 		},

@@ -120,7 +120,7 @@ func (e *Encoder) Write(indexPath string) error {
 	vTemplate := volume{
 		header: header{
 			ID:            expectedID,
-			VersionNumber: expectedVersion,
+			VersionNumber: makeVersionNumber(expectedVersion),
 			SetHash:       md5.Sum(setHashInput),
 		},
 		entries: entries,

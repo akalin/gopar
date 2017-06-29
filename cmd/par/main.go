@@ -29,6 +29,10 @@ func (logEncoderDelegate) OnVolumeFileWrite(path string, err error) {
 
 type logDecoderDelegate struct{}
 
+func (logDecoderDelegate) OnHeaderLoad(headerInfo string) {
+	fmt.Printf("Loaded header: %s\n", headerInfo)
+}
+
 func (logDecoderDelegate) OnDataFileLoad(path string, corrupt bool, err error) {
 	if err != nil {
 		if corrupt {

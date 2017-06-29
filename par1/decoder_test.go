@@ -37,6 +37,10 @@ type testDecoderDelegate struct {
 	t *testing.T
 }
 
+func (d testDecoderDelegate) OnHeaderLoad(headerInfo string) {
+	d.t.Logf("OnHeaderLoad(%s)", headerInfo)
+}
+
 func (d testDecoderDelegate) OnDataFileLoad(path string, corrupt bool, err error) {
 	d.t.Logf("OnDataFileLoad(%s, corrupt=%t, %v)", path, corrupt, err)
 }
@@ -99,7 +103,7 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 	vTemplate := volume{
 		header: header{
 			ID:            expectedID,
-			VersionNumber: expectedVersion,
+			VersionNumber: makeVersionNumber(expectedVersion),
 			SetHash:       md5.Sum(setHashInput),
 		},
 		entries: entries,
