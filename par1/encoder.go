@@ -1,6 +1,12 @@
 package par1
 
-import "github.com/klauspost/reedsolomon"
+import (
+	"fmt"
+	"path"
+	"path/filepath"
+
+	"github.com/klauspost/reedsolomon"
+)
 
 // An Encoder keeps track of all information needed to create parity
 // volumes for a set of data files, and write them out to parity files
@@ -77,5 +83,63 @@ func (e *Encoder) ComputeParityData() error {
 	}
 
 	e.parityData = shards[len(e.fileData):]
+	return nil
+}
+
+func (e *Encoder) Write(indexPath string) error {
+	var entries []fileEntry
+	for i, k := range e.filePaths {
+		entry := fileEntry{
+			header: fileEntryHeader{
+				FileBytes: uint64(len(e.fileData[i])),
+				// TODO: Compute Hash and SixteenKHash
+				// properly.
+			},
+			filename: filepath.Base(k),
+		}
+		entries = append(entries, entry)
+	}
+
+	vTemplate := volume{
+		header: header{
+			ID:            expectedID,
+			VersionNumber: expectedVersion,
+			// TODO: Compute SetHash properly.
+		},
+		entries: entries,
+	}
+
+	indexVolume := vTemplate
+	indexVolume.header.VolumeNumber = 0
+	indexVolumeBytes, err := writeVolume(indexVolume)
+	if err != nil {
+		return err
+	}
+
+	// TODO: Sanity-check indexPath.
+	ext := path.Ext(indexPath)
+	base := indexPath[:len(indexPath)-len(ext)]
+
+	err = e.fileIO.WriteFile(base+".par", indexVolumeBytes)
+	if err != nil {
+		return err
+	}
+
+	for i, parityShard := range e.parityData {
+		vol := vTemplate
+		vol.header.VolumeNumber = uint64(i + 1)
+		vol.data = parityShard
+		volBytes, err := writeVolume(vol)
+		if err != nil {
+			return err
+		}
+
+		// TODO: Handle more than 99 parity files.
+		err = e.fileIO.WriteFile(fmt.Sprintf("%s.p%02d", base, i+1), volBytes)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }

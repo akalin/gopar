@@ -44,3 +44,42 @@ func TestEncodeParity(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 }
+
+func TestWriteParity(t *testing.T) {
+	io := testFileIO{
+		t: t,
+		fileData: map[string][]byte{
+			"file.rar": {0x1, 0x2, 0x3},
+			"file.r01": {0x5, 0x6, 0x7, 0x8},
+			"file.r02": {0x9, 0xa, 0xb, 0xc},
+			"file.r03": {0xd, 0xe},
+			"file.r04": nil,
+		},
+	}
+
+	paths := []string{"file.rar", "file.r01", "file.r02", "file.r03", "file.r04"}
+
+	encoder, err := newEncoder(io, paths, 3)
+	require.NoError(t, err)
+
+	err = encoder.LoadFileData()
+	require.NoError(t, err)
+
+	err = encoder.ComputeParityData()
+	require.NoError(t, err)
+
+	err = encoder.Write("parity.par")
+	require.NoError(t, err)
+
+	decoder, err := newDecoder(io, testDelegate{t}, "parity.par")
+	require.NoError(t, err)
+
+	err = decoder.LoadFileData()
+	require.NoError(t, err)
+	err = decoder.LoadParityData()
+	require.NoError(t, err)
+
+	ok, err := decoder.Verify()
+	require.NoError(t, err)
+	require.True(t, ok)
+}
