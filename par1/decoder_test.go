@@ -3,7 +3,9 @@ package par1
 import (
 	"fmt"
 	"os"
+	"path"
 	"reflect"
+	"sort"
 	"testing"
 
 	"github.com/klauspost/reedsolomon"
@@ -31,6 +33,78 @@ func (io testFileIO) WriteFile(path string, data []byte) error {
 	return nil
 }
 
+func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
+	dataShardCount := len(io.fileData)
+	rs, err := reedsolomon.New(dataShardCount, parityShardCount, reedsolomon.WithPAR1Matrix())
+	require.NoError(t, err)
+
+	var keys []string
+	for k := range io.fileData {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var shards [][]byte
+	for _, k := range keys {
+		shards = append(shards, io.fileData[k])
+	}
+
+	dataLen := len(shards[0])
+	for i := 0; i < parityShardCount; i++ {
+		shards = append(shards, make([]byte, dataLen))
+	}
+	err = rs.Encode(shards)
+	require.NoError(t, err)
+
+	var entries []fileEntry
+	for _, k := range keys {
+		filenameByteCount := uint64(len(encodeUTF16LEString(k)))
+		entryByteCount := uint64(reflect.TypeOf(fileEntryHeader{}).Size()) + filenameByteCount
+		entry := fileEntry{
+			header: fileEntryHeader{
+				EntryBytes: entryByteCount,
+				FileBytes:  uint64(dataLen),
+			},
+			filename: k,
+		}
+		entries = append(entries, entry)
+	}
+
+	vTemplate := volume{
+		header: header{
+			ID:             expectedID,
+			VersionNumber:  expectedVersion,
+			ControlHash:    [16]uint8{},
+			SetHash:        [16]byte{0x3, 0x4},
+			FileCount:      uint64(len(entries)),
+			FileListOffset: expectedFileListOffset,
+			FileListBytes:  0,
+			DataOffset:     expectedFileListOffset,
+			DataBytes:      0,
+		},
+		entries: entries,
+	}
+
+	indexVolume := vTemplate
+	indexVolume.header.VolumeNumber = 0
+	indexVolumeBytes, err := writeVolume(indexVolume)
+	require.NoError(t, err)
+
+	ext := path.Ext(keys[0])
+	base := keys[0][:len(keys[0])-len(ext)]
+
+	io.fileData[base+".par"] = indexVolumeBytes
+
+	for i, parityShard := range shards[dataShardCount:] {
+		vol := vTemplate
+		vol.header.VolumeNumber = uint64(i + 1)
+		vol.data = parityShard
+		volBytes, err := writeVolume(vol)
+		require.NoError(t, err)
+		io.fileData[fmt.Sprintf("%s.p%02d", base, i+1)] = volBytes
+	}
+}
+
 func TestVerify(t *testing.T) {
 	io := testFileIO{
 		t: t,
@@ -43,85 +117,7 @@ func TestVerify(t *testing.T) {
 		},
 	}
 
-	dataShardCount := len(io.fileData)
-	rs, err := reedsolomon.New(dataShardCount, 3, reedsolomon.WithPAR1Matrix())
-	require.NoError(t, err)
-	shards := [][]byte{
-		io.fileData["file.rar"],
-		io.fileData["file.r01"],
-		io.fileData["file.r02"],
-		io.fileData["file.r03"],
-		io.fileData["file.r04"],
-		make([]byte, 4),
-		make([]byte, 4),
-		make([]byte, 4),
-	}
-	err = rs.Encode(shards)
-	require.NoError(t, err)
-
-	filenameByteCount := uint64(len(encodeUTF16LEString("file.rar")))
-	entryByteCount := uint64(reflect.TypeOf(fileEntryHeader{}).Size()) + filenameByteCount
-
-	vTemplate := volume{
-		header: header{
-			ID:             expectedID,
-			VersionNumber:  expectedVersion,
-			ControlHash:    [16]uint8{},
-			SetHash:        [16]byte{0x3, 0x4},
-			FileCount:      5,
-			FileListOffset: expectedFileListOffset,
-			FileListBytes:  0,
-			DataOffset:     expectedFileListOffset,
-			DataBytes:      0,
-		},
-		entries: []fileEntry{
-			fileEntry{
-				header: fileEntryHeader{
-					EntryBytes: entryByteCount,
-				},
-				filename: "file.rar",
-			},
-			fileEntry{
-				header: fileEntryHeader{
-					EntryBytes: entryByteCount,
-				},
-				filename: "file.r01",
-			},
-			fileEntry{
-				header: fileEntryHeader{
-					EntryBytes: entryByteCount,
-				},
-				filename: "file.r02",
-			},
-			fileEntry{
-				header: fileEntryHeader{
-					EntryBytes: entryByteCount,
-				},
-				filename: "file.r03",
-			},
-			fileEntry{
-				header: fileEntryHeader{
-					EntryBytes: entryByteCount,
-				},
-				filename: "file.r04",
-			},
-		},
-	}
-
-	indexVolume := vTemplate
-	indexVolume.header.VolumeNumber = 0
-	indexVolumeBytes, err := writeVolume(indexVolume)
-	require.NoError(t, err)
-	io.fileData["file.par"] = indexVolumeBytes
-
-	for i, parityShard := range shards[dataShardCount:] {
-		vol := vTemplate
-		vol.header.VolumeNumber = uint64(i + 1)
-		vol.data = parityShard
-		volBytes, err := writeVolume(vol)
-		require.NoError(t, err)
-		io.fileData[fmt.Sprintf("file.p%02d", i+1)] = volBytes
-	}
+	buildPARData(t, io, 3)
 
 	decoder, err := newDecoder(io, "file.par")
 	require.NoError(t, err)
@@ -164,4 +160,36 @@ func TestVerify(t *testing.T) {
 	ok, err = decoder.Verify()
 	require.NoError(t, err)
 	require.False(t, ok)
+}
+
+func TestRepair(t *testing.T) {
+	io := testFileIO{
+		t: t,
+		fileData: map[string][]byte{
+			"file.rar": {0x1, 0x2, 0x3, 0x4},
+			"file.r01": {0x5, 0x6, 0x7, 0x8},
+			"file.r02": {0x9, 0xa, 0xb, 0xc},
+			"file.r03": {0xd, 0xe, 0xf, 0x10},
+			"file.r04": {0x11, 0x12, 0x13, 0x14},
+		},
+	}
+
+	buildPARData(t, io, 3)
+
+	decoder, err := newDecoder(io, "file.par")
+	require.NoError(t, err)
+
+	r03Data := io.fileData["file.r03"]
+	delete(io.fileData, "file.r03")
+
+	err = decoder.LoadFileData()
+	require.NoError(t, err)
+	err = decoder.LoadParityData()
+	require.NoError(t, err)
+
+	repaired, err := decoder.Repair()
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"file.r03"}, repaired)
+	require.Equal(t, r03Data, io.fileData["file.r03"])
 }
