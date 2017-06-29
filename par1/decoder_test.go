@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"reflect"
 	"sort"
 	"testing"
 
@@ -74,12 +73,9 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 
 	var entries []fileEntry
 	for _, k := range keys {
-		filenameByteCount := uint64(len(encodeUTF16LEString(k)))
-		entryByteCount := uint64(reflect.TypeOf(fileEntryHeader{}).Size()) + filenameByteCount
 		entry := fileEntry{
 			header: fileEntryHeader{
-				EntryBytes: entryByteCount,
-				FileBytes:  uint64(len(io.fileData[k])),
+				FileBytes: uint64(len(io.fileData[k])),
 			},
 			filename: k,
 		}

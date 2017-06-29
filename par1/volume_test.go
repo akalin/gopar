@@ -1,21 +1,13 @@
 package par1
 
 import (
-	"reflect"
+	"crypto/md5"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestVolumeRoundTrip(t *testing.T) {
-	filename1 := "filename世界.r01"
-	filename1ByteCount := uint64(len(encodeUTF16LEString(filename1)))
-	filename2 := "filename世界.r02"
-	filename2ByteCount := uint64(len(encodeUTF16LEString(filename2)))
-	headerByteCount := uint64(reflect.TypeOf(fileEntryHeader{}).Size())
-	entry1ByteCount := headerByteCount + filename1ByteCount
-	entry2ByteCount := headerByteCount + filename2ByteCount
-
 	v := volume{
 		header: header{
 			ID:             expectedID,
@@ -32,23 +24,21 @@ func TestVolumeRoundTrip(t *testing.T) {
 		entries: []fileEntry{
 			fileEntry{
 				header: fileEntryHeader{
-					EntryBytes:   entry1ByteCount,
 					Status:       10,
 					FileBytes:    10,
 					Hash:         [16]byte{0x1, 0x2},
 					SixteenKHash: [16]byte{0x3, 0x4},
 				},
-				filename: filename1,
+				filename: "filename世界.r01",
 			},
 			fileEntry{
 				header: fileEntryHeader{
-					EntryBytes:   entry2ByteCount,
 					Status:       10,
 					FileBytes:    10,
 					Hash:         [16]byte{0x1, 0x2},
 					SixteenKHash: [16]byte{0x3, 0x4},
 				},
-				filename: filename2,
+				filename: "filename世界.r02",
 			},
 		},
 		data: []byte{0x1, 0x2},
@@ -56,8 +46,15 @@ func TestVolumeRoundTrip(t *testing.T) {
 
 	volumeBytes, err := writeVolume(v)
 	require.NoError(t, err)
+
 	roundTripVolume, err := readVolume(volumeBytes)
-	roundTripVolume.header.ControlHash = [16]byte{}
 	require.NoError(t, err)
+
+	v.header.ControlHash = md5.Sum(volumeBytes[controlHashOffset:])
+	for i, entry := range v.entries {
+		entryBytes, err := writeFileEntry(entry)
+		require.NoError(t, err)
+		v.entries[i].header.EntryBytes = uint64(len(entryBytes))
+	}
 	require.Equal(t, v, roundTripVolume)
 }

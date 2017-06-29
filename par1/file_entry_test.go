@@ -2,7 +2,6 @@ package par1
 
 import (
 	"bytes"
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -23,11 +22,8 @@ func TestUTF16LEStringRoundTrip(t *testing.T) {
 
 func TestFileEntryRoundTrip(t *testing.T) {
 	filename := "filename世界.r01"
-	filenameByteCount := uint64(len(encodeUTF16LEString(filename)))
-	entryByteCount := uint64(reflect.TypeOf(fileEntryHeader{}).Size()) + filenameByteCount
 	entry := fileEntry{
 		header: fileEntryHeader{
-			EntryBytes:   entryByteCount,
 			Status:       10,
 			FileBytes:    10,
 			Hash:         [16]byte{0x1, 0x2},
@@ -38,7 +34,10 @@ func TestFileEntryRoundTrip(t *testing.T) {
 
 	entryBytes, err := writeFileEntry(entry)
 	require.NoError(t, err)
+
 	roundTripEntry, err := readFileEntry(bytes.NewBuffer(entryBytes))
 	require.NoError(t, err)
+
+	entry.header.EntryBytes = uint64(len(entryBytes))
 	require.Equal(t, entry, roundTripEntry)
 }

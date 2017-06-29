@@ -17,6 +17,10 @@ type fileEntryHeader struct {
 	SixteenKHash [16]byte
 }
 
+func sizeOfFileEntryHeader() uint64 {
+	return uint64(reflect.TypeOf(fileEntryHeader{}).Size())
+}
+
 type fileEntry struct {
 	header   fileEntryHeader
 	filename string
@@ -63,7 +67,7 @@ func readFileEntry(buf *bytes.Buffer) (fileEntry, error) {
 		return fileEntry{}, err
 	}
 
-	filenameByteCount := header.EntryBytes - uint64(reflect.TypeOf(fileEntryHeader{}).Size())
+	filenameByteCount := header.EntryBytes - sizeOfFileEntryHeader()
 	if filenameByteCount <= 0 || filenameByteCount%2 != 0 {
 		return fileEntry{}, errors.New("invalid entry byte count")
 	}
@@ -77,11 +81,14 @@ func readFileEntry(buf *bytes.Buffer) (fileEntry, error) {
 }
 
 func writeFileEntry(entry fileEntry) ([]byte, error) {
+	encodedFilename := encodeUTF16LEString(entry.filename)
+	header := entry.header
+	header.EntryBytes = sizeOfFileEntryHeader() + uint64(len(encodedFilename))
+
 	buf := bytes.NewBuffer(nil)
-	err := binary.Write(buf, binary.LittleEndian, entry.header)
+	err := binary.Write(buf, binary.LittleEndian, header)
 	if err != nil {
 		return nil, err
 	}
-	encodedFilename := encodeUTF16LEString(entry.filename)
 	return append(buf.Bytes(), encodedFilename...), nil
 }
