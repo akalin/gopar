@@ -104,10 +104,10 @@ func (e *Encoder) Write(indexPath string) error {
 		status.setSavedInVolumeSet(true)
 		entry := fileEntry{
 			header: fileEntryHeader{
-				Status:    status,
-				FileBytes: uint64(len(data)),
-				Hash:      md5.Sum(data),
-				// TODO: Also fill in header.SixteenKHash.
+				Status:       status,
+				FileBytes:    uint64(len(data)),
+				Hash:         md5.Sum(data),
+				SixteenKHash: sixteenKHash(data),
 			},
 			filename: filepath.Base(k),
 		}

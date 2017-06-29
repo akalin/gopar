@@ -83,10 +83,10 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 		status.setSavedInVolumeSet(true)
 		entry := fileEntry{
 			header: fileEntryHeader{
-				Status:    status,
-				FileBytes: uint64(len(data)),
-				Hash:      md5.Sum(data),
-				// TODO: Also fill in header.SixteenKHash.
+				Status:       status,
+				FileBytes:    uint64(len(data)),
+				Hash:         md5.Sum(data),
+				SixteenKHash: sixteenKHash(data),
 			},
 			filename: k,
 		}

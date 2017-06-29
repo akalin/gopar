@@ -67,6 +67,13 @@ func NewDecoder(delegate DecoderDelegate, indexFile string) (*Decoder, error) {
 	return newDecoder(defaultFileIO{}, delegate, indexFile)
 }
 
+func sixteenKHash(data []byte) [md5.Size]byte {
+	if len(data) < 16*1024 {
+		return md5.Sum(data)
+	}
+	return md5.Sum(data[:16*1024])
+}
+
 // LoadFileData loads existing file data into memory.
 func (d *Decoder) LoadFileData() error {
 	fileData := make([][]byte, 0, len(d.indexVolume.entries))
@@ -84,6 +91,8 @@ func (d *Decoder) LoadFileData() error {
 				return nil, true, err
 			} else if err != nil {
 				return nil, false, err
+			} else if sixteenKHash(data) != entry.header.SixteenKHash {
+				return nil, true, errors.New("hash mismatch (16k)")
 			} else if md5.Sum(data) != entry.header.Hash {
 				return nil, true, errors.New("hash mismatch")
 			}
@@ -266,7 +275,9 @@ func (d *Decoder) Repair() ([]string, error) {
 
 		entry := d.indexVolume.entries[i]
 		data = shards[i][:entry.header.FileBytes]
-		if md5.Sum(data) != entry.header.Hash {
+		if sixteenKHash(data) != entry.header.SixteenKHash {
+			return repairedFiles, errors.New("hash mismatch (16k) in reconstructed data")
+		} else if md5.Sum(data) != entry.header.Hash {
 			return repairedFiles, errors.New("hash mismatch in reconstructed data")
 		}
 
