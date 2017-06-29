@@ -98,27 +98,30 @@ func (e *Encoder) ComputeParityData() error {
 
 func (e *Encoder) Write(indexPath string) error {
 	var entries []fileEntry
+	var setHashInput []byte
 	for i, k := range e.filePaths {
 		data := e.fileData[i]
 		var status fileEntryStatus
 		status.setSavedInVolumeSet(true)
+		hash := md5.Sum(data)
 		entry := fileEntry{
 			header: fileEntryHeader{
 				Status:       status,
 				FileBytes:    uint64(len(data)),
-				Hash:         md5.Sum(data),
+				Hash:         hash,
 				SixteenKHash: sixteenKHash(data),
 			},
 			filename: filepath.Base(k),
 		}
 		entries = append(entries, entry)
+		setHashInput = append(setHashInput, hash[:]...)
 	}
 
 	vTemplate := volume{
 		header: header{
 			ID:            expectedID,
 			VersionNumber: expectedVersion,
-			// TODO: Compute SetHash properly.
+			SetHash:       md5.Sum(setHashInput),
 		},
 		entries: entries,
 	}

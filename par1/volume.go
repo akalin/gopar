@@ -34,18 +34,26 @@ func readVolume(volumeBytes []byte) (volume, error) {
 		return volume{}, errors.New("invalid control hash")
 	}
 
-	// TODO: Check h.SetHash.
-
 	// TODO: Check count of files saved in volume set, and other
 	// offsets and bytes.
 
 	entries := make([]fileEntry, header.FileCount)
+	var setHashInput []byte
 	for i := uint64(0); i < header.FileCount; i++ {
 		var err error
 		entries[i], err = readFileEntry(buf)
 		if err != nil {
 			return volume{}, err
 		}
+
+		if entries[i].header.Status.savedInVolumeSet() {
+			setHashInput = append(setHashInput, entries[i].header.Hash[:]...)
+		}
+	}
+
+	setHash := md5.Sum(setHashInput)
+	if setHash != header.SetHash {
+		return volume{}, errors.New("invalid set hash")
 	}
 
 	data, err := ioutil.ReadAll(buf)

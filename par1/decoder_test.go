@@ -77,27 +77,30 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 	require.NoError(t, err)
 
 	var entries []fileEntry
+	var setHashInput []byte
 	for _, k := range keys {
 		data := io.fileData[k]
 		var status fileEntryStatus
 		status.setSavedInVolumeSet(true)
+		hash := md5.Sum(data)
 		entry := fileEntry{
 			header: fileEntryHeader{
 				Status:       status,
 				FileBytes:    uint64(len(data)),
-				Hash:         md5.Sum(data),
+				Hash:         hash,
 				SixteenKHash: sixteenKHash(data),
 			},
 			filename: k,
 		}
 		entries = append(entries, entry)
+		setHashInput = append(setHashInput, hash[:]...)
 	}
 
 	vTemplate := volume{
 		header: header{
 			ID:            expectedID,
 			VersionNumber: expectedVersion,
-			SetHash:       [16]byte{0x3, 0x4},
+			SetHash:       md5.Sum(setHashInput),
 		},
 		entries: entries,
 	}

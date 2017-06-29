@@ -8,11 +8,15 @@ import (
 )
 
 func TestVolumeRoundTrip(t *testing.T) {
+	hash1 := [16]byte{0x1, 0x2}
+	hash2 := [16]byte{0x3, 0x4}
+	// Only the second file is included in the volume set.
+	setHash := md5.Sum(hash2[:])
 	v := volume{
 		header: header{
 			ID:            expectedID,
 			VersionNumber: expectedVersion,
-			SetHash:       [16]byte{0x3, 0x4},
+			SetHash:       setHash,
 			VolumeNumber:  5,
 		},
 		entries: []fileEntry{
@@ -20,17 +24,17 @@ func TestVolumeRoundTrip(t *testing.T) {
 				header: fileEntryHeader{
 					Status:       10,
 					FileBytes:    10,
-					Hash:         [16]byte{0x1, 0x2},
-					SixteenKHash: [16]byte{0x3, 0x4},
+					Hash:         hash1,
+					SixteenKHash: [16]byte{0x5, 0x6},
 				},
 				filename: "filename世界.r01",
 			},
 			fileEntry{
 				header: fileEntryHeader{
-					Status:       10,
+					Status:       11,
 					FileBytes:    10,
-					Hash:         [16]byte{0x1, 0x2},
-					SixteenKHash: [16]byte{0x3, 0x4},
+					Hash:         hash2,
+					SixteenKHash: [16]byte{0x7, 0x8},
 				},
 				filename: "filename世界.r02",
 			},
