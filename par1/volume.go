@@ -57,11 +57,6 @@ func readVolume(volumeBytes []byte) (volume, error) {
 }
 
 func writeVolume(v volume) ([]byte, error) {
-	headerData, err := writeHeader(v.header)
-	if err != nil {
-		return nil, err
-	}
-
 	var restData []byte
 	for _, entry := range v.entries {
 		fileEntryData, err := writeFileEntry(entry)
@@ -73,7 +68,21 @@ func writeVolume(v volume) ([]byte, error) {
 	restData = append(restData, v.data...)
 
 	header := v.header
+	header.FileCount = uint64(len(v.entries))
+	header.FileListOffset = expectedFileListOffset
+	header.FileListBytes = uint64(len(restData) - len(v.data))
+	// We'll run out of memory in building restData well before
+	// the calculation below can overflow.
+	header.DataOffset = header.FileListOffset + header.FileListBytes
+	header.DataBytes = uint64(len(v.data))
+
+	headerData, err := writeHeader(header)
+	if err != nil {
+		return nil, err
+	}
+
 	header.ControlHash = md5.Sum(append(headerData[controlHashOffset:], restData...))
+
 	headerData, err = writeHeader(header)
 	if err != nil {
 		return nil, err

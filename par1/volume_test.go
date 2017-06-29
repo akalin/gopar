@@ -10,16 +10,10 @@ import (
 func TestVolumeRoundTrip(t *testing.T) {
 	v := volume{
 		header: header{
-			ID:             expectedID,
-			VersionNumber:  expectedVersion,
-			ControlHash:    [16]uint8{},
-			SetHash:        [16]byte{0x3, 0x4},
-			VolumeNumber:   5,
-			FileCount:      2,
-			FileListOffset: expectedFileListOffset,
-			FileListBytes:  0,
-			DataOffset:     expectedFileListOffset,
-			DataBytes:      0,
+			ID:            expectedID,
+			VersionNumber: expectedVersion,
+			SetHash:       [16]byte{0x3, 0x4},
+			VolumeNumber:  5,
 		},
 		entries: []fileEntry{
 			fileEntry{
@@ -51,6 +45,11 @@ func TestVolumeRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	v.header.ControlHash = md5.Sum(volumeBytes[controlHashOffset:])
+	v.header.FileCount = uint64(len(v.entries))
+	v.header.FileListOffset = expectedFileListOffset
+	v.header.FileListBytes = uint64(len(volumeBytes)) - expectedFileListOffset - uint64(len(v.data))
+	v.header.DataOffset = v.header.FileListOffset + v.header.FileListBytes
+	v.header.DataBytes = uint64(len(v.data))
 	for i, entry := range v.entries {
 		entryBytes, err := writeFileEntry(entry)
 		require.NoError(t, err)

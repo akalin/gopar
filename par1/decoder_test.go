@@ -84,21 +84,16 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 
 	vTemplate := volume{
 		header: header{
-			ID:             expectedID,
-			VersionNumber:  expectedVersion,
-			ControlHash:    [16]uint8{},
-			SetHash:        [16]byte{0x3, 0x4},
-			FileCount:      uint64(len(entries)),
-			FileListOffset: expectedFileListOffset,
-			FileListBytes:  0,
-			DataOffset:     expectedFileListOffset,
-			DataBytes:      0,
+			ID:            expectedID,
+			VersionNumber: expectedVersion,
+			SetHash:       [16]byte{0x3, 0x4},
 		},
 		entries: entries,
 	}
 
 	indexVolume := vTemplate
 	indexVolume.header.VolumeNumber = 0
+	indexVolume.data = []byte{0x1, 0x2}
 	indexVolumeBytes, err := writeVolume(indexVolume)
 	require.NoError(t, err)
 
