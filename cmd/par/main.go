@@ -19,6 +19,14 @@ func (logDelegate) OnDataFileLoad(path string, err error) {
 	}
 }
 
+func (logDelegate) OnDataFileWrite(path string, err error) {
+	if err != nil {
+		fmt.Printf("Writing data file %q failed: %+v\n", path, err)
+	} else {
+		fmt.Printf("Wrote data file %q\n", path)
+	}
+}
+
 func (logDelegate) OnVolumeFileLoad(path string, err error) {
 	if os.IsNotExist(err) {
 		// Do nothing.

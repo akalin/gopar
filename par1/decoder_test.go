@@ -40,6 +40,10 @@ func (d testDecoderDelegate) OnDataFileLoad(path string, err error) {
 	d.t.Logf("OnDataFileLoad(%s, %v)", path, err)
 }
 
+func (d testDecoderDelegate) OnDataFileWrite(path string, err error) {
+	d.t.Logf("OnDataFileWrite(%s, %v)", path, err)
+}
+
 func (d testDecoderDelegate) OnVolumeFileLoad(path string, err error) {
 	d.t.Logf("OnVolumeFileLoad(%s, %v)", path, err)
 }

@@ -31,6 +31,7 @@ type Decoder struct {
 // process.
 type DecoderDelegate interface {
 	OnDataFileLoad(path string, err error)
+	OnDataFileWrite(path string, err error)
 	OnVolumeFileLoad(path string, err error)
 }
 
@@ -252,6 +253,7 @@ func (d *Decoder) Repair() ([]string, error) {
 		filename := d.indexVolume.entries[i].filename
 		path := filepath.Join(dir, filename)
 		err = d.fileIO.WriteFile(path, data)
+		d.delegate.OnDataFileWrite(path, err)
 		if err != nil {
 			return repairedFiles, err
 		}
