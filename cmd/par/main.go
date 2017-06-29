@@ -33,10 +33,11 @@ func printUsageAndExit(name string) {
 	name = filepath.Base(name)
 	fmt.Printf(`
 Usage:
+  %s c(reate) <PAR file> [files]
   %s v(erify) <PAR file>
   %s r(epair) <PAR file>
 
-`, name, name)
+`, name, name, name)
 	os.Exit(-1)
 }
 
@@ -50,6 +51,35 @@ func main() {
 	parFile := os.Args[2]
 
 	switch strings.ToLower(cmd) {
+	case "c":
+		fallthrough
+	case "create":
+		if len(os.Args) == 2 {
+			printUsageAndExit(name)
+		}
+
+		// TODO: Add option to set number of parity volumes.
+		encoder, err := par1.NewEncoder(os.Args[3:], 3)
+		if err != nil {
+			panic(err)
+		}
+
+		err = encoder.LoadFileData()
+		if err != nil {
+			panic(err)
+		}
+
+		err = encoder.ComputeParityData()
+		if err != nil {
+			panic(err)
+		}
+
+		err = encoder.Write(parFile)
+		if err != nil {
+			fmt.Printf("Write parity error: %s", err)
+			os.Exit(-1)
+		}
+
 	case "v":
 		fallthrough
 	case "verify":
@@ -103,6 +133,9 @@ func main() {
 		}
 
 		fmt.Printf("Repaired files: %v\n", repairedFiles)
+		if err != nil {
+			os.Exit(-1)
+		}
 
 	default:
 		printUsageAndExit(name)
