@@ -52,6 +52,16 @@ func NewMatrixFromFunction(rows, columns int, fn func(int, int) T) Matrix {
 	return NewMatrixFromSlice(rows, columns, elements)
 }
 
+// NewIdentityMatrix returns an n x n identity matrix.
+func NewIdentityMatrix(n int) Matrix {
+	return NewMatrixFromFunction(n, n, func(i, j int) T {
+		if i == j {
+			return 1
+		}
+		return 0
+	})
+}
+
 func (m Matrix) checkRowIndex(i int) {
 	if i < 0 || i >= m.rows {
 		panic("row index out of bounds")
@@ -131,4 +141,26 @@ func (m Matrix) addScaledRow(dest, src int, c T) {
 	for j, e := range rowSrc {
 		rowDest[j] ^= e.Times(c)
 	}
+}
+
+func (m Matrix) augmentRight(n Matrix) Matrix {
+	if m.rows != n.rows {
+		panic("mismatched dimensions")
+	}
+
+	return NewMatrixFromFunction(m.rows, m.columns+n.columns, func(i, j int) T {
+		if j < m.columns {
+			return m.At(i, j)
+		}
+		return n.At(i, j-m.columns)
+	})
+}
+
+func (m Matrix) columnSlice(i, j int) Matrix {
+	m.checkColumnIndex(i)
+	m.checkColumnIndex(j - 1)
+
+	return NewMatrixFromFunction(m.rows, j-i, func(k, l int) T {
+		return m.At(k, i+l)
+	})
 }
