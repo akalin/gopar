@@ -39,7 +39,8 @@ func TestVolumeRoundTrip(t *testing.T) {
 				filename: "filename世界.r02",
 			},
 		},
-		data: []byte{0x1, 0x2},
+		setHash: setHash,
+		data:    []byte{0x1, 0x2},
 	}
 
 	volumeBytes, err := writeVolume(v)

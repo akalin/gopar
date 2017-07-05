@@ -36,7 +36,7 @@ type DecoderDelegate interface {
 	OnCommentLoad(comment []byte)
 	OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error)
 	OnDataFileWrite(i, n int, path string, byteCount int, err error)
-	OnVolumeFileLoad(i uint64, path string, dataByteCount int, err error)
+	OnVolumeFileLoad(i uint64, path string, storedSetHash, computedSetHash [16]byte, dataByteCount int, err error)
 }
 
 func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexFile string) (*Decoder, error) {
@@ -57,7 +57,7 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexFile string) (*Dec
 		}
 		return indexVolume, nil
 	}()
-	delegate.OnVolumeFileLoad(0, indexFile, len(indexVolume.data), err)
+	delegate.OnVolumeFileLoad(0, indexFile, indexVolume.header.SetHash, indexVolume.setHash, len(indexVolume.data), err)
 	if err != nil {
 		return nil, err
 	}
@@ -187,6 +187,11 @@ func (d *Decoder) LoadParityData() error {
 
 			byteCount := len(parityVolume.data)
 
+			if parityVolume.header.SetHash != d.indexVolume.header.SetHash {
+				// TODO: Relax this check.
+				return volume{}, byteCount, errors.New("unexpected set hash for parity volume")
+			}
+
 			if parityVolume.header.VolumeNumber != uint64(i+1) {
 				// TODO: Relax this check.
 				return volume{}, byteCount, errors.New("unexpected volume number for parity volume")
@@ -204,7 +209,7 @@ func (d *Decoder) LoadParityData() error {
 			}
 			return parityVolume, byteCount, nil
 		}()
-		d.delegate.OnVolumeFileLoad(volumeNumber, volumePath, byteCount, err)
+		d.delegate.OnVolumeFileLoad(volumeNumber, volumePath, parityVolume.header.SetHash, parityVolume.setHash, byteCount, err)
 		if os.IsNotExist(err) {
 			continue
 		} else if err != nil {

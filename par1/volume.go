@@ -14,7 +14,10 @@ import (
 // volume. All other data should be the same for all volumes in a set
 // (identified by h.SetHash).
 type volume struct {
-	header  header
+	header header
+	// setHash is computed directly, and may differ from the one
+	// in header.
+	setHash [16]byte
 	entries []fileEntry
 	data    []byte
 }
@@ -50,18 +53,14 @@ func readVolume(volumeBytes []byte) (volume, error) {
 			setHashInput = append(setHashInput, entries[i].header.Hash[:]...)
 		}
 	}
-
 	setHash := md5.Sum(setHashInput)
-	if setHash != header.SetHash {
-		return volume{}, errors.New("invalid set hash")
-	}
 
 	data, err := ioutil.ReadAll(buf)
 	if err != nil {
 		return volume{}, err
 	}
 
-	return volume{header, entries, data}, nil
+	return volume{header, setHash, entries, data}, nil
 }
 
 func writeVolume(v volume) ([]byte, error) {

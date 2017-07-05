@@ -62,13 +62,16 @@ func (logDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount int, 
 	}
 }
 
-func (logDecoderDelegate) OnVolumeFileLoad(i uint64, path string, dataByteCount int, err error) {
+func (logDecoderDelegate) OnVolumeFileLoad(i uint64, path string, storedSetHash, computedSetHash [16]byte, dataByteCount int, err error) {
 	if os.IsNotExist(err) {
 		// Do nothing.
 	} else if err != nil {
 		fmt.Printf("[%d] Loading volume file %q failed: %+v\n", i, path, err)
 	} else {
 		fmt.Printf("[%d] Loaded volume file %q (%d data bytes)\n", i, path, dataByteCount)
+		if storedSetHash != computedSetHash {
+			fmt.Printf("[%d] Warning: stored set hash in %q %x doesn't match computed set hash %x\n", i, path, storedSetHash, computedSetHash)
+		}
 	}
 }
 

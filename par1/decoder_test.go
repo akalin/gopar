@@ -2,6 +2,7 @@ package par1
 
 import (
 	"crypto/md5"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -57,8 +58,8 @@ func (d testDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount in
 	d.t.Logf("OnDataFileWrite(%d, %d, %s, byteCount=%d, %v)", i, n, path, byteCount, err)
 }
 
-func (d testDecoderDelegate) OnVolumeFileLoad(i uint64, path string, dataByteCount int, err error) {
-	d.t.Logf("OnVolumeFileLoad(%d, %s, dataByteCount=%d, %v)", i, path, dataByteCount, err)
+func (d testDecoderDelegate) OnVolumeFileLoad(i uint64, path string, storedSetHash, computedSetHash [16]byte, dataByteCount int, err error) {
+	d.t.Logf("OnVolumeFileLoad(%d, %s, storedSetHash=%x, computedSetHash=%x, dataByteCount=%d, %v)", i, path, storedSetHash, computedSetHash, dataByteCount, err)
 }
 
 func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
@@ -193,6 +194,41 @@ func TestVerify(t *testing.T) {
 	ok, err = decoder.Verify()
 	require.NoError(t, err)
 	require.False(t, ok)
+}
+
+func TestSetHashMismatch(t *testing.T) {
+	io1 := testFileIO{
+		t: t,
+		fileData: map[string][]byte{
+			"file.rar": {0x1, 0x2, 0x3, 0x4},
+			"file.r01": {0x5, 0x6, 0x7},
+			"file.r02": {0x8, 0x9, 0xa, 0xb, 0xc},
+			"file.r03": nil,
+			"file.r04": {0xd},
+		},
+	}
+
+	io2 := testFileIO{
+		t:        t,
+		fileData: make(map[string][]byte),
+	}
+	for k, v := range io1.fileData {
+		io2.fileData[k] = make([]byte, len(v))
+		copy(io2.fileData[k], v)
+	}
+	io2.fileData["file.rar"][0]++
+
+	buildPARData(t, io1, 3)
+	buildPARData(t, io2, 3)
+	// Insert a parity volume that has a different set hash.
+	io1.fileData["file.p02"] = io2.fileData["file.p02"]
+
+	decoder, err := newDecoder(io1, testDecoderDelegate{t}, "file.par")
+	require.NoError(t, err)
+	err = decoder.LoadFileData()
+	require.NoError(t, err)
+	err = decoder.LoadParityData()
+	require.Equal(t, errors.New("unexpected set hash for parity volume"), err)
 }
 
 func TestRepair(t *testing.T) {
