@@ -88,3 +88,47 @@ func (m Matrix) Times(n Matrix) Matrix {
 		return t
 	})
 }
+
+// row returns a slice into m.elements, so caller must not mutate
+// except for local temporary arrays.
+func (m Matrix) row(i int) []T {
+	m.checkRowIndex(i)
+	return m.elements[i*m.columns : (i+1)*m.columns]
+}
+
+func (m Matrix) clone() Matrix {
+	return NewMatrixFromSlice(m.rows, m.columns, m.elements)
+}
+
+// The mutating functions below must not be called except on local
+// temporary arrays.
+
+func (m Matrix) swapRows(i, j int) {
+	m.checkRowIndex(i)
+	m.checkRowIndex(j)
+
+	if i == j {
+		return
+	}
+
+	rowI := m.row(i)
+	rowJ := m.row(j)
+	for k := 0; k < m.columns; k++ {
+		rowI[k], rowJ[k] = rowJ[k], rowI[k]
+	}
+}
+
+func (m Matrix) scaleRow(i int, c T) {
+	row := m.row(i)
+	for j, e := range row {
+		row[j] = e.Times(c)
+	}
+}
+
+func (m Matrix) addScaledRow(dest, src int, c T) {
+	rowSrc := m.row(src)
+	rowDest := m.row(dest)
+	for j, e := range rowSrc {
+		rowDest[j] ^= e.Times(c)
+	}
+}

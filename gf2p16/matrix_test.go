@@ -48,3 +48,61 @@ func TestMatrixTimes(t *testing.T) {
 	prod := m.Times(n)
 	require.Equal(t, expectedProd, prod)
 }
+
+func TestMatrixSwapRows(t *testing.T) {
+	m := NewMatrixFromSlice(3, 2, []T{
+		1, 2,
+		2, 3,
+		3, 4,
+	})
+
+	expectedM := m.clone()
+
+	for i := 0; i < 3; i++ {
+		m.swapRows(i, i)
+		require.Equal(t, expectedM, m)
+	}
+
+	expectedM = NewMatrixFromSlice(3, 2, []T{
+		1, 2,
+		3, 4,
+		2, 3,
+	})
+
+	m.swapRows(1, 2)
+	require.Equal(t, expectedM, m)
+}
+
+func TestMatrixScaleRow(t *testing.T) {
+	m := NewMatrixFromSlice(3, 2, []T{
+		1, 2,
+		2, 3,
+		3, 4,
+	})
+
+	expectedM := NewMatrixFromSlice(3, 2, []T{
+		1, 2,
+		4, 6,
+		3, 4,
+	})
+
+	m.scaleRow(1, T(2))
+	require.Equal(t, expectedM, m)
+}
+
+func TestMatrixAddScaledRow(t *testing.T) {
+	m := NewMatrixFromSlice(3, 2, []T{
+		1, 2,
+		2, 3,
+		3, 4,
+	})
+
+	expectedM := NewMatrixFromSlice(3, 2, []T{
+		1, 2,
+		4, 11,
+		3, 4,
+	})
+
+	m.addScaledRow(1, 2, T(2))
+	require.Equal(t, expectedM, m)
+}
