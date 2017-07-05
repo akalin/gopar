@@ -27,8 +27,8 @@ type Encoder struct {
 // EncoderDelegate holds methods that are called during the encode
 // process.
 type EncoderDelegate interface {
-	OnDataFileLoad(path string, err error)
-	OnVolumeFileWrite(path string, err error)
+	OnDataFileLoad(i, n int, path string, byteCount int, err error)
+	OnVolumeFileWrite(i, n int, path string, dataByteCount, byteCount int, err error)
 }
 
 func newEncoder(fileIO fileIO, delegate EncoderDelegate, filePaths []string, volumeCount int) (*Encoder, error) {
@@ -49,7 +49,7 @@ func (e *Encoder) LoadFileData() error {
 	for i, path := range e.filePaths {
 		var err error
 		fileData[i], err = e.fileIO.ReadFile(path)
-		e.delegate.OnDataFileLoad(path, err)
+		e.delegate.OnDataFileLoad(i+1, len(e.filePaths), path, len(fileData[i]), err)
 		if err != nil {
 			return err
 		}
@@ -139,7 +139,7 @@ func (e *Encoder) Write(indexPath string) error {
 
 	realIndexPath := base + ".par"
 	err = e.fileIO.WriteFile(realIndexPath, indexVolumeBytes)
-	e.delegate.OnVolumeFileWrite(realIndexPath, err)
+	e.delegate.OnVolumeFileWrite(0, len(e.parityData), realIndexPath, len(indexVolume.data), len(indexVolumeBytes), err)
 	if err != nil {
 		return err
 	}
@@ -156,7 +156,7 @@ func (e *Encoder) Write(indexPath string) error {
 		// TODO: Handle more than 99 parity files.
 		volumePath := fmt.Sprintf("%s.p%02d", base, i+1)
 		err = e.fileIO.WriteFile(volumePath, volBytes)
-		e.delegate.OnVolumeFileWrite(volumePath, err)
+		e.delegate.OnVolumeFileWrite(i+1, len(e.parityData), volumePath, len(vol.data), len(volBytes), err)
 		if err != nil {
 			return err
 		}

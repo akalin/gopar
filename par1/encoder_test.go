@@ -11,12 +11,12 @@ type testEncoderDelegate struct {
 	t *testing.T
 }
 
-func (d testEncoderDelegate) OnDataFileLoad(path string, err error) {
-	d.t.Logf("OnDataFileLoad(%s, %v)", path, err)
+func (d testEncoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {
+	d.t.Logf("OnDataFileLoad(%d, %d, byteCount=%d, %s, %v)", i, n, byteCount, path, err)
 }
 
-func (d testEncoderDelegate) OnVolumeFileWrite(path string, err error) {
-	d.t.Logf("OnVolumeFileWrite(%s, %v)", path, err)
+func (d testEncoderDelegate) OnVolumeFileWrite(i, n int, path string, dataByteCount, byteCount int, err error) {
+	d.t.Logf("OnVolumeFileWrite(%d, %d, %s, dataByteCount=%d, byteCount=%d, %v)", i, n, path, dataByteCount, byteCount, err)
 }
 
 func TestEncodeParity(t *testing.T) {

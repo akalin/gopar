@@ -12,19 +12,19 @@ import (
 
 type logEncoderDelegate struct{}
 
-func (logEncoderDelegate) OnDataFileLoad(path string, err error) {
+func (logEncoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {
 	if err != nil {
-		fmt.Printf("Loading data file %q failed: %+v\n", path, err)
+		fmt.Printf("[%d/%d] Loading data file %q failed: %+v\n", i, n, path, err)
 	} else {
-		fmt.Printf("Loaded data file %q\n", path)
+		fmt.Printf("[%d/%d] Loaded data file %q (%d bytes)\n", i, n, path, byteCount)
 	}
 }
 
-func (logEncoderDelegate) OnVolumeFileWrite(path string, err error) {
+func (logEncoderDelegate) OnVolumeFileWrite(i, n int, path string, dataByteCount, byteCount int, err error) {
 	if err != nil {
-		fmt.Printf("Writing volume file %q failed: %+v\n", path, err)
+		fmt.Printf("[%d/%d] Writing volume file %q failed: %+v\n", i, n, path, err)
 	} else {
-		fmt.Printf("Wrote volume file %q\n", path)
+		fmt.Printf("[%d/%d] Wrote volume file %q (%d data bytes, %d bytes)\n", i, n, path, dataByteCount, byteCount)
 	}
 }
 
