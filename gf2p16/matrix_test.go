@@ -1,6 +1,7 @@
 package gf2p16
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -139,4 +140,36 @@ func TestMatrixColumnSlice(t *testing.T) {
 
 	n := m.columnSlice(1, 3)
 	require.Equal(t, expectedN, n)
+}
+
+func TestMatrixInverseIdentity(t *testing.T) {
+	for i := 1; i < 100; i++ {
+		m := NewIdentityMatrix(i)
+		mInv, err := m.Inverse()
+		require.NoError(t, err)
+		require.Equal(t, m, mInv)
+	}
+}
+
+func TestMatrixInverse(t *testing.T) {
+	m := NewMatrixFromSlice(3, 3, []T{
+		1, 2, 3,
+		4, 5, 6,
+		7, 8, 9,
+	})
+	n, err := m.Inverse()
+	require.NoError(t, err)
+	I := NewIdentityMatrix(3)
+	require.Equal(t, I, m.Times(n))
+	require.Equal(t, I, n.Times(m))
+}
+
+func TestMatrixInverseSingular(t *testing.T) {
+	m := NewMatrixFromSlice(3, 3, []T{
+		1, 2, 3,
+		4, 5, 6,
+		5, 7, 5,
+	})
+	_, err := m.Inverse()
+	require.Equal(t, errors.New("singular matrix"), err)
 }

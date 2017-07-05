@@ -1,5 +1,7 @@
 package gf2p16
 
+import "errors"
+
 // Matrix is an immutable rectangular array of elements of
 // GF(2^16). It has just enough methods to support Reed-Solomon
 // erasure codes.
@@ -163,4 +165,62 @@ func (m Matrix) columnSlice(i, j int) Matrix {
 	return NewMatrixFromFunction(m.rows, j-i, func(k, l int) T {
 		return m.At(k, i+l)
 	})
+}
+
+func (m Matrix) rowReduceForInverse() error {
+	// Convert to row echelon form.
+	for i := 0; i < m.rows; i++ {
+		// Swap the ith row with the first row with a non-zero
+		// ith column.
+		var pivot T
+		for j := i; j < m.rows; j++ {
+			if m.At(j, i) != 0 {
+				m.swapRows(i, j)
+				pivot = m.At(i, i)
+				break
+			}
+		}
+		if pivot == 0 {
+			return errors.New("singular matrix")
+		}
+
+		// Scale the ith row to have 1 as the pivot.
+		m.scaleRow(i, T(1).Div(pivot))
+
+		// Zero out all elements below m_ii.
+		for j := i + 1; j < m.rows; j++ {
+			t := m.At(j, i)
+			if t != 0 {
+				m.addScaledRow(j, i, t)
+			}
+		}
+	}
+
+	// Then convert to reduced row echelon form.
+	for i := 0; i < m.rows; i++ {
+		// Zero out all elements above m_ii.
+		for j := 0; j < i; j++ {
+			t := m.At(j, i)
+			if t != 0 {
+				m.addScaledRow(j, i, t)
+			}
+		}
+	}
+
+	return nil
+}
+
+// Inverse returns the matrix inverse of m, which must be square, or
+// an error if it is singular.
+func (m Matrix) Inverse() (Matrix, error) {
+	if m.rows != m.columns {
+		panic("cannot invert non-square matrix")
+	}
+	t := m.augmentRight(NewIdentityMatrix(m.columns))
+	err := t.rowReduceForInverse()
+	if err != nil {
+		return Matrix{}, err
+	}
+
+	return t.columnSlice(m.columns, 2*m.columns), nil
 }
