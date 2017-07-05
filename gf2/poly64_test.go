@@ -20,3 +20,13 @@ func TestPoly64TimesCommutative(t *testing.T) {
 		}
 	}
 }
+
+func TestPoly64Div(t *testing.T) {
+	for i := Poly64(0); i < Poly64(1<<8); i++ {
+		for j := Poly64(1); j < Poly64(1<<8); j++ {
+			q, r := i.Div(j)
+			require.Equal(t, i, q.Times(j).Plus(r), "i=%d, j=%d, q=%d, r=%d", i, j, q, r)
+			require.True(t, r == 0 || (ilog2(uint64(r)) < ilog2(uint64(j))), "i=%d, j=%d, q=%d, r=%d", i, j, q, r)
+		}
+	}
+}
