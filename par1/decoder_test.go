@@ -41,16 +41,24 @@ func (d testDecoderDelegate) OnHeaderLoad(headerInfo string) {
 	d.t.Logf("OnHeaderLoad(%s)", headerInfo)
 }
 
-func (d testDecoderDelegate) OnDataFileLoad(path string, corrupt bool, err error) {
-	d.t.Logf("OnDataFileLoad(%s, corrupt=%t, %v)", path, corrupt, err)
+func (d testDecoderDelegate) OnFileEntryLoad(i, n int, filename, entryInfo string) {
+	d.t.Logf("OnFileEntryLoad(%d, %d, %s, %s)", i, n, filename, entryInfo)
 }
 
-func (d testDecoderDelegate) OnDataFileWrite(path string, err error) {
-	d.t.Logf("OnDataFileWrite(%s, %v)", path, err)
+func (d testDecoderDelegate) OnCommentLoad(comment []byte) {
+	d.t.Logf("OnCommentLoad(%q)", comment)
 }
 
-func (d testDecoderDelegate) OnVolumeFileLoad(path string, err error) {
-	d.t.Logf("OnVolumeFileLoad(%s, %v)", path, err)
+func (d testDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error) {
+	d.t.Logf("OnDataFileLoad(%d, %d, %s, byteCount=%d, corrupt=%t, %v)", i, n, path, byteCount, corrupt, err)
+}
+
+func (d testDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {
+	d.t.Logf("OnDataFileWrite(%d, %d, %s, byteCount=%d, %v)", i, n, path, byteCount, err)
+}
+
+func (d testDecoderDelegate) OnVolumeFileLoad(i uint64, path string, dataByteCount int, err error) {
+	d.t.Logf("OnVolumeFileLoad(%d, %s, dataByteCount=%d, %v)", i, path, dataByteCount, err)
 }
 
 func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {

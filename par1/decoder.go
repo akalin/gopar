@@ -32,29 +32,43 @@ type Decoder struct {
 // process.
 type DecoderDelegate interface {
 	OnHeaderLoad(headerInfo string)
-	OnDataFileLoad(path string, corrupt bool, err error)
-	OnDataFileWrite(path string, err error)
-	OnVolumeFileLoad(path string, err error)
+	OnFileEntryLoad(i, n int, filename, entryInfo string)
+	OnCommentLoad(comment []byte)
+	OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error)
+	OnDataFileWrite(i, n int, path string, byteCount int, err error)
+	OnVolumeFileLoad(i uint64, path string, dataByteCount int, err error)
 }
 
 func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexFile string) (*Decoder, error) {
-	bytes, err := fileIO.ReadFile(indexFile)
-	delegate.OnVolumeFileLoad(indexFile, err)
+	indexVolume, err := func() (volume, error) {
+		bytes, err := fileIO.ReadFile(indexFile)
+		if err != nil {
+			return volume{}, err
+		}
+
+		indexVolume, err := readVolume(bytes)
+		if err != nil {
+			return volume{}, err
+		}
+
+		if indexVolume.header.VolumeNumber != 0 {
+			// TODO: Relax this check.
+			return volume{}, errors.New("expected volume number 0 for index volume")
+		}
+		return indexVolume, nil
+	}()
+	delegate.OnVolumeFileLoad(0, indexFile, len(indexVolume.data), err)
 	if err != nil {
 		return nil, err
-	}
-
-	indexVolume, err := readVolume(bytes)
-	if err != nil {
-		return nil, err
-	}
-
-	if indexVolume.header.VolumeNumber != 0 {
-		// TODO: Relax this check.
-		return nil, errors.New("expected volume number 0 for index volume")
 	}
 
 	delegate.OnHeaderLoad(indexVolume.header.String())
+	for i, entry := range indexVolume.entries {
+		delegate.OnFileEntryLoad(i+1, len(indexVolume.entries), entry.filename, entry.header.String())
+	}
+	// The comment could be in any encoding, so just pass it
+	// through as bytes.
+	delegate.OnCommentLoad(indexVolume.data)
 
 	return &Decoder{
 		fileIO, delegate,
@@ -82,7 +96,7 @@ func (d *Decoder) LoadFileData() error {
 	fileData := make([][]byte, 0, len(d.indexVolume.entries))
 
 	dir := filepath.Dir(d.indexFile)
-	for _, entry := range d.indexVolume.entries {
+	for i, entry := range d.indexVolume.entries {
 		if !entry.header.Status.savedInVolumeSet() {
 			continue
 		}
@@ -101,7 +115,7 @@ func (d *Decoder) LoadFileData() error {
 			}
 			return data, false, nil
 		}()
-		d.delegate.OnDataFileLoad(path, corrupt, err)
+		d.delegate.OnDataFileLoad(i+1, len(d.indexVolume.entries), path, len(data), corrupt, err)
 		if corrupt {
 			fileData = append(fileData, nil)
 			continue
@@ -156,33 +170,47 @@ func (d *Decoder) LoadParityData() error {
 		// TODO: Find the file case-insensitively.
 		volumeNumber := i + 1
 		volumePath := d.volumePath(volumeNumber)
-		volumeBytes, err := d.fileIO.ReadFile(volumePath)
-		d.delegate.OnVolumeFileLoad(volumePath, err)
+		parityVolume, byteCount, err := func() (volume, int, error) {
+			volumeBytes, err := d.fileIO.ReadFile(volumePath)
+			if os.IsNotExist(err) {
+				return volume{}, 0, err
+			} else if err != nil {
+				return volume{}, 0, err
+			}
+
+			parityVolume, err := readVolume(volumeBytes)
+			// TODO: Check set hash.
+			if err != nil {
+				// TODO: Relax this check.
+				return volume{}, 0, err
+			}
+
+			byteCount := len(parityVolume.data)
+
+			if parityVolume.header.VolumeNumber != uint64(i+1) {
+				// TODO: Relax this check.
+				return volume{}, byteCount, errors.New("unexpected volume number for parity volume")
+			}
+
+			if byteCount == 0 {
+				// TODO: Relax this check.
+				return volume{}, byteCount, errors.New("no parity data in volume")
+			}
+			if shardByteCount == 0 {
+				shardByteCount = byteCount
+			} else if byteCount != shardByteCount {
+				// TODO: Relax this check.
+				return volume{}, byteCount, errors.New("mismatched parity data byte counts")
+			}
+			return parityVolume, byteCount, nil
+		}()
+		d.delegate.OnVolumeFileLoad(volumeNumber, volumePath, byteCount, err)
 		if os.IsNotExist(err) {
 			continue
 		} else if err != nil {
 			return err
 		}
 
-		parityVolume, err := readVolume(volumeBytes)
-		// TODO: Check set hash.
-		if err != nil {
-			// TODO: Relax this check.
-			return err
-		} else if parityVolume.header.VolumeNumber != volumeNumber {
-			// TODO: Relax this check.
-			return errors.New("unexpected volume number for parity volume")
-		}
-		if len(parityVolume.data) == 0 {
-			// TODO: Relax this check.
-			return errors.New("no parity data in volume")
-		}
-		if shardByteCount == 0 {
-			shardByteCount = len(parityVolume.data)
-		} else if len(parityVolume.data) != shardByteCount {
-			// TODO: Relax this check.
-			return errors.New("mismatched parity data byte counts")
-		}
 		parityData[i] = parityVolume.data
 		maxI = i
 	}
@@ -287,7 +315,7 @@ func (d *Decoder) Repair() ([]string, error) {
 		filename := d.indexVolume.entries[i].filename
 		path := filepath.Join(dir, filename)
 		err = d.fileIO.WriteFile(path, data)
-		d.delegate.OnDataFileWrite(path, err)
+		d.delegate.OnDataFileWrite(i+1, len(d.fileData), path, len(data), err)
 		if err != nil {
 			return repairedFiles, err
 		}

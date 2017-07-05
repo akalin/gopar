@@ -34,33 +34,41 @@ func (logDecoderDelegate) OnHeaderLoad(headerInfo string) {
 	fmt.Printf("Loaded header: %s\n", headerInfo)
 }
 
-func (logDecoderDelegate) OnDataFileLoad(path string, corrupt bool, err error) {
+func (logDecoderDelegate) OnFileEntryLoad(i, n int, filename, entryInfo string) {
+	fmt.Printf("[%d/%d] Loaded entry for %q: %s\n", i, n, filename, entryInfo)
+}
+
+func (logDecoderDelegate) OnCommentLoad(comment []byte) {
+	fmt.Printf("Comment: %q\n", comment)
+}
+
+func (logDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error) {
 	if err != nil {
 		if corrupt {
-			fmt.Printf("Loading data file %q failed; marking as corrupt and skipping: %+v\n", path, err)
+			fmt.Printf("[%d/%d] Loading data file %q failed; marking as corrupt and skipping: %+v\n", i, n, path, err)
 		} else {
-			fmt.Printf("Loading data file %q failed: %+v\n", path, err)
+			fmt.Printf("[%d/%d] Loading data file %q failed: %+v\n", i, n, path, err)
 		}
 	} else {
-		fmt.Printf("Loaded data file %q\n", path)
+		fmt.Printf("[%d/%d] Loaded data file %q (%d bytes)\n", i, n, path, byteCount)
 	}
 }
 
-func (logDecoderDelegate) OnDataFileWrite(path string, err error) {
+func (logDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {
 	if err != nil {
-		fmt.Printf("Writing data file %q failed: %+v\n", path, err)
+		fmt.Printf("[%d/%d] Writing data file %q failed: %+v\n", i, n, path, err)
 	} else {
-		fmt.Printf("Wrote data file %q\n", path)
+		fmt.Printf("[%d/%d] Wrote data file %q (%d bytes)\n", i, n, path, byteCount)
 	}
 }
 
-func (logDecoderDelegate) OnVolumeFileLoad(path string, err error) {
+func (logDecoderDelegate) OnVolumeFileLoad(i uint64, path string, dataByteCount int, err error) {
 	if os.IsNotExist(err) {
 		// Do nothing.
 	} else if err != nil {
-		fmt.Printf("Loading volume file %q failed: %+v\n", path, err)
+		fmt.Printf("[%d] Loading volume file %q failed: %+v\n", i, path, err)
 	} else {
-		fmt.Printf("Loaded volume file %q\n", path)
+		fmt.Printf("[%d] Loaded volume file %q (%d data bytes)\n", i, path, dataByteCount)
 	}
 }
 

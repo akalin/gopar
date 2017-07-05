@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"reflect"
 	"unicode/utf16"
 	"unicode/utf8"
@@ -23,12 +24,35 @@ func (s *fileEntryStatus) setSavedInVolumeSet(saved bool) {
 	}
 }
 
+func (s fileEntryStatus) checkedSuccessfully() bool {
+	return (s & 0x2) != 0
+}
+
+func (s fileEntryStatus) unknownFlags() uint64 {
+	return uint64(s) & ^uint64(0x3)
+}
+
+func (s fileEntryStatus) String() string {
+	unknownFlags := s.unknownFlags()
+	var unknownFlagsStr string
+	if unknownFlags != 0 {
+		unknownFlagsStr = fmt.Sprintf(", unknown flags: %b", unknownFlags)
+	}
+	return fmt.Sprintf("fileEntryStatus{saved in volume set:%t, checked successfully: %t%s}",
+		s.savedInVolumeSet(), s.checkedSuccessfully(), unknownFlagsStr)
+}
+
 type fileEntryHeader struct {
 	EntryBytes   uint64
 	Status       fileEntryStatus
 	FileBytes    uint64
 	Hash         [16]byte
 	SixteenKHash [16]byte
+}
+
+func (h fileEntryHeader) String() string {
+	return fmt.Sprintf("fileEntryHeader{EntryBytes:%d, Status: %s, FileBytes:%d, Hash:%x, 16KHash: %x}",
+		h.EntryBytes, h.Status, h.FileBytes, h.Hash, h.SixteenKHash)
 }
 
 func sizeOfFileEntryHeader() uint64 {
