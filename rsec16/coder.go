@@ -1,6 +1,7 @@
 package rsec16
 
 import (
+	"errors"
 	"math"
 
 	"github.com/akalin/gopar/gf2p16"
@@ -60,4 +61,65 @@ func (c Coder) GenerateParity(data [][]uint16) [][]uint16 {
 	}
 	applyMatrix(c.parityMatrix, data, parity)
 	return parity
+}
+
+// ReconstructData takes a list of data shards and parity shards, some
+// of which may be nil, and tries to reconstruct the missing data
+// shards. If successful, the nil rows of data are filled in and a nil
+// error is returned. Otherwise, an error is returned.
+func (c Coder) ReconstructData(data, parity [][]uint16) error {
+	var availableRows, missingRows []int
+	var input [][]uint16
+	for i, dataShard := range data {
+		if dataShard != nil {
+			availableRows = append(availableRows, i)
+			input = append(input, dataShard)
+		} else {
+			missingRows = append(missingRows, i)
+		}
+	}
+
+	if len(missingRows) == 0 {
+		// Nothing to reconstruct.
+		return nil
+	}
+
+	if len(missingRows) > c.parityShards {
+		return errors.New("not enough parity shards")
+	}
+
+	// TODO: Handle missing parity shards, also.
+
+	for i := 0; i < len(missingRows); i++ {
+		input = append(input, parity[i])
+	}
+
+	m := gf2p16.NewMatrixFromFunction(c.dataShards, c.dataShards, func(i, j int) gf2p16.T {
+		if i < len(availableRows) {
+			k := availableRows[i]
+			// Take the kth row of the c.dataShards x
+			// c.dataShards identity matrix.
+			if j == k {
+				return 1
+			}
+			return 0
+		}
+
+		// Take the rest of the rows from the parity matrix.
+		return c.parityMatrix.At(i-len(availableRows), j)
+	})
+	mInv, err := m.Inverse()
+	if err != nil {
+		return err
+	}
+
+	// TODO: Use only the rows of mInv that we need.
+
+	reconstructedData := make([][]uint16, c.dataShards)
+	for i := range reconstructedData {
+		reconstructedData[i] = make([]uint16, len(input[0]))
+	}
+	applyMatrix(mInv, input, reconstructedData)
+	copy(data, reconstructedData)
+	return nil
 }
