@@ -61,6 +61,16 @@ func (t T) Times(u T) T {
 	return expTable[(logT+logU)%(order-1)]
 }
 
+// Inverse returns the multiplicative inverse of t, if t != 0. It
+// panics if t == 0.
+func (t T) Inverse() T {
+	if t == 0 {
+		panic("zero has no inverse")
+	}
+	logT := int(logTable[t-1])
+	return expTable[(-logT+(order-1))%(order-1)]
+}
+
 // Div returns the product of t and u^{-1} as elements of GF(2^16), if
 // u != 0. It panics if u == 0.
 func (t T) Div(u T) T {

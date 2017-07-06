@@ -185,7 +185,7 @@ func (m Matrix) rowReduceForInverse() error {
 		}
 
 		// Scale the ith row to have 1 as the pivot.
-		m.scaleRow(i, T(1).Div(pivot))
+		m.scaleRow(i, pivot.Inverse())
 
 		// Zero out all elements below m_ii.
 		for j := i + 1; j < m.rows; j++ {

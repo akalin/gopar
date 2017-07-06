@@ -6,11 +6,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInv(t *testing.T) {
+func TestInverse(t *testing.T) {
 	var invTable [order - 1]T
 	for i := 1; i < (1 << 16); i++ {
 		x := T(i)
-		xInv := T(1).Div(x)
+		xInv := x.Inverse()
 		require.NotEqual(t, T(0), xInv, "x=%d", x)
 		if x != 1 {
 			require.NotEqual(t, x, xInv, "x=%d", x)
@@ -23,6 +23,13 @@ func TestInv(t *testing.T) {
 
 	for i, xInv := range invTable {
 		require.NotEqual(t, T(0), xInv, "i=%d", i)
+	}
+}
+
+func TestOneDivInverse(t *testing.T) {
+	for i := 1; i < (1 << 16); i++ {
+		x := T(i)
+		require.Equal(t, x.Inverse(), T(1).Div(x))
 	}
 }
 
