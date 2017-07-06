@@ -117,13 +117,17 @@ func (c Coder) ReconstructData(data, parity [][]uint16) error {
 		return err
 	}
 
-	// TODO: Use only the rows of mInv that we need.
+	n := gf2p16.NewMatrixFromFunction(len(missingRows), c.dataShards, func(i, j int) gf2p16.T {
+		return mInv.At(missingRows[i], j)
+	})
 
-	reconstructedData := make([][]uint16, c.dataShards)
+	reconstructedData := make([][]uint16, len(missingRows))
 	for i := range reconstructedData {
 		reconstructedData[i] = make([]uint16, len(input[0]))
 	}
-	applyMatrix(mInv, input, reconstructedData)
-	copy(data, reconstructedData)
+	applyMatrix(n, input, reconstructedData)
+	for i, r := range missingRows {
+		data[r] = reconstructedData[i]
+	}
 	return nil
 }
