@@ -84,14 +84,16 @@ func (c Coder) ReconstructData(data, parity [][]uint16) error {
 		return nil
 	}
 
-	if len(missingRows) > c.parityShards {
-		return errors.New("not enough parity shards")
+	var usedParityRows []int
+	for i := 0; i < len(parity) && len(input) < c.dataShards; i++ {
+		if parity[i] != nil {
+			usedParityRows = append(usedParityRows, i)
+			input = append(input, parity[i])
+		}
 	}
 
-	// TODO: Handle missing parity shards, also.
-
-	for i := 0; i < len(missingRows); i++ {
-		input = append(input, parity[i])
+	if len(input) < c.dataShards {
+		return errors.New("not enough parity shards")
 	}
 
 	m := gf2p16.NewMatrixFromFunction(c.dataShards, c.dataShards, func(i, j int) gf2p16.T {
@@ -105,8 +107,10 @@ func (c Coder) ReconstructData(data, parity [][]uint16) error {
 			return 0
 		}
 
-		// Take the rest of the rows from the parity matrix.
-		return c.parityMatrix.At(i-len(availableRows), j)
+		// Take the rest of the rows from the parity matrix
+		// corresponding to the used parity shards.
+		k := usedParityRows[i-len(availableRows)]
+		return c.parityMatrix.At(k, j)
 	})
 	mInv, err := m.Inverse()
 	if err != nil {
