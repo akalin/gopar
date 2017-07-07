@@ -6,6 +6,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"reflect"
+	"unicode"
+	"unicode/utf8"
 )
 
 type packetHeader struct {
@@ -67,4 +69,31 @@ func readNextPacket(buf *bytes.Buffer) (recoverySetID, packetType, []byte, error
 	bodyCopy := make([]byte, len(body))
 	copy(bodyCopy, body)
 	return h.RecoverySetID, h.Type, bodyCopy, nil
+}
+
+func decodeNullPaddedASCIIString(bs []byte) string {
+	// First, null-terminate if necessary. This emulates the
+	// direction in the spec to append a null byte to turn a
+	// string into a null-terminated one.
+	for i, b := range bs {
+		if b == '\x00' {
+			bs = bs[:i]
+			break
+		}
+	}
+
+	var replaceBuf [4]byte
+	n := utf8.EncodeRune(replaceBuf[:], unicode.ReplacementChar)
+
+	// Replace all non-ASCII characters with the replacement character.
+	var outBytes []byte
+	for _, b := range bs {
+		if b <= unicode.MaxASCII {
+			outBytes = append(outBytes, b)
+		} else {
+			outBytes = append(outBytes, replaceBuf[:n]...)
+		}
+	}
+
+	return string(outBytes)
 }

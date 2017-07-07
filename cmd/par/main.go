@@ -79,12 +79,16 @@ func (par1LogDecoderDelegate) OnVolumeFileLoad(i uint64, path string, storedSetH
 
 type par2LogDecoderDelegate struct{}
 
-func (par2LogDecoderDelegate) OnPacketLoad(packetType [16]byte, byteCount int) {
-	fmt.Printf("Loaded packet of type %q and byte count %d\n", packetType, byteCount)
+func (par2LogDecoderDelegate) OnCreatorPacketLoad(clientID string) {
+	fmt.Printf("Loaded creator packet with client ID %q\n", clientID)
 }
 
-func (par2LogDecoderDelegate) OnPacketSkip(setID [16]byte, packetType [16]byte, byteCount int) {
-	fmt.Printf("Skipped packet with set ID %x of type %q and byteCount %d\n", setID, packetType, byteCount)
+func (par2LogDecoderDelegate) OnUnknownPacketLoad(packetType [16]byte, byteCount int) {
+	fmt.Printf("Loaded unknown packet of type %q and byte count %d\n", packetType, byteCount)
+}
+
+func (par2LogDecoderDelegate) OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int) {
+	fmt.Printf("Skipped packet with set ID %x of type %q and byte count %d\n", setID, packetType, byteCount)
 }
 
 func printUsageAndExit(name string, flagSet *flag.FlagSet) {

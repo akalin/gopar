@@ -1,10 +1,6 @@
 package par2
 
-import (
-	"bytes"
-	"io"
-	"io/ioutil"
-)
+import "io/ioutil"
 
 type fileIO interface {
 	ReadFile(path string) ([]byte, error)
@@ -24,49 +20,30 @@ type Decoder struct {
 	fileIO   fileIO
 	delegate DecoderDelegate
 
-	setID   [16]byte
-	packets map[packetType][][]byte
+	setID     recoverySetID
+	indexFile file
 }
 
 // DecoderDelegate holds methods that are called during the decode
 // process.
 type DecoderDelegate interface {
-	OnPacketLoad(packetType [16]byte, byteCount int)
-	OnPacketSkip(setID [16]byte, packetType [16]byte, byteCount int)
+	OnCreatorPacketLoad(clientID string)
+	OnUnknownPacketLoad(packetType [16]byte, byteCount int)
+	OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int)
 }
 
-func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexFile string) (*Decoder, error) {
-	indexBytes, err := fileIO.ReadFile(indexFile)
+func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string) (*Decoder, error) {
+	indexBytes, err := fileIO.ReadFile(indexPath)
 	if err != nil {
 		return nil, err
 	}
 
-	buf := bytes.NewBuffer(indexBytes)
-	packets := make(map[packetType][][]byte)
-	var setID recoverySetID
-	var hasSetID bool
-	for {
-		packetSetID, packetType, body, err := readNextPacket(buf)
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			// TODO: Relax this check.
-			return nil, err
-		}
-		if hasSetID {
-			if packetSetID != setID {
-				delegate.OnPacketSkip(packetSetID, packetType, len(body))
-				continue
-			}
-		} else {
-			setID = packetSetID
-			hasSetID = true
-		}
-		delegate.OnPacketLoad(packetType, len(body))
-		packets[packetType] = append(packets[packetType], body)
+	setID, indexFile, err := readFile(delegate, nil, indexBytes)
+	if err != nil {
+		return nil, err
 	}
 
-	return &Decoder{fileIO, delegate, setID, packets}, nil
+	return &Decoder{fileIO, delegate, setID, indexFile}, nil
 }
 
 // NewDecoder reads the given index file, which usually has a .par2
