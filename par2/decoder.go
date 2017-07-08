@@ -1,6 +1,12 @@
 package par2
 
-import "io/ioutil"
+import (
+	"crypto/md5"
+	"errors"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+)
 
 type fileIO interface {
 	ReadFile(path string) ([]byte, error)
@@ -20,8 +26,12 @@ type Decoder struct {
 	fileIO   fileIO
 	delegate DecoderDelegate
 
+	indexPath string
+
 	setID     recoverySetID
 	indexFile file
+
+	fileData [][]byte
 }
 
 // DecoderDelegate holds methods that are called during the decode
@@ -33,6 +43,7 @@ type DecoderDelegate interface {
 	OnIFSCPacketLoad(fileID [16]byte)
 	OnUnknownPacketLoad(packetType [16]byte, byteCount int)
 	OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int)
+	OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error)
 }
 
 func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string) (*Decoder, error) {
@@ -46,7 +57,63 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string) (*Dec
 		return nil, err
 	}
 
-	return &Decoder{fileIO, delegate, setID, indexFile}, nil
+	return &Decoder{fileIO, delegate, indexPath, setID, indexFile, nil}, nil
+}
+
+func sixteenKHash(data []byte) [md5.Size]byte {
+	if len(data) < 16*1024 {
+		return md5.Sum(data)
+	}
+	return md5.Sum(data[:16*1024])
+}
+
+// LoadFileData loads existing file data into memory.
+func (d *Decoder) LoadFileData() error {
+	if d.indexFile.mainPacket == nil {
+		return errors.New("main packet not loaded")
+	}
+
+	fileData := make([][]byte, len(d.indexFile.mainPacket.recoverySet))
+
+	dir := filepath.Dir(d.indexPath)
+	for i, fileID := range d.indexFile.mainPacket.recoverySet {
+		packet, ok := d.indexFile.fileDescriptionPackets[fileID]
+		if !ok {
+			return errors.New("could not find file description packet for")
+		}
+
+		path := filepath.Join(dir, packet.filename)
+		data, corrupt, err := func() ([]byte, bool, error) {
+			data, err := d.fileIO.ReadFile(path)
+			if os.IsNotExist(err) {
+				return nil, true, err
+			} else if err != nil {
+				return nil, false, err
+			} else if sixteenKHash(data) != packet.sixteenKHash {
+				return nil, true, errors.New("hash mismatch (16k)")
+			} else if md5.Sum(data) != packet.hash {
+				return nil, true, errors.New("hash mismatch")
+			}
+			return data, false, nil
+		}()
+		d.delegate.OnDataFileLoad(i+1, len(d.indexFile.fileDescriptionPackets), path, len(data), corrupt, err)
+		if corrupt {
+			continue
+		} else if err != nil {
+			return err
+		}
+
+		// We use nil to mark missing entries, but ReadFile
+		// might return nil, so convert that to a non-nil
+		// empty slice.
+		if data == nil {
+			data = make([]byte, 0)
+		}
+		fileData[i] = data
+	}
+
+	d.fileData = fileData
+	return nil
 }
 
 // NewDecoder reads the given index file, which usually has a .par2

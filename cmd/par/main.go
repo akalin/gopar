@@ -103,6 +103,18 @@ func (par2LogDecoderDelegate) OnOtherPacketSkip(setID [16]byte, packetType [16]b
 	fmt.Printf("Skipped packet with set ID %x of type %q and byte count %d\n", setID, packetType, byteCount)
 }
 
+func (par2LogDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error) {
+	if err != nil {
+		if corrupt {
+			fmt.Printf("[%d/%d] Loading data file %q failed; marking as corrupt and skipping: %+v\n", i, n, path, err)
+		} else {
+			fmt.Printf("[%d/%d] Loading data file %q failed: %+v\n", i, n, path, err)
+		}
+	} else {
+		fmt.Printf("[%d/%d] Loaded data file %q (%d bytes)\n", i, n, path, byteCount)
+	}
+}
+
 func printUsageAndExit(name string, flagSet *flag.FlagSet) {
 	name = filepath.Base(name)
 	fmt.Printf(`
@@ -168,7 +180,12 @@ func main() {
 		// TODO: Detect file type more robustly.
 		ext := path.Ext(parFile)
 		if ext == ".par2" {
-			_, err := par2.NewDecoder(par2LogDecoderDelegate{}, parFile)
+			decoder, err := par2.NewDecoder(par2LogDecoderDelegate{}, parFile)
+			if err != nil {
+				panic(err)
+			}
+
+			err = decoder.LoadFileData()
 			if err != nil {
 				panic(err)
 			}
