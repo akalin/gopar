@@ -39,7 +39,7 @@ type Decoder struct {
 
 	fileData [][]byte
 
-	parityFiles []file
+	parityShards [][]uint16
 }
 
 // DecoderDelegate holds methods that are called during the decode
@@ -49,6 +49,7 @@ type DecoderDelegate interface {
 	OnMainPacketLoad(sliceByteCount, recoverySetCount, nonRecoverySetCount int)
 	OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int)
 	OnIFSCPacketLoad(fileID [16]byte)
+	OnRecoveryPacketLoad(exponent uint16, byteCount int)
 	OnUnknownPacketLoad(packetType [16]byte, byteCount int)
 	OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int)
 	OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error)
@@ -163,7 +164,17 @@ func (d *Decoder) LoadParityData() error {
 		parityFiles = append(parityFiles, parityFile)
 	}
 
-	d.parityFiles = parityFiles
+	var parityShards [][]uint16
+	for _, file := range append(parityFiles, d.indexFile) {
+		for exponent, packet := range file.recoveryPackets {
+			if int(exponent) >= len(parityShards) {
+				parityShards = append(parityShards, make([][]uint16, int(exponent+1)-len(parityShards))...)
+			}
+			parityShards[exponent] = packet.data
+		}
+	}
+
+	d.parityShards = parityShards
 	return nil
 }
 

@@ -95,6 +95,10 @@ func (par2LogDecoderDelegate) OnIFSCPacketLoad(fileID [16]byte) {
 	fmt.Printf("Loaded checksums for file with ID %x\n", fileID)
 }
 
+func (par2LogDecoderDelegate) OnRecoveryPacketLoad(exponent uint16, byteCount int) {
+	fmt.Printf("Loaded recovery packet: exponent=%d, byte count=%d\n", exponent, byteCount)
+}
+
 func (par2LogDecoderDelegate) OnUnknownPacketLoad(packetType [16]byte, byteCount int) {
 	fmt.Printf("Loaded unknown packet of type %q and byte count %d\n", packetType, byteCount)
 }

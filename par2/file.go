@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"reflect"
 )
 
 type file struct {
@@ -11,6 +12,7 @@ type file struct {
 	mainPacket             *mainPacket
 	fileDescriptionPackets map[fileID]fileDescriptionPacket
 	ifscPackets            map[fileID]ifscPacket
+	recoveryPackets        map[exponent]recoveryPacket
 	unknownPackets         map[packetType][][]byte
 }
 
@@ -30,6 +32,7 @@ func readFile(delegate DecoderDelegate, expectedSetID *recoverySetID, fileBytes 
 	var mainPacket *mainPacket
 	fileDescriptionPackets := make(map[fileID]fileDescriptionPacket)
 	ifscPackets := make(map[fileID]ifscPacket)
+	recoveryPackets := make(map[exponent]recoveryPacket)
 	unknownPackets := make(map[packetType][][]byte)
 	for {
 		packetSetID, packetType, body, err := readNextPacket(buf)
@@ -86,6 +89,21 @@ func readFile(delegate DecoderDelegate, expectedSetID *recoverySetID, fileBytes 
 			delegate.OnIFSCPacketLoad(fileID)
 			ifscPackets[fileID] = ifscPacket
 
+		case recoveryPacketType:
+			exponent, recoveryPacket, err := readRecoveryPacket(body)
+			if err != nil {
+				// TODO: Relax this check.
+				return recoverySetID{}, file{}, err
+			}
+
+			delegate.OnRecoveryPacketLoad(uint16(exponent), 2*len(recoveryPacket.data))
+			if existingPacket, ok := recoveryPackets[exponent]; ok {
+				if !reflect.DeepEqual(existingPacket, recoveryPacket) {
+					return recoverySetID{}, file{}, errors.New("recovery packet with duplicate exponent but differing contents")
+				}
+			}
+			recoveryPackets[exponent] = recoveryPacket
+
 		default:
 			delegate.OnUnknownPacketLoad(packetType, len(body))
 			unknownPackets[packetType] = append(unknownPackets[packetType], body)
@@ -100,5 +118,5 @@ func readFile(delegate DecoderDelegate, expectedSetID *recoverySetID, fileBytes 
 		return recoverySetID{}, file{}, errors.New("no creator packet found")
 	}
 
-	return setID, file{clientID, mainPacket, fileDescriptionPackets, ifscPackets, unknownPackets}, nil
+	return setID, file{clientID, mainPacket, fileDescriptionPackets, ifscPackets, recoveryPackets, unknownPackets}, nil
 }
