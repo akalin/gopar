@@ -30,6 +30,7 @@ type DecoderDelegate interface {
 	OnCreatorPacketLoad(clientID string)
 	OnMainPacketLoad(sliceByteCount, recoverySetCount, nonRecoverySetCount int)
 	OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int)
+	OnIFSCPacketLoad(fileID [16]byte)
 	OnUnknownPacketLoad(packetType [16]byte, byteCount int)
 	OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int)
 }

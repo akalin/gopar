@@ -10,6 +10,7 @@ type file struct {
 	clientID               string
 	mainPacket             *mainPacket
 	fileDescriptionPackets map[fileID]fileDescriptionPacket
+	ifscPackets            map[fileID]ifscPacket
 	unknownPackets         map[packetType][][]byte
 }
 
@@ -28,6 +29,7 @@ func readFile(delegate DecoderDelegate, expectedSetID *recoverySetID, fileBytes 
 	var foundClientID bool
 	var mainPacket *mainPacket
 	fileDescriptionPackets := make(map[fileID]fileDescriptionPacket)
+	ifscPackets := make(map[fileID]ifscPacket)
 	unknownPackets := make(map[packetType][][]byte)
 	for {
 		packetSetID, packetType, body, err := readNextPacket(buf)
@@ -74,6 +76,16 @@ func readFile(delegate DecoderDelegate, expectedSetID *recoverySetID, fileBytes 
 			delegate.OnFileDescriptionPacketLoad(fileID, fileDescriptionPacket.filename, fileDescriptionPacket.byteCount)
 			fileDescriptionPackets[fileID] = fileDescriptionPacket
 
+		case ifscPacketType:
+			fileID, ifscPacket, err := readIFSCPacket(body)
+			if err != nil {
+				// TODO: Relax this check.
+				return recoverySetID{}, file{}, err
+			}
+
+			delegate.OnIFSCPacketLoad(fileID)
+			ifscPackets[fileID] = ifscPacket
+
 		default:
 			delegate.OnUnknownPacketLoad(packetType, len(body))
 			unknownPackets[packetType] = append(unknownPackets[packetType], body)
@@ -88,5 +100,5 @@ func readFile(delegate DecoderDelegate, expectedSetID *recoverySetID, fileBytes 
 		return recoverySetID{}, file{}, errors.New("no creator packet found")
 	}
 
-	return setID, file{clientID, mainPacket, fileDescriptionPackets, unknownPackets}, nil
+	return setID, file{clientID, mainPacket, fileDescriptionPackets, ifscPackets, unknownPackets}, nil
 }
