@@ -87,6 +87,10 @@ func (par2LogDecoderDelegate) OnMainPacketLoad(sliceByteCount, recoverySetCount,
 	fmt.Printf("Loaded main packet: slice byte count=%d, recovery set size=%d, non-recovery set size=%d\n", sliceByteCount, recoverySetCount, nonRecoverySetCount)
 }
 
+func (par2LogDecoderDelegate) OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount uint64) {
+	fmt.Printf("Loaded file description packet for %q (ID=%x, %d bytes)\n", filename, fileID, byteCount)
+}
+
 func (par2LogDecoderDelegate) OnUnknownPacketLoad(packetType [16]byte, byteCount int) {
 	fmt.Printf("Loaded unknown packet of type %q and byte count %d\n", packetType, byteCount)
 }

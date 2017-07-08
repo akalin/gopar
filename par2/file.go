@@ -7,9 +7,10 @@ import (
 )
 
 type file struct {
-	clientID       string
-	mainPacket     *mainPacket
-	unknownPackets map[packetType][][]byte
+	clientID               string
+	mainPacket             *mainPacket
+	fileDescriptionPackets map[fileID]fileDescriptionPacket
+	unknownPackets         map[packetType][][]byte
 }
 
 func readFile(delegate DecoderDelegate, expectedSetID *recoverySetID, fileBytes []byte) (recoverySetID, file, error) {
@@ -26,6 +27,7 @@ func readFile(delegate DecoderDelegate, expectedSetID *recoverySetID, fileBytes 
 	var clientID string
 	var foundClientID bool
 	var mainPacket *mainPacket
+	fileDescriptionPackets := make(map[fileID]fileDescriptionPacket)
 	unknownPackets := make(map[packetType][][]byte)
 	for {
 		packetSetID, packetType, body, err := readNextPacket(buf)
@@ -62,6 +64,16 @@ func readFile(delegate DecoderDelegate, expectedSetID *recoverySetID, fileBytes 
 			mainPacket = &mainPacketRead
 			delegate.OnMainPacketLoad(mainPacket.sliceByteCount, len(mainPacket.recoverySet), len(mainPacket.nonRecoverySet))
 
+		case fileDescriptionPacketType:
+			fileID, fileDescriptionPacket, err := readFileDescriptionPacket(body)
+			if err != nil {
+				// TODO: Relax this check.
+				return recoverySetID{}, file{}, err
+			}
+
+			delegate.OnFileDescriptionPacketLoad(fileID, fileDescriptionPacket.filename, fileDescriptionPacket.byteCount)
+			fileDescriptionPackets[fileID] = fileDescriptionPacket
+
 		default:
 			delegate.OnUnknownPacketLoad(packetType, len(body))
 			unknownPackets[packetType] = append(unknownPackets[packetType], body)
@@ -76,5 +88,5 @@ func readFile(delegate DecoderDelegate, expectedSetID *recoverySetID, fileBytes 
 		return recoverySetID{}, file{}, errors.New("no creator packet found")
 	}
 
-	return setID, file{clientID, mainPacket, unknownPackets}, nil
+	return setID, file{clientID, mainPacket, fileDescriptionPackets, unknownPackets}, nil
 }

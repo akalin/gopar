@@ -71,16 +71,21 @@ func readNextPacket(buf *bytes.Buffer) (recoverySetID, packetType, []byte, error
 	return h.RecoverySetID, h.Type, bodyCopy, nil
 }
 
-func decodeNullPaddedASCIIString(bs []byte) string {
-	// First, null-terminate if necessary. This emulates the
-	// direction in the spec to append a null byte to turn a
-	// string into a null-terminated one.
+func nullTerminate(bs []byte) []byte {
+	// This emulates the direction in the spec to append a null
+	// byte to turn a string into a null-terminated one.
 	for i, b := range bs {
 		if b == '\x00' {
-			bs = bs[:i]
-			break
+			return bs[:i]
 		}
 	}
+
+	return bs
+}
+
+func decodeNullPaddedASCIIString(bs []byte) string {
+	// First, null-terminate if necessary.
+	bs = nullTerminate(bs)
 
 	var replaceBuf [4]byte
 	n := utf8.EncodeRune(replaceBuf[:], unicode.ReplacementChar)
