@@ -28,6 +28,7 @@ type Decoder struct {
 // process.
 type DecoderDelegate interface {
 	OnCreatorPacketLoad(clientID string)
+	OnMainPacketLoad(sliceByteCount uint64, recoverySetCount, nonRecoverySetCount int)
 	OnUnknownPacketLoad(packetType [16]byte, byteCount int)
 	OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int)
 }
