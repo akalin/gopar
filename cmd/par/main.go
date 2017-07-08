@@ -115,6 +115,14 @@ func (par2LogDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount in
 	}
 }
 
+func (par2LogDecoderDelegate) OnParityFileLoad(i int, path string, err error) {
+	if err != nil {
+		fmt.Printf("[%d] Loading volume file %q failed: %+v\n", i, path, err)
+	} else {
+		fmt.Printf("[%d] Loaded volume file %q\n", i, path)
+	}
+}
+
 func printUsageAndExit(name string, flagSet *flag.FlagSet) {
 	name = filepath.Base(name)
 	fmt.Printf(`
@@ -186,6 +194,11 @@ func main() {
 			}
 
 			err = decoder.LoadFileData()
+			if err != nil {
+				panic(err)
+			}
+
+			err = decoder.LoadParityData()
 			if err != nil {
 				panic(err)
 			}

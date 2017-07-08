@@ -5,17 +5,23 @@ import (
 	"errors"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 )
 
 type fileIO interface {
 	ReadFile(path string) ([]byte, error)
+	FindWithPrefixAndSuffix(prefix, suffix string) ([]string, error)
 }
 
 type defaultFileIO struct{}
 
 func (io defaultFileIO) ReadFile(path string) ([]byte, error) {
 	return ioutil.ReadFile(path)
+}
+
+func (io defaultFileIO) FindWithPrefixAndSuffix(prefix, suffix string) ([]string, error) {
+	return filepath.Glob(prefix + "*" + suffix)
 }
 
 // A Decoder keeps track of all information needed to check the
@@ -32,6 +38,8 @@ type Decoder struct {
 	indexFile file
 
 	fileData [][]byte
+
+	parityFiles []file
 }
 
 // DecoderDelegate holds methods that are called during the decode
@@ -44,6 +52,7 @@ type DecoderDelegate interface {
 	OnUnknownPacketLoad(packetType [16]byte, byteCount int)
 	OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int)
 	OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error)
+	OnParityFileLoad(i int, path string, err error)
 }
 
 func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string) (*Decoder, error) {
@@ -57,7 +66,7 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string) (*Dec
 		return nil, err
 	}
 
-	return &Decoder{fileIO, delegate, indexPath, setID, indexFile, nil}, nil
+	return &Decoder{fileIO, delegate, indexPath, setID, indexFile, nil, nil}, nil
 }
 
 func sixteenKHash(data []byte) [md5.Size]byte {
@@ -113,6 +122,48 @@ func (d *Decoder) LoadFileData() error {
 	}
 
 	d.fileData = fileData
+	return nil
+}
+
+// LoadParityData searches for parity volumes and loads them into
+// memory.
+func (d *Decoder) LoadParityData() error {
+	if d.indexFile.mainPacket == nil {
+		return errors.New("main packet not loaded")
+	}
+
+	ext := path.Ext(d.indexPath)
+	base := d.indexPath[:len(d.indexPath)-len(ext)]
+	matches, err := d.fileIO.FindWithPrefixAndSuffix(base+".", ext)
+	if err != nil {
+		return err
+	}
+
+	var parityFiles []file
+	for i, match := range matches {
+		parityFile, err := func() (file, error) {
+			volumeBytes, err := d.fileIO.ReadFile(match)
+			if err != nil {
+				return file{}, err
+			}
+
+			_, parityFile, err := readFile(d.delegate, &d.setID, volumeBytes)
+			if err != nil {
+				// TODO: Relax this check.
+				return file{}, err
+			}
+
+			return parityFile, nil
+		}()
+		d.delegate.OnParityFileLoad(i+1, match, err)
+		if err != nil {
+			return err
+		}
+
+		parityFiles = append(parityFiles, parityFile)
+	}
+
+	d.parityFiles = parityFiles
 	return nil
 }
 
