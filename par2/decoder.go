@@ -1,13 +1,18 @@
 package par2
 
 import (
+	"bytes"
 	"crypto/md5"
+	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"reflect"
+
+	"github.com/akalin/gopar/rsec16"
 )
 
 type fileIO interface {
@@ -210,6 +215,81 @@ func (d *Decoder) LoadParityData() error {
 
 	d.parityShards = parityShards
 	return nil
+}
+
+// Verify checks that all file and known parity data are consistent
+// with each other, and returns the result. If any files are missing,
+// Verify returns false.
+func (d *Decoder) Verify() (bool, error) {
+	if d.indexFile.mainPacket == nil {
+		return false, errors.New("main packet not loaded")
+	}
+
+	if len(d.fileData) != len(d.indexFile.mainPacket.recoverySet) {
+		return false, errors.New("file data count mismatch")
+	}
+
+	for _, data := range d.fileData {
+		if data == nil {
+			return false, nil
+		}
+	}
+
+	for _, shard := range d.parityShards {
+		if shard == nil {
+			return false, nil
+		}
+	}
+
+	sliceByteCount := d.indexFile.mainPacket.sliceByteCount
+
+	var dataShards [][]uint16
+	for i, fileData := range d.fileData {
+		fileID := d.indexFile.mainPacket.recoverySet[i]
+		ifscPacket, ok := d.indexFile.ifscPackets[fileID]
+		if !ok {
+			return false, errors.New("missing input file slice checksums")
+		}
+
+		for j, checksumPair := range ifscPacket.checksumPairs {
+			// TODO: Handle overflow.
+			startOffset := j * sliceByteCount
+			if startOffset >= len(fileData) {
+				return false, errors.New("start index out of bounds")
+			}
+			endOffset := startOffset + sliceByteCount
+			if endOffset > len(fileData) {
+				endOffset = len(fileData)
+			}
+			inputSlice := fileData[startOffset:endOffset]
+			padding := make([]byte, sliceByteCount-len(inputSlice))
+			inputSlice = append(inputSlice, padding...)
+			if md5.Sum(inputSlice) != checksumPair.MD5 {
+				return false, errors.New("md5 mismatch")
+			}
+			crc32Int := crc32.ChecksumIEEE(inputSlice)
+			var crc32 [4]byte
+			binary.LittleEndian.PutUint32(crc32[:], crc32Int)
+			if crc32 != checksumPair.CRC32 {
+				return false, errors.New("crc32 mismatch")
+			}
+
+			dataShard := make([]uint16, len(inputSlice)/2)
+			err := binary.Read(bytes.NewBuffer(inputSlice), binary.LittleEndian, dataShard)
+			if err != nil {
+				return false, err
+			}
+
+			dataShards = append(dataShards, dataShard)
+		}
+	}
+
+	// TODO: Make coder use the PAR2 matrix.
+
+	coder := rsec16.NewCoder(len(dataShards), len(d.parityShards))
+	computedParityShards := coder.GenerateParity(dataShards)
+	eq := reflect.DeepEqual(computedParityShards, d.parityShards)
+	return eq, nil
 }
 
 // NewDecoder reads the given index file, which usually has a .par2
