@@ -46,6 +46,15 @@ func readFileDescriptionPacket(body []byte) (fileID, fileDescriptionPacket, erro
 		return fileID{}, fileDescriptionPacket{}, errors.New("file ID mismatch")
 	}
 
+	if h.Length == 0 {
+		// This isn't specified by the spec, but par2 skips
+		// empty files.
+		//
+		// TODO: Figure out if other programs create empty
+		// files.
+		return fileID{}, fileDescriptionPacket{}, errors.New("empty files not allowed")
+	}
+
 	filename := decodeNullPaddedASCIIString(filenameBytes)
 	if path.IsAbs(filename) {
 		// TODO: Allow this via an option.
