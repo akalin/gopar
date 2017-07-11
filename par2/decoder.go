@@ -221,6 +221,69 @@ func (d *Decoder) LoadParityData() error {
 	return nil
 }
 
+func getChunkIfMatchesHash(checksumPair checksumPair, fileData []byte, sliceByteCount, startOffset int) []byte {
+	endOffset := startOffset + sliceByteCount
+	if startOffset >= len(fileData) {
+		return nil
+	}
+
+	if endOffset > len(fileData) {
+		endOffset = len(fileData)
+	}
+	inputSlice := fileData[startOffset:endOffset]
+	padding := make([]byte, sliceByteCount-len(inputSlice))
+	inputSlice = append(inputSlice, padding...)
+
+	// TODO: Update the CRC incrementally. Better yet, make a
+	// single pass through the file with the CRC to quickly find
+	// chunks.
+	crc32Int := crc32.ChecksumIEEE(inputSlice)
+	var crc32 [4]byte
+	binary.LittleEndian.PutUint32(crc32[:], crc32Int)
+	if crc32 != checksumPair.CRC32 {
+		return nil
+	}
+
+	if md5.Sum(inputSlice) != checksumPair.MD5 {
+		return nil
+	}
+
+	return inputSlice
+}
+
+func findChunk(checksumPair checksumPair, fileData []byte, sliceByteCount, expectedStartOffset int) ([]byte, bool) {
+	chunk := getChunkIfMatchesHash(checksumPair, fileData, sliceByteCount, expectedStartOffset)
+	if chunk != nil {
+		return chunk, true
+	}
+
+	// TODO: Probably should cap the search or do something more
+	// intelligent, to avoid long processing times for large
+	// files.
+
+	// Search forward first.
+	for i := expectedStartOffset + 1; i < len(fileData); i++ {
+		chunk := getChunkIfMatchesHash(checksumPair, fileData, sliceByteCount, i)
+		if chunk != nil {
+			return chunk, false
+		}
+	}
+
+	// Then search backwards, if possible.
+	start := expectedStartOffset - 1
+	if start >= len(fileData) {
+		start = len(fileData) - 1
+	}
+	for i := start; i >= 0; i-- {
+		chunk := getChunkIfMatchesHash(checksumPair, fileData, sliceByteCount, i)
+		if chunk != nil {
+			return chunk, false
+		}
+	}
+
+	return nil, false
+}
+
 type corruptFileInfo struct {
 	i                    int
 	filename             string
@@ -263,46 +326,24 @@ func (d *Decoder) buildDataShards() ([][]uint16, []corruptFileInfo, error) {
 			continue
 		}
 
-		// TODO: Handle file corruption more robustly,
-		// e.g. corruption that adds or deletes bytes.
-
 		startIndex := len(dataShards)
 		isCorrupt := false
 		for j, checksumPair := range ifscPacket.checksumPairs {
 			// TODO: Handle overflow.
-			startByteOffset := j * sliceByteCount
-			endByteOffset := startByteOffset + sliceByteCount
-			if startByteOffset >= len(fileData) {
+			expectedStartByteOffset := j * sliceByteCount
+			chunk, ok := findChunk(checksumPair, fileData, sliceByteCount, expectedStartByteOffset)
+			if chunk == nil {
 				dataShards = append(dataShards, nil)
-				d.delegate.OnDetectCorruptDataChunk(fileID, fileDescriptionPacket.filename, startByteOffset, endByteOffset)
+				d.delegate.OnDetectCorruptDataChunk(fileID, fileDescriptionPacket.filename, expectedStartByteOffset, expectedStartByteOffset+sliceByteCount)
 				isCorrupt = true
 				continue
+			} else if !ok {
+				d.delegate.OnDetectCorruptDataChunk(fileID, fileDescriptionPacket.filename, expectedStartByteOffset, expectedStartByteOffset+sliceByteCount)
+				isCorrupt = true
 			}
 
-			if endByteOffset > len(fileData) {
-				endByteOffset = len(fileData)
-			}
-			inputSlice := fileData[startByteOffset:endByteOffset]
-			padding := make([]byte, sliceByteCount-len(inputSlice))
-			inputSlice = append(inputSlice, padding...)
-			if md5.Sum(inputSlice) != checksumPair.MD5 {
-				dataShards = append(dataShards, nil)
-				d.delegate.OnDetectCorruptDataChunk(fileID, fileDescriptionPacket.filename, startByteOffset, endByteOffset)
-				isCorrupt = true
-				continue
-			}
-			crc32Int := crc32.ChecksumIEEE(inputSlice)
-			var crc32 [4]byte
-			binary.LittleEndian.PutUint32(crc32[:], crc32Int)
-			if crc32 != checksumPair.CRC32 {
-				dataShards = append(dataShards, nil)
-				d.delegate.OnDetectCorruptDataChunk(fileID, fileDescriptionPacket.filename, startByteOffset, endByteOffset)
-				isCorrupt = true
-				continue
-			}
-
-			dataShard := make([]uint16, len(inputSlice)/2)
-			err := binary.Read(bytes.NewBuffer(inputSlice), binary.LittleEndian, dataShard)
+			dataShard := make([]uint16, len(chunk)/2)
+			err := binary.Read(bytes.NewBuffer(chunk), binary.LittleEndian, dataShard)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -311,6 +352,15 @@ func (d *Decoder) buildDataShards() ([][]uint16, []corruptFileInfo, error) {
 		}
 
 		if !isCorrupt && len(fileData) != fileDescriptionPacket.byteCount {
+			var startByteCount, endByteCount int
+			if len(fileData) < fileDescriptionPacket.byteCount {
+				startByteCount = len(fileData)
+				endByteCount = fileDescriptionPacket.byteCount
+			} else {
+				startByteCount = fileDescriptionPacket.byteCount
+				endByteCount = len(fileData)
+			}
+			d.delegate.OnDetectCorruptDataChunk(fileID, fileDescriptionPacket.filename, startByteCount, endByteCount)
 			isCorrupt = true
 		}
 
@@ -419,7 +469,6 @@ func (d *Decoder) Repair() ([]string, error) {
 			return repairedFiles, err
 		}
 
-		// TODO: Handle overflow.
 		byteData := buf.Bytes()[:corruptFileInfo.byteCount]
 		if sixteenKHash(byteData) != corruptFileInfo.sixteenKHash {
 			return repairedFiles, errors.New("hash mismatch (16k) in reconstructed data")
