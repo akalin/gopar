@@ -48,3 +48,40 @@ func TestTimesDiv(t *testing.T) {
 		}
 	}
 }
+
+func TestPowZero(t *testing.T) {
+	require.Equal(t, T(1), T(0).Pow(0))
+	for i := uint32(1); i < 100; i++ {
+		require.Equal(t, T(0), T(0).Pow(i))
+	}
+}
+
+func TestPowOne(t *testing.T) {
+	for i := uint32(0); i < 100; i++ {
+		require.Equal(t, T(1), T(1).Pow(i))
+	}
+}
+
+func TestPowSmall(t *testing.T) {
+	for i := 2; i < (1 << 16); i++ {
+		x := T(i)
+		expectedY := T(1)
+		for p := uint32(0); p < 10; p++ {
+			y := x.Pow(p)
+			require.Equal(t, expectedY, y)
+			expectedY = expectedY.Times(x)
+		}
+	}
+}
+
+func TestPowLarge(t *testing.T) {
+	for i := 2; i < 10; i++ {
+		x := T(i)
+		expectedY := T(1)
+		for p := uint32(0); p < 65536; p++ {
+			y := x.Pow(p)
+			require.Equal(t, expectedY, y)
+			expectedY = expectedY.Times(x)
+		}
+	}
+}

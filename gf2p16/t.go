@@ -86,3 +86,16 @@ func (t T) Div(u T) T {
 	logU := int(logTable[u-1])
 	return expTable[(logT-logU+(order-1))%(order-1)]
 }
+
+// Pow returns the t^p as an element of GF(2^16). T(0).Pow(0) returns 1.
+func (t T) Pow(p uint32) T {
+	if t == 0 {
+		if p == 0 {
+			return 1
+		}
+		return 0
+	}
+
+	logT := uint64(logTable[t-1])
+	return expTable[(logT*uint64(p))%(order-1)]
+}
