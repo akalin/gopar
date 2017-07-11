@@ -127,6 +127,18 @@ func (par2LogDecoderDelegate) OnParityFileLoad(i int, path string, err error) {
 	}
 }
 
+func (par2LogDecoderDelegate) OnDetectCorruptDataChunk(fileID [16]byte, filename string, startByteOffset, endByteOffset int) {
+	fmt.Printf("Corrupt data chunk: %q (ID %x), bytes %d to %d\n", filename, fileID, startByteOffset, endByteOffset-1)
+}
+
+func (par2LogDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {
+	if err != nil {
+		fmt.Printf("[%d/%d] Writing data file %q failed: %+v\n", i, n, path, err)
+	} else {
+		fmt.Printf("[%d/%d] Wrote data file %q (%d bytes)\n", i, n, path, byteCount)
+	}
+}
+
 func printUsageAndExit(name string, flagSet *flag.FlagSet) {
 	name = filepath.Base(name)
 	fmt.Printf(`
@@ -140,6 +152,22 @@ Options:
 	flagSet.PrintDefaults()
 	fmt.Printf("\n")
 	os.Exit(2)
+}
+
+type decoder interface {
+	LoadFileData() error
+	LoadParityData() error
+	Verify() (bool, error)
+	Repair() ([]string, error)
+}
+
+func newDecoder(parFile string) (decoder, error) {
+	// TODO: Detect file type more robustly.
+	ext := path.Ext(parFile)
+	if ext == ".par2" {
+		return par2.NewDecoder(par2LogDecoderDelegate{}, parFile)
+	}
+	return par1.NewDecoder(par1LogDecoderDelegate{}, parFile)
 }
 
 func main() {
@@ -189,64 +217,35 @@ func main() {
 	case "v":
 		fallthrough
 	case "verify":
-		// TODO: Detect file type more robustly.
-		ext := path.Ext(parFile)
-		if ext == ".par2" {
-			decoder, err := par2.NewDecoder(par2LogDecoderDelegate{}, parFile)
-			if err != nil {
-				panic(err)
-			}
+		decoder, err := newDecoder(parFile)
+		if err != nil {
+			panic(err)
+		}
 
-			err = decoder.LoadFileData()
-			if err != nil {
-				panic(err)
-			}
+		err = decoder.LoadFileData()
+		if err != nil {
+			panic(err)
+		}
 
-			err = decoder.LoadParityData()
-			if err != nil {
-				panic(err)
-			}
+		err = decoder.LoadParityData()
+		if err != nil {
+			panic(err)
+		}
 
-			ok, err := decoder.Verify()
-			if err != nil {
-				panic(err)
-			}
+		ok, err := decoder.Verify()
+		if err != nil {
+			panic(err)
+		}
 
-			fmt.Printf("Verify result: %t\n", ok)
-			if !ok {
-				os.Exit(-1)
-			}
-		} else {
-			decoder, err := par1.NewDecoder(par1LogDecoderDelegate{}, parFile)
-			if err != nil {
-				panic(err)
-			}
-
-			err = decoder.LoadFileData()
-			if err != nil {
-				panic(err)
-			}
-
-			err = decoder.LoadParityData()
-			if err != nil {
-				panic(err)
-			}
-
-			ok, err := decoder.Verify()
-			if err != nil {
-				panic(err)
-			}
-
-			fmt.Printf("Verify result: %t\n", ok)
-			if !ok {
-				os.Exit(-1)
-			}
+		fmt.Printf("Verify result: %t\n", ok)
+		if !ok {
+			os.Exit(-1)
 		}
 
 	case "r":
 		fallthrough
 	case "repair":
-		decoder, err := par1.NewDecoder(par1LogDecoderDelegate{}, parFile)
+		decoder, err := newDecoder(parFile)
 		if err != nil {
 			panic(err)
 		}

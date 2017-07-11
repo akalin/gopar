@@ -18,6 +18,7 @@ import (
 type fileIO interface {
 	ReadFile(path string) ([]byte, error)
 	FindWithPrefixAndSuffix(prefix, suffix string) ([]string, error)
+	WriteFile(path string, data []byte) error
 }
 
 type defaultFileIO struct{}
@@ -28,6 +29,10 @@ func (io defaultFileIO) ReadFile(path string) ([]byte, error) {
 
 func (io defaultFileIO) FindWithPrefixAndSuffix(prefix, suffix string) ([]string, error) {
 	return filepath.Glob(prefix + "*" + suffix)
+}
+
+func (io defaultFileIO) WriteFile(path string, data []byte) error {
+	return ioutil.WriteFile(path, data, 0600)
 }
 
 // A Decoder keeps track of all information needed to check the
@@ -60,6 +65,8 @@ type DecoderDelegate interface {
 	OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int)
 	OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error)
 	OnParityFileLoad(i int, path string, err error)
+	OnDetectCorruptDataChunk(fileID [16]byte, filename string, startByteOffset, endByteOffset int)
+	OnDataFileWrite(i, n int, path string, byteCount int, err error)
 }
 
 func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string) (*Decoder, error) {
@@ -106,8 +113,14 @@ func (d *Decoder) LoadFileData() error {
 			} else if err != nil {
 				return nil, false, err
 			} else if sixteenKHash(data) != packet.sixteenKHash {
+				// TODO: Load data anyway, and let
+				// buildDataShards() sort out which
+				// chunks are corrupt.
 				return nil, true, errors.New("hash mismatch (16k)")
 			} else if md5.Sum(data) != packet.hash {
+				// TODO: Load data anyway, and let
+				// buildDataShards() sort out which
+				// chunks are corrupt.
 				return nil, true, errors.New("hash mismatch")
 			}
 			return data, false, nil
@@ -158,6 +171,11 @@ func (recoveryDelegate) OnDataFileLoad(i, n int, path string, byteCount int, cor
 }
 
 func (recoveryDelegate) OnParityFileLoad(i int, path string, err error) {}
+
+func (recoveryDelegate) OnDetectCorruptDataChunk(fileID [16]byte, filename string, startByteOffset, endByteOffset int) {
+}
+
+func (recoveryDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {}
 
 // LoadParityData searches for parity volumes and loads them into
 // memory.
@@ -217,6 +235,111 @@ func (d *Decoder) LoadParityData() error {
 	return nil
 }
 
+type corruptFileInfo struct {
+	i                    int
+	filename             string
+	byteCount            int
+	startIndex, endIndex int
+	hash                 [md5.Size]byte
+	sixteenKHash         [md5.Size]byte
+}
+
+func (d *Decoder) buildDataShards() ([][]uint16, []corruptFileInfo, error) {
+	sliceByteCount := d.indexFile.mainPacket.sliceByteCount
+
+	var dataShards [][]uint16
+	var corruptFileInfos []corruptFileInfo
+	for i, fileData := range d.fileData {
+		fileID := d.indexFile.mainPacket.recoverySet[i]
+
+		fileDescriptionPacket, ok := d.indexFile.fileDescriptionPackets[fileID]
+		if !ok {
+			return nil, nil, errors.New("missing file description packet")
+		}
+
+		ifscPacket, ok := d.indexFile.ifscPackets[fileID]
+		if !ok {
+			return nil, nil, errors.New("missing input file slice checksums")
+		}
+
+		if fileData == nil {
+			startIndex := len(dataShards)
+			dataShards = append(dataShards, make([][]uint16, len(ifscPacket.checksumPairs))...)
+			d.delegate.OnDetectCorruptDataChunk(fileID, fileDescriptionPacket.filename, 0, fileDescriptionPacket.byteCount)
+			endIndex := len(dataShards)
+			corruptFileInfos = append(corruptFileInfos, corruptFileInfo{
+				i,
+				fileDescriptionPacket.filename,
+				fileDescriptionPacket.byteCount,
+				startIndex, endIndex,
+				fileDescriptionPacket.hash, fileDescriptionPacket.sixteenKHash,
+			})
+			continue
+		}
+
+		startIndex := len(dataShards)
+		isCorrupt := false
+		for j, checksumPair := range ifscPacket.checksumPairs {
+			// TODO: Handle overflow.
+			startByteOffset := j * sliceByteCount
+			endByteOffset := startByteOffset + sliceByteCount
+			if startByteOffset >= len(fileData) {
+				dataShards = append(dataShards, nil)
+				d.delegate.OnDetectCorruptDataChunk(fileID, fileDescriptionPacket.filename, startByteOffset, endByteOffset)
+				isCorrupt = true
+				continue
+			}
+
+			if endByteOffset > len(fileData) {
+				endByteOffset = len(fileData)
+			}
+			inputSlice := fileData[startByteOffset:endByteOffset]
+			padding := make([]byte, sliceByteCount-len(inputSlice))
+			inputSlice = append(inputSlice, padding...)
+			if md5.Sum(inputSlice) != checksumPair.MD5 {
+				dataShards = append(dataShards, nil)
+				d.delegate.OnDetectCorruptDataChunk(fileID, fileDescriptionPacket.filename, startByteOffset, endByteOffset)
+				isCorrupt = true
+				continue
+			}
+			crc32Int := crc32.ChecksumIEEE(inputSlice)
+			var crc32 [4]byte
+			binary.LittleEndian.PutUint32(crc32[:], crc32Int)
+			if crc32 != checksumPair.CRC32 {
+				dataShards = append(dataShards, nil)
+				d.delegate.OnDetectCorruptDataChunk(fileID, fileDescriptionPacket.filename, startByteOffset, endByteOffset)
+				isCorrupt = true
+				continue
+			}
+
+			dataShard := make([]uint16, len(inputSlice)/2)
+			err := binary.Read(bytes.NewBuffer(inputSlice), binary.LittleEndian, dataShard)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			dataShards = append(dataShards, dataShard)
+		}
+
+		if isCorrupt {
+			endIndex := len(dataShards)
+			corruptFileInfos = append(corruptFileInfos, corruptFileInfo{
+				i,
+				fileDescriptionPacket.filename,
+				fileDescriptionPacket.byteCount,
+				startIndex, endIndex,
+				fileDescriptionPacket.hash, fileDescriptionPacket.sixteenKHash,
+			})
+		}
+	}
+
+	return dataShards, corruptFileInfos, nil
+}
+
+func (d *Decoder) newCoder(dataShards [][]uint16) (rsec16.Coder, error) {
+	return rsec16.NewCoderPAR2Vandermonde(len(dataShards), len(d.parityShards))
+}
+
 // Verify checks that all file and known parity data are consistent
 // with each other, and returns the result. If any files are missing,
 // Verify returns false.
@@ -241,50 +364,16 @@ func (d *Decoder) Verify() (bool, error) {
 		}
 	}
 
-	sliceByteCount := d.indexFile.mainPacket.sliceByteCount
-
-	var dataShards [][]uint16
-	for i, fileData := range d.fileData {
-		fileID := d.indexFile.mainPacket.recoverySet[i]
-		ifscPacket, ok := d.indexFile.ifscPackets[fileID]
-		if !ok {
-			return false, errors.New("missing input file slice checksums")
-		}
-
-		for j, checksumPair := range ifscPacket.checksumPairs {
-			// TODO: Handle overflow.
-			startOffset := j * sliceByteCount
-			if startOffset >= len(fileData) {
-				return false, errors.New("start index out of bounds")
-			}
-			endOffset := startOffset + sliceByteCount
-			if endOffset > len(fileData) {
-				endOffset = len(fileData)
-			}
-			inputSlice := fileData[startOffset:endOffset]
-			padding := make([]byte, sliceByteCount-len(inputSlice))
-			inputSlice = append(inputSlice, padding...)
-			if md5.Sum(inputSlice) != checksumPair.MD5 {
-				return false, errors.New("md5 mismatch")
-			}
-			crc32Int := crc32.ChecksumIEEE(inputSlice)
-			var crc32 [4]byte
-			binary.LittleEndian.PutUint32(crc32[:], crc32Int)
-			if crc32 != checksumPair.CRC32 {
-				return false, errors.New("crc32 mismatch")
-			}
-
-			dataShard := make([]uint16, len(inputSlice)/2)
-			err := binary.Read(bytes.NewBuffer(inputSlice), binary.LittleEndian, dataShard)
-			if err != nil {
-				return false, err
-			}
-
-			dataShards = append(dataShards, dataShard)
-		}
+	dataShards, corruptFileInfos, err := d.buildDataShards()
+	if err != nil {
+		return false, err
 	}
 
-	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), len(d.parityShards))
+	if len(corruptFileInfos) > 0 {
+		return false, nil
+	}
+
+	coder, err := d.newCoder(dataShards)
 	if err != nil {
 		return false, err
 	}
@@ -292,6 +381,74 @@ func (d *Decoder) Verify() (bool, error) {
 	computedParityShards := coder.GenerateParity(dataShards)
 	eq := reflect.DeepEqual(computedParityShards, d.parityShards)
 	return eq, nil
+}
+
+// Repair tries to repair any missing or corrupted data, using the
+// parity volumes. Returns a list of files that were successfully
+// repaired, which is present even if an error is returned.
+func (d *Decoder) Repair() ([]string, error) {
+	if d.indexFile.mainPacket == nil {
+		return nil, errors.New("main packet not loaded")
+	}
+
+	if len(d.fileData) != len(d.indexFile.mainPacket.recoverySet) {
+		return nil, errors.New("file data count mismatch")
+	}
+
+	dataShards, corruptFileInfos, err := d.buildDataShards()
+	if err != nil {
+		return nil, err
+	}
+
+	coder, err := d.newCoder(dataShards)
+	if err != nil {
+		return nil, err
+	}
+
+	err = coder.ReconstructData(dataShards, d.parityShards)
+	if err != nil {
+		return nil, err
+	}
+
+	dir := filepath.Dir(d.indexPath)
+
+	var repairedFiles []string
+
+	for _, corruptFileInfo := range corruptFileInfos {
+		var data []uint16
+		for i := corruptFileInfo.startIndex; i < corruptFileInfo.endIndex; i++ {
+			data = append(data, dataShards[i]...)
+		}
+
+		buf := bytes.NewBuffer(nil)
+		err := binary.Write(buf, binary.LittleEndian, data)
+		if err != nil {
+			return repairedFiles, err
+		}
+
+		// TODO: Handle overflow.
+		byteData := buf.Bytes()[:corruptFileInfo.byteCount]
+		if sixteenKHash(byteData) != corruptFileInfo.sixteenKHash {
+			return repairedFiles, errors.New("hash mismatch (16k) in reconstructed data")
+		} else if md5.Sum(byteData) != corruptFileInfo.hash {
+			return repairedFiles, errors.New("hash mismatch in reconstructed data")
+		}
+
+		path := filepath.Join(dir, corruptFileInfo.filename)
+		err = d.fileIO.WriteFile(path, byteData)
+		d.delegate.OnDataFileWrite(corruptFileInfo.i+1, len(d.fileData), path, len(byteData), err)
+		if err != nil {
+			return repairedFiles, err
+		}
+
+		repairedFiles = append(repairedFiles, corruptFileInfo.filename)
+		d.fileData[corruptFileInfo.i] = byteData
+	}
+
+	// TODO: Repair missing parity volumes, too, and then make
+	// sure d.Verify() passes.
+
+	return repairedFiles, nil
 }
 
 // NewDecoder reads the given index file, which usually has a .par2
