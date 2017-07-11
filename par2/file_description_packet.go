@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"errors"
+	"path"
 )
 
 var fileDescriptionPacketType = packetType{'P', 'A', 'R', ' ', '2', '.', '0', '\x00', 'F', 'i', 'l', 'e', 'D', 'e', 's', 'c'}
@@ -45,9 +46,15 @@ func readFileDescriptionPacket(body []byte) (fileID, fileDescriptionPacket, erro
 		return fileID{}, fileDescriptionPacket{}, errors.New("file ID mismatch")
 	}
 
-	// TODO: Make sure filename does not point outside of the
-	// current dir.
 	filename := decodeNullPaddedASCIIString(filenameBytes)
+	if path.IsAbs(filename) {
+		// TODO: Allow this via an option.
+		return fileID{}, fileDescriptionPacket{}, errors.New("absolute paths not allowed")
+	}
+	filename = path.Clean(filename)
+	if filename[0] == '.' {
+		return fileID{}, fileDescriptionPacket{}, errors.New("traversing outside of the current directory is not allowed")
+	}
 
 	return h.FileID, fileDescriptionPacket{h.Hash, h.SixteenKHash, h.Length, filename}, nil
 }
