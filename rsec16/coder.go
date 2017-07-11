@@ -16,7 +16,7 @@ type Coder struct {
 
 // NewCoder returns a Coder that works with the given number of data
 // and parity shards.
-func NewCoder(dataShards, parityShards int) Coder {
+func NewCoder(dataShards, parityShards int) (Coder, error) {
 	if dataShards <= 0 {
 		panic("invalid data shard count")
 	}
@@ -24,9 +24,8 @@ func NewCoder(dataShards, parityShards int) Coder {
 		panic("invalid parity shard count")
 	}
 
-	// TODO: Return an error instead.
 	if dataShards+parityShards > math.MaxUint16 {
-		panic("too many shards")
+		return Coder{}, errors.New("too many shards")
 	}
 
 	parityMatrix := newCauchyMatrix(parityShards, dataShards, func(i int) gf2p16.T {
@@ -34,7 +33,7 @@ func NewCoder(dataShards, parityShards int) Coder {
 	}, func(i int) gf2p16.T {
 		return gf2p16.T(i)
 	})
-	return Coder{dataShards, parityShards, parityMatrix}
+	return Coder{dataShards, parityShards, parityMatrix}, nil
 }
 
 func applyMatrix(m gf2p16.Matrix, in, out [][]uint16) {

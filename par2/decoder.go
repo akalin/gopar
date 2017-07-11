@@ -286,7 +286,11 @@ func (d *Decoder) Verify() (bool, error) {
 
 	// TODO: Make coder use the PAR2 matrix.
 
-	coder := rsec16.NewCoder(len(dataShards), len(d.parityShards))
+	coder, err := rsec16.NewCoder(len(dataShards), len(d.parityShards))
+	if err != nil {
+		return false, err
+	}
+
 	computedParityShards := coder.GenerateParity(dataShards)
 	eq := reflect.DeepEqual(computedParityShards, d.parityShards)
 	return eq, nil

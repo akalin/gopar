@@ -7,6 +7,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCoderNewCoderError(t *testing.T) {
+	// Ideally, we'd test that NewCoder(32768, 32767) succeeds,
+	// but doing so takes 15 seconds!
+
+	_, err := NewCoder(32768, 32768)
+	require.Equal(t, errors.New("too many shards"), err)
+}
+
 func TestCoderGenerateParity(t *testing.T) {
 	data := [][]uint16{
 		{0x1, 0x2},
@@ -15,7 +23,8 @@ func TestCoderGenerateParity(t *testing.T) {
 		{0x7, 0x8},
 		{0x9, 0xa},
 	}
-	c := NewCoder(5, 3)
+	c, err := NewCoder(5, 3)
+	require.NoError(t, err)
 	parity := c.GenerateParity(data)
 	require.Equal(t, 3, len(parity))
 	for _, row := range parity {
@@ -31,7 +40,8 @@ func TestCoderReconstructData(t *testing.T) {
 		{0x7, 0x8},
 		{0x9, 0xa},
 	}
-	c := NewCoder(5, 3)
+	c, err := NewCoder(5, 3)
+	require.NoError(t, err)
 	parity := c.GenerateParity(data)
 
 	corruptedData := [][]uint16{
@@ -41,7 +51,7 @@ func TestCoderReconstructData(t *testing.T) {
 		data[3],
 		nil,
 	}
-	err := c.ReconstructData(corruptedData, parity)
+	err = c.ReconstructData(corruptedData, parity)
 	require.NoError(t, err)
 	require.Equal(t, data, corruptedData)
 }
@@ -54,7 +64,8 @@ func TestCoderReconstructDataMissingParity(t *testing.T) {
 		{0x7, 0x8},
 		{0x9, 0xa},
 	}
-	c := NewCoder(5, 3)
+	c, err := NewCoder(5, 3)
+	require.NoError(t, err)
 	parity := c.GenerateParity(data)
 
 	corruptedData := [][]uint16{
@@ -70,7 +81,7 @@ func TestCoderReconstructDataMissingParity(t *testing.T) {
 		parity[2],
 	}
 
-	err := c.ReconstructData(corruptedData, corruptedParity)
+	err = c.ReconstructData(corruptedData, corruptedParity)
 	require.NoError(t, err)
 	require.Equal(t, data, corruptedData)
 }
@@ -83,7 +94,8 @@ func TestCoderReconstructDataNotEnough(t *testing.T) {
 		{0x7, 0x8},
 		{0x9, 0xa},
 	}
-	c := NewCoder(5, 3)
+	c, err := NewCoder(5, 3)
+	require.NoError(t, err)
 	parity := c.GenerateParity(data)
 
 	corruptedData := [][]uint16{
@@ -94,7 +106,7 @@ func TestCoderReconstructDataNotEnough(t *testing.T) {
 		nil,
 	}
 	expectedErr := errors.New("not enough parity shards")
-	err := c.ReconstructData(corruptedData, parity)
+	err = c.ReconstructData(corruptedData, parity)
 	require.Equal(t, expectedErr, err)
 
 	corruptedData = [][]uint16{
