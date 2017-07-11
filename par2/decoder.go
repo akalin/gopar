@@ -284,9 +284,7 @@ func (d *Decoder) Verify() (bool, error) {
 		}
 	}
 
-	// TODO: Make coder use the PAR2 matrix.
-
-	coder, err := rsec16.NewCoder(len(dataShards), len(d.parityShards))
+	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), len(d.parityShards))
 	if err != nil {
 		return false, err
 	}

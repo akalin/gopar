@@ -14,9 +14,9 @@ type Coder struct {
 	parityMatrix             gf2p16.Matrix
 }
 
-// NewCoder returns a Coder that works with the given number of data
-// and parity shards.
-func NewCoder(dataShards, parityShards int) (Coder, error) {
+// NewCoderCauchy returns a Coder that works with the given number of
+// data and parity shards, using a Cauchy matrix.
+func NewCoderCauchy(dataShards, parityShards int) (Coder, error) {
 	if dataShards <= 0 {
 		panic("invalid data shard count")
 	}
@@ -32,6 +32,75 @@ func NewCoder(dataShards, parityShards int) (Coder, error) {
 		return gf2p16.T(dataShards + i)
 	}, func(i int) gf2p16.T {
 		return gf2p16.T(i)
+	})
+	return Coder{dataShards, parityShards, parityMatrix}, nil
+}
+
+var generators []gf2p16.T
+
+func init() {
+	// TODO: Generate this table at compile time.
+	for i := 0; i < (1 << 16); i++ {
+		if i%3 == 0 || i%5 == 0 || i%17 == 0 || i%257 == 0 {
+			continue
+		}
+		g := gf2p16.T(2).Pow(uint32(i))
+		generators = append(generators, g)
+	}
+}
+
+// NewCoderPAR2Vandermonde returns a Coder that works with the given
+// number of data and parity shards, using a Vandermonde matrix as
+// specified in the PAR2 spec. Note that this matrix is flawed, so
+// ReconstructData may fail.
+func NewCoderPAR2Vandermonde(dataShards, parityShards int) (Coder, error) {
+	// The PAR2 encoding matrix looks like:
+	//
+	// 1       0       0        ... 0             0             0
+	// 0       1       0        ... 0             0             0
+	// 0       0       1        ... 0             0             0
+	// ...
+	// 0       0       0        ... 1             0             0
+	// 0       0       0        ... 0             1             0
+	// 0       0       0        ... 0             0             1
+	//
+	// 1       1       1        ... 1             1             1
+	// 2       4       16       ... g_{m-2}       g_{m-1}       g_m
+	// 2^2     4^2     16^2     ... g_{m-2}^2     g_{m-1}^2     g_m^2
+	// ...
+	// 2^(n-2) 4^(n-2) 16^(n-2) ... g_{m-2}^(n-2) g_{m-1}^(n-2) g_m^(n-2)
+	// 2^(n-1) 4^(n-1) 16^(n-1) ... g_{m-2}^(n-1) g_{m-1}^(n-1) g_m^(n-1)
+	//
+	// where m is dataShards, n is parityShards, and g_m is the
+	// mth smallest generator (element of order 65535) of
+	// GF(65536). The top matrix is the m x m identity matrix, and
+	// the bottom matrix is a n x m Vandermonde matrix. The rows
+	// of the Vandermonde matrix repeat exactly when n > 65535,
+	// and the columns repeat exactly when m > 32768. This means
+	// that we can have at most 32768 data shards and 65535 parity
+	// shards, since the PAR2 spec doesn't specify any lower
+	// limits.
+	//
+	// Note that submatrices of the PAR2 encoding matrix may be
+	// singular even when m <= 32768 and n <= 65535, due to a flaw
+	// in the above construction.
+	if dataShards <= 0 {
+		panic("invalid data shard count")
+	}
+	if parityShards <= 0 {
+		panic("invalid parity shard count")
+	}
+
+	if dataShards > len(generators) {
+		return Coder{}, errors.New("too many data shards")
+	}
+
+	if parityShards > (1<<16)-1 {
+		return Coder{}, errors.New("too many parity shards")
+	}
+
+	parityMatrix := newVandermondeMatrix(parityShards, dataShards, func(i int) gf2p16.T {
+		return generators[i]
 	})
 	return Coder{dataShards, parityShards, parityMatrix}, nil
 }
