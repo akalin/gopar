@@ -109,11 +109,9 @@ func (par2LogDecoderDelegate) OnOtherPacketSkip(setID [16]byte, packetType [16]b
 
 func (par2LogDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error) {
 	if err != nil {
-		if corrupt {
-			fmt.Printf("[%d/%d] Loading data file %q failed; marking as corrupt and skipping: %+v\n", i, n, path, err)
-		} else {
-			fmt.Printf("[%d/%d] Loading data file %q failed: %+v\n", i, n, path, err)
-		}
+		fmt.Printf("[%d/%d] Loading data file %q failed: %+v\n", i, n, path, err)
+	} else if corrupt {
+		fmt.Printf("[%d/%d] Loaded data file %q (%d bytes), but detected corruption\n", i, n, path, byteCount)
 	} else {
 		fmt.Printf("[%d/%d] Loaded data file %q (%d bytes)\n", i, n, path, byteCount)
 	}

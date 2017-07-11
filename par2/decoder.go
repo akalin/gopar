@@ -112,32 +112,18 @@ func (d *Decoder) LoadFileData() error {
 				return nil, true, err
 			} else if err != nil {
 				return nil, false, err
-			} else if sixteenKHash(data) != packet.sixteenKHash {
-				// TODO: Load data anyway, and let
-				// buildDataShards() sort out which
-				// chunks are corrupt.
-				return nil, true, errors.New("hash mismatch (16k)")
-			} else if md5.Sum(data) != packet.hash {
-				// TODO: Load data anyway, and let
-				// buildDataShards() sort out which
-				// chunks are corrupt.
-				return nil, true, errors.New("hash mismatch")
 			}
-			return data, false, nil
+			corrupt := sixteenKHash(data) != packet.sixteenKHash || md5.Sum(data) != packet.hash
+			// If corrupt, load data anyway, and let
+			// buildDataShards() sort out which chunks
+			// specifically are corrupt.
+			return data, corrupt, nil
 		}()
 		d.delegate.OnDataFileLoad(i+1, len(d.indexFile.fileDescriptionPackets), path, len(data), corrupt, err)
-		if corrupt {
-			continue
-		} else if err != nil {
+		if err != nil && !corrupt {
 			return err
 		}
 
-		// We use nil to mark missing entries, but ReadFile
-		// might return nil, so convert that to a non-nil
-		// empty slice.
-		if data == nil {
-			data = make([]byte, 0)
-		}
 		fileData[i] = data
 	}
 
@@ -262,7 +248,7 @@ func (d *Decoder) buildDataShards() ([][]uint16, []corruptFileInfo, error) {
 			return nil, nil, errors.New("missing input file slice checksums")
 		}
 
-		if fileData == nil {
+		if len(fileData) == 0 {
 			startIndex := len(dataShards)
 			dataShards = append(dataShards, make([][]uint16, len(ifscPacket.checksumPairs))...)
 			d.delegate.OnDetectCorruptDataChunk(fileID, fileDescriptionPacket.filename, 0, fileDescriptionPacket.byteCount)
@@ -276,6 +262,9 @@ func (d *Decoder) buildDataShards() ([][]uint16, []corruptFileInfo, error) {
 			})
 			continue
 		}
+
+		// TODO: Handle file corruption more robustly,
+		// e.g. corruption that adds or deletes bytes.
 
 		startIndex := len(dataShards)
 		isCorrupt := false
@@ -319,6 +308,10 @@ func (d *Decoder) buildDataShards() ([][]uint16, []corruptFileInfo, error) {
 			}
 
 			dataShards = append(dataShards, dataShard)
+		}
+
+		if !isCorrupt && len(fileData) != fileDescriptionPacket.byteCount {
+			isCorrupt = true
 		}
 
 		if isCorrupt {
