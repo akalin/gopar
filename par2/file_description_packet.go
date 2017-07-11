@@ -20,7 +20,7 @@ type fileDescriptionPacketHeader struct {
 type fileDescriptionPacket struct {
 	hash         [md5.Size]byte
 	sixteenKHash [md5.Size]byte
-	byteCount    uint64
+	byteCount    int
 	filename     string
 }
 
@@ -65,5 +65,15 @@ func readFileDescriptionPacket(body []byte) (fileID, fileDescriptionPacket, erro
 		return fileID{}, fileDescriptionPacket{}, errors.New("traversing outside of the current directory is not allowed")
 	}
 
-	return h.FileID, fileDescriptionPacket{h.Hash, h.SixteenKHash, h.Length, filename}, nil
+	// We have to do this since we load entire files in memory.
+	//
+	// TODO: Avoid loading entire files in memory, so that this
+	// could work on 32-bit systems.
+	maxInt := int(^uint(0) >> 1)
+	if h.Length > uint64(maxInt) {
+		return fileID{}, fileDescriptionPacket{}, errors.New("file length too big")
+	}
+
+	byteCount := int(h.Length)
+	return h.FileID, fileDescriptionPacket{h.Hash, h.SixteenKHash, byteCount, filename}, nil
 }
