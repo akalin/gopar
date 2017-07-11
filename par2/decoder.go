@@ -332,6 +332,9 @@ func (d *Decoder) buildDataShards() ([][]uint16, []corruptFileInfo, error) {
 			// TODO: Handle overflow.
 			expectedStartByteOffset := j * sliceByteCount
 			chunk, ok := findChunk(checksumPair, fileData, sliceByteCount, expectedStartByteOffset)
+			// TODO: Pass more info to the delegate
+			// method, like where the chunk was detected
+			// (if not at the expected location).
 			if chunk == nil {
 				dataShards = append(dataShards, nil)
 				d.delegate.OnDetectCorruptDataChunk(fileID, fileDescriptionPacket.filename, expectedStartByteOffset, expectedStartByteOffset+sliceByteCount)
