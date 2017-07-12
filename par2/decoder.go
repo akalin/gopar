@@ -35,6 +35,47 @@ func (io defaultFileIO) WriteFile(path string, data []byte) error {
 	return ioutil.WriteFile(path, data, 0600)
 }
 
+type inputFileInfo struct {
+	fileID        fileID
+	filename      string
+	byteCount     int
+	sixteenKHash  [md5.Size]byte
+	hash          [md5.Size]byte
+	checksumPairs []checksumPair
+}
+
+func inputFileInfoIDs(infos []inputFileInfo) []fileID {
+	fileIDs := make([]fileID, len(infos))
+	for i, info := range infos {
+		fileIDs[i] = info.fileID
+	}
+	return fileIDs
+}
+
+func makeInputFileInfos(fileIDs []fileID, fileDescriptionPackets map[fileID]fileDescriptionPacket, ifscPackets map[fileID]ifscPacket) ([]inputFileInfo, error) {
+	var inputFileInfos []inputFileInfo
+	for _, fileID := range fileIDs {
+		descriptionPacket, ok := fileDescriptionPackets[fileID]
+		if !ok {
+			return nil, errors.New("file description packet not found")
+		}
+		ifscPacket, ok := ifscPackets[fileID]
+		if !ok {
+			return nil, errors.New("input file slice checksum packet not found")
+		}
+		inputFileInfos = append(inputFileInfos, inputFileInfo{
+			fileID,
+			descriptionPacket.filename,
+			descriptionPacket.byteCount,
+			descriptionPacket.sixteenKHash,
+			descriptionPacket.hash,
+			ifscPacket.checksumPairs,
+		})
+	}
+
+	return inputFileInfos, nil
+}
+
 // A Decoder keeps track of all information needed to check the
 // integrity of a set of data files, and possibly repair any
 // missing/corrupted data files from the parity files (that usually
@@ -45,13 +86,11 @@ type Decoder struct {
 
 	indexPath string
 
-	setID                  recoverySetID
-	clientID               string
-	sliceByteCount         int
-	recoverySet            []fileID
-	nonRecoverySet         []fileID
-	fileDescriptionPackets map[fileID]fileDescriptionPacket
-	ifscPackets            map[fileID]ifscPacket
+	setID          recoverySetID
+	clientID       string
+	sliceByteCount int
+	recoverySet    []inputFileInfo
+	nonRecoverySet []inputFileInfo
 
 	fileData [][]byte
 
@@ -95,14 +134,22 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string) (*Dec
 		return nil, errors.New("recovery packets found in index file")
 	}
 
+	recoverySet, err := makeInputFileInfos(indexFile.mainPacket.recoverySet, indexFile.fileDescriptionPackets, indexFile.ifscPackets)
+	if err != nil {
+		return nil, err
+	}
+
+	nonRecoverySet, err := makeInputFileInfos(indexFile.mainPacket.nonRecoverySet, indexFile.fileDescriptionPackets, indexFile.ifscPackets)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Decoder{
 		fileIO, delegate,
 		indexPath,
 		setID,
 		indexFile.clientID, indexFile.mainPacket.sliceByteCount,
-		indexFile.mainPacket.recoverySet,
-		indexFile.mainPacket.nonRecoverySet,
-		indexFile.fileDescriptionPackets, indexFile.ifscPackets,
+		recoverySet, nonRecoverySet,
 		nil,
 		nil,
 	}, nil
@@ -120,13 +167,8 @@ func (d *Decoder) LoadFileData() error {
 	fileData := make([][]byte, len(d.recoverySet))
 
 	dir := filepath.Dir(d.indexPath)
-	for i, fileID := range d.recoverySet {
-		packet, ok := d.fileDescriptionPackets[fileID]
-		if !ok {
-			return errors.New("could not find file description packet for")
-		}
-
-		path := filepath.Join(dir, packet.filename)
+	for i, info := range d.recoverySet {
+		path := filepath.Join(dir, info.filename)
 		data, corrupt, err := func() ([]byte, bool, error) {
 			data, err := d.fileIO.ReadFile(path)
 			if os.IsNotExist(err) {
@@ -134,13 +176,13 @@ func (d *Decoder) LoadFileData() error {
 			} else if err != nil {
 				return nil, false, err
 			}
-			corrupt := sixteenKHash(data) != packet.sixteenKHash || md5.Sum(data) != packet.hash
+			corrupt := sixteenKHash(data) != info.sixteenKHash || md5.Sum(data) != info.hash
 			// If corrupt, load data anyway, and let
 			// buildDataShards() sort out which chunks
 			// specifically are corrupt.
 			return data, corrupt, nil
 		}()
-		d.delegate.OnDataFileLoad(i+1, len(d.fileDescriptionPackets), path, len(data), corrupt, err)
+		d.delegate.OnDataFileLoad(i+1, len(d.recoverySet), path, len(data), corrupt, err)
 		if err != nil && !corrupt {
 			return err
 		}
@@ -218,11 +260,11 @@ func (d *Decoder) LoadParityData() error {
 				return file{}, errors.New("slice size mismatch")
 			}
 
-			if !reflect.DeepEqual(d.recoverySet, parityFile.mainPacket.recoverySet) {
+			if !reflect.DeepEqual(inputFileInfoIDs(d.recoverySet), parityFile.mainPacket.recoverySet) {
 				return file{}, errors.New("recovery set mismatch")
 			}
 
-			if !reflect.DeepEqual(d.nonRecoverySet, parityFile.mainPacket.nonRecoverySet) {
+			if !reflect.DeepEqual(inputFileInfoIDs(d.nonRecoverySet), parityFile.mainPacket.nonRecoverySet) {
 				return file{}, errors.New("non-recovery set mismatch")
 			}
 
@@ -327,37 +369,26 @@ func (d *Decoder) buildDataShards() ([][]uint16, []corruptFileInfo, error) {
 
 	var dataShards [][]uint16
 	var corruptFileInfos []corruptFileInfo
-	for i, fileData := range d.fileData {
-		fileID := d.recoverySet[i]
-
-		fileDescriptionPacket, ok := d.fileDescriptionPackets[fileID]
-		if !ok {
-			return nil, nil, errors.New("missing file description packet")
-		}
-
-		ifscPacket, ok := d.ifscPackets[fileID]
-		if !ok {
-			return nil, nil, errors.New("missing input file slice checksums")
-		}
-
+	for i, info := range d.recoverySet {
+		fileData := d.fileData[i]
 		if len(fileData) == 0 {
 			startIndex := len(dataShards)
-			dataShards = append(dataShards, make([][]uint16, len(ifscPacket.checksumPairs))...)
-			d.delegate.OnDetectCorruptDataChunk(fileID, fileDescriptionPacket.filename, 0, fileDescriptionPacket.byteCount)
+			dataShards = append(dataShards, make([][]uint16, len(info.checksumPairs))...)
+			d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, 0, info.byteCount)
 			endIndex := len(dataShards)
 			corruptFileInfos = append(corruptFileInfos, corruptFileInfo{
 				i,
-				fileDescriptionPacket.filename,
-				fileDescriptionPacket.byteCount,
+				info.filename,
+				info.byteCount,
 				startIndex, endIndex,
-				fileDescriptionPacket.hash, fileDescriptionPacket.sixteenKHash,
+				info.hash, info.sixteenKHash,
 			})
 			continue
 		}
 
 		startIndex := len(dataShards)
 		isCorrupt := false
-		for j, checksumPair := range ifscPacket.checksumPairs {
+		for j, checksumPair := range info.checksumPairs {
 			// TODO: Handle overflow.
 			expectedStartByteOffset := j * sliceByteCount
 			chunk, ok := findChunk(checksumPair, fileData, sliceByteCount, expectedStartByteOffset)
@@ -366,11 +397,11 @@ func (d *Decoder) buildDataShards() ([][]uint16, []corruptFileInfo, error) {
 			// (if not at the expected location).
 			if chunk == nil {
 				dataShards = append(dataShards, nil)
-				d.delegate.OnDetectCorruptDataChunk(fileID, fileDescriptionPacket.filename, expectedStartByteOffset, expectedStartByteOffset+sliceByteCount)
+				d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, expectedStartByteOffset, expectedStartByteOffset+sliceByteCount)
 				isCorrupt = true
 				continue
 			} else if !ok {
-				d.delegate.OnDetectCorruptDataChunk(fileID, fileDescriptionPacket.filename, expectedStartByteOffset, expectedStartByteOffset+sliceByteCount)
+				d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, expectedStartByteOffset, expectedStartByteOffset+sliceByteCount)
 				isCorrupt = true
 			}
 
@@ -383,16 +414,16 @@ func (d *Decoder) buildDataShards() ([][]uint16, []corruptFileInfo, error) {
 			dataShards = append(dataShards, dataShard)
 		}
 
-		if !isCorrupt && len(fileData) != fileDescriptionPacket.byteCount {
+		if !isCorrupt && len(fileData) != info.byteCount {
 			var startByteCount, endByteCount int
-			if len(fileData) < fileDescriptionPacket.byteCount {
+			if len(fileData) < info.byteCount {
 				startByteCount = len(fileData)
-				endByteCount = fileDescriptionPacket.byteCount
+				endByteCount = info.byteCount
 			} else {
-				startByteCount = fileDescriptionPacket.byteCount
+				startByteCount = info.byteCount
 				endByteCount = len(fileData)
 			}
-			d.delegate.OnDetectCorruptDataChunk(fileID, fileDescriptionPacket.filename, startByteCount, endByteCount)
+			d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, startByteCount, endByteCount)
 			isCorrupt = true
 		}
 
@@ -400,10 +431,10 @@ func (d *Decoder) buildDataShards() ([][]uint16, []corruptFileInfo, error) {
 			endIndex := len(dataShards)
 			corruptFileInfos = append(corruptFileInfos, corruptFileInfo{
 				i,
-				fileDescriptionPacket.filename,
-				fileDescriptionPacket.byteCount,
+				info.filename,
+				info.byteCount,
 				startIndex, endIndex,
-				fileDescriptionPacket.hash, fileDescriptionPacket.sixteenKHash,
+				info.hash, info.sixteenKHash,
 			})
 		}
 	}
