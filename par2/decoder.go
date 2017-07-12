@@ -45,8 +45,11 @@ type Decoder struct {
 
 	indexPath string
 
-	setID     recoverySetID
-	indexFile file
+	setID                  recoverySetID
+	clientID               string
+	mainPacket             mainPacket
+	fileDescriptionPackets map[fileID]fileDescriptionPacket
+	ifscPackets            map[fileID]ifscPacket
 
 	fileData [][]byte
 
@@ -80,7 +83,25 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string) (*Dec
 		return nil, err
 	}
 
-	return &Decoder{fileIO, delegate, indexPath, setID, indexFile, nil, nil}, nil
+	if indexFile.mainPacket == nil {
+		// TODO: Relax this check.
+		return nil, errors.New("no main packet found")
+	}
+
+	if len(indexFile.recoveryPackets) > 0 {
+		// TODO: Relax this check.
+		return nil, errors.New("recovery packets found in index file")
+	}
+
+	return &Decoder{
+		fileIO, delegate,
+		indexPath,
+		setID,
+		indexFile.clientID, *indexFile.mainPacket,
+		indexFile.fileDescriptionPackets, indexFile.ifscPackets,
+		nil,
+		nil,
+	}, nil
 }
 
 func sixteenKHash(data []byte) [md5.Size]byte {
@@ -92,15 +113,11 @@ func sixteenKHash(data []byte) [md5.Size]byte {
 
 // LoadFileData loads existing file data into memory.
 func (d *Decoder) LoadFileData() error {
-	if d.indexFile.mainPacket == nil {
-		return errors.New("main packet not loaded")
-	}
-
-	fileData := make([][]byte, len(d.indexFile.mainPacket.recoverySet))
+	fileData := make([][]byte, len(d.mainPacket.recoverySet))
 
 	dir := filepath.Dir(d.indexPath)
-	for i, fileID := range d.indexFile.mainPacket.recoverySet {
-		packet, ok := d.indexFile.fileDescriptionPackets[fileID]
+	for i, fileID := range d.mainPacket.recoverySet {
+		packet, ok := d.fileDescriptionPackets[fileID]
 		if !ok {
 			return errors.New("could not find file description packet for")
 		}
@@ -119,7 +136,7 @@ func (d *Decoder) LoadFileData() error {
 			// specifically are corrupt.
 			return data, corrupt, nil
 		}()
-		d.delegate.OnDataFileLoad(i+1, len(d.indexFile.fileDescriptionPackets), path, len(data), corrupt, err)
+		d.delegate.OnDataFileLoad(i+1, len(d.fileDescriptionPackets), path, len(data), corrupt, err)
 		if err != nil && !corrupt {
 			return err
 		}
@@ -166,10 +183,6 @@ func (recoveryDelegate) OnDataFileWrite(i, n int, path string, byteCount int, er
 // LoadParityData searches for parity volumes and loads them into
 // memory.
 func (d *Decoder) LoadParityData() error {
-	if d.indexFile.mainPacket == nil {
-		return errors.New("main packet not loaded")
-	}
-
 	ext := path.Ext(d.indexPath)
 	base := d.indexPath[:len(d.indexPath)-len(ext)]
 	matches, err := d.fileIO.FindWithPrefixAndSuffix(base+".", ext)
@@ -193,7 +206,7 @@ func (d *Decoder) LoadParityData() error {
 				return file{}, err
 			}
 
-			if !reflect.DeepEqual(d.indexFile.mainPacket, parityFile.mainPacket) {
+			if parityFile.mainPacket == nil || !reflect.DeepEqual(d.mainPacket, *parityFile.mainPacket) {
 				return file{}, errors.New("main packet mismatch")
 			}
 
@@ -208,7 +221,7 @@ func (d *Decoder) LoadParityData() error {
 	}
 
 	var parityShards [][]uint16
-	for _, file := range append(parityFiles, d.indexFile) {
+	for _, file := range parityFiles {
 		for exponent, packet := range file.recoveryPackets {
 			if int(exponent) >= len(parityShards) {
 				parityShards = append(parityShards, make([][]uint16, int(exponent+1)-len(parityShards))...)
@@ -294,19 +307,19 @@ type corruptFileInfo struct {
 }
 
 func (d *Decoder) buildDataShards() ([][]uint16, []corruptFileInfo, error) {
-	sliceByteCount := d.indexFile.mainPacket.sliceByteCount
+	sliceByteCount := d.mainPacket.sliceByteCount
 
 	var dataShards [][]uint16
 	var corruptFileInfos []corruptFileInfo
 	for i, fileData := range d.fileData {
-		fileID := d.indexFile.mainPacket.recoverySet[i]
+		fileID := d.mainPacket.recoverySet[i]
 
-		fileDescriptionPacket, ok := d.indexFile.fileDescriptionPackets[fileID]
+		fileDescriptionPacket, ok := d.fileDescriptionPackets[fileID]
 		if !ok {
 			return nil, nil, errors.New("missing file description packet")
 		}
 
-		ifscPacket, ok := d.indexFile.ifscPackets[fileID]
+		ifscPacket, ok := d.ifscPackets[fileID]
 		if !ok {
 			return nil, nil, errors.New("missing input file slice checksums")
 		}
@@ -390,11 +403,7 @@ func (d *Decoder) newCoder(dataShards [][]uint16) (rsec16.Coder, error) {
 // with each other, and returns the result. If any files are missing,
 // Verify returns false.
 func (d *Decoder) Verify() (bool, error) {
-	if d.indexFile.mainPacket == nil {
-		return false, errors.New("main packet not loaded")
-	}
-
-	if len(d.fileData) != len(d.indexFile.mainPacket.recoverySet) {
+	if len(d.fileData) != len(d.mainPacket.recoverySet) {
 		return false, errors.New("file data count mismatch")
 	}
 
@@ -433,11 +442,7 @@ func (d *Decoder) Verify() (bool, error) {
 // parity volumes. Returns a list of files that were successfully
 // repaired, which is present even if an error is returned.
 func (d *Decoder) Repair() ([]string, error) {
-	if d.indexFile.mainPacket == nil {
-		return nil, errors.New("main packet not loaded")
-	}
-
-	if len(d.fileData) != len(d.indexFile.mainPacket.recoverySet) {
+	if len(d.fileData) != len(d.mainPacket.recoverySet) {
 		return nil, errors.New("file data count mismatch")
 	}
 
