@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 )
 
 type fileIO interface {
@@ -126,6 +127,33 @@ func (d *Decoder) LoadFileData() error {
 	return nil
 }
 
+type recoveryDelegate struct {
+	d DecoderDelegate
+}
+
+func (recoveryDelegate) OnCreatorPacketLoad(clientID string) {}
+
+func (recoveryDelegate) OnMainPacketLoad(sliceByteCount, recoverySetCount, nonRecoverySetCount int) {}
+
+func (recoveryDelegate) OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int) {}
+
+func (recoveryDelegate) OnIFSCPacketLoad(fileID [16]byte) {}
+
+func (r recoveryDelegate) OnRecoveryPacketLoad(exponent uint16, byteCount int) {
+	r.d.OnRecoveryPacketLoad(exponent, byteCount)
+}
+
+func (r recoveryDelegate) OnUnknownPacketLoad(packetType [16]byte, byteCount int) {
+	r.d.OnUnknownPacketLoad(packetType, byteCount)
+}
+
+func (recoveryDelegate) OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int) {}
+
+func (recoveryDelegate) OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error) {
+}
+
+func (recoveryDelegate) OnParityFileLoad(i int, path string, err error) {}
+
 // LoadParityData searches for parity volumes and loads them into
 // memory.
 func (d *Decoder) LoadParityData() error {
@@ -148,10 +176,16 @@ func (d *Decoder) LoadParityData() error {
 				return file{}, err
 			}
 
-			_, parityFile, err := readFile(d.delegate, &d.setID, volumeBytes)
+			// Ignore all the other packet types other
+			// than recovery packets.
+			_, parityFile, err := readFile(recoveryDelegate{d.delegate}, &d.setID, volumeBytes)
 			if err != nil {
 				// TODO: Relax this check.
 				return file{}, err
+			}
+
+			if !reflect.DeepEqual(d.indexFile.mainPacket, parityFile.mainPacket) {
+				return file{}, errors.New("main packet mismatch")
 			}
 
 			return parityFile, nil
