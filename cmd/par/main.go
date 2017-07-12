@@ -83,7 +83,7 @@ func (par2LogDecoderDelegate) OnCreatorPacketLoad(clientID string) {
 	fmt.Printf("Loaded creator packet with client ID %q\n", clientID)
 }
 
-func (par2LogDecoderDelegate) OnMainPacketLoad(sliceByteCount uint64, recoverySetCount, nonRecoverySetCount int) {
+func (par2LogDecoderDelegate) OnMainPacketLoad(sliceByteCount, recoverySetCount, nonRecoverySetCount int) {
 	fmt.Printf("Loaded main packet: slice byte count=%d, recovery set size=%d, non-recovery set size=%d\n", sliceByteCount, recoverySetCount, nonRecoverySetCount)
 }
 

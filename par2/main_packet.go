@@ -30,7 +30,7 @@ func fileIDLess(id1, id2 fileID) bool {
 }
 
 type mainPacket struct {
-	sliceByteCount uint64
+	sliceByteCount int
 	recoverySet    []fileID
 	nonRecoverySet []fileID
 }
@@ -44,9 +44,12 @@ func readMainPacket(body []byte) (mainPacket, error) {
 		return mainPacket{}, err
 	}
 
-	if h.SliceSize == 0 || h.SliceSize%4 != 0 {
+	maxInt := uint64(^uint(0) >> 1)
+	if h.SliceSize == 0 || h.SliceSize%4 != 0 || h.SliceSize > maxInt {
 		return mainPacket{}, errors.New("invalid slice size")
 	}
+
+	sliceByteCount := int(h.SliceSize)
 
 	if h.RecoverySetCount == 0 {
 		return mainPacket{}, errors.New("empty recovery set")
@@ -81,5 +84,5 @@ func readMainPacket(body []byte) (mainPacket, error) {
 		return mainPacket{}, errors.New("non-recovery set IDs not sorted")
 	}
 
-	return mainPacket{h.SliceSize, recoverySet, nonRecoverySet}, nil
+	return mainPacket{sliceByteCount, recoverySet, nonRecoverySet}, nil
 }
