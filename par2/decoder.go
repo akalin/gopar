@@ -76,6 +76,15 @@ func makeInputFileInfos(fileIDs []fileID, fileDescriptionPackets map[fileID]file
 	return inputFileInfos, nil
 }
 
+type corruptFileInfo struct {
+	i                    int
+	filename             string
+	byteCount            int
+	startIndex, endIndex int
+	hash                 [md5.Size]byte
+	sixteenKHash         [md5.Size]byte
+}
+
 // A Decoder keeps track of all information needed to check the
 // integrity of a set of data files, and possibly repair any
 // missing/corrupted data files from the parity files (that usually
@@ -92,7 +101,8 @@ type Decoder struct {
 	recoverySet    []inputFileInfo
 	nonRecoverySet []inputFileInfo
 
-	fileData [][]byte
+	dataShards       [][]uint16
+	corruptFileInfos []corruptFileInfo
 
 	parityShards [][]uint16
 }
@@ -150,7 +160,7 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string) (*Dec
 		setID,
 		indexFile.clientID, indexFile.mainPacket.sliceByteCount,
 		recoverySet, nonRecoverySet,
-		nil,
+		nil, nil,
 		nil,
 	}, nil
 }
@@ -190,105 +200,13 @@ func (d *Decoder) LoadFileData() error {
 		fileData[i] = data
 	}
 
-	d.fileData = fileData
-	return nil
-}
-
-type recoveryDelegate struct {
-	d DecoderDelegate
-}
-
-func (recoveryDelegate) OnCreatorPacketLoad(clientID string) {}
-
-func (recoveryDelegate) OnMainPacketLoad(sliceByteCount, recoverySetCount, nonRecoverySetCount int) {}
-
-func (recoveryDelegate) OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int) {}
-
-func (recoveryDelegate) OnIFSCPacketLoad(fileID [16]byte) {}
-
-func (r recoveryDelegate) OnRecoveryPacketLoad(exponent uint16, byteCount int) {
-	r.d.OnRecoveryPacketLoad(exponent, byteCount)
-}
-
-func (r recoveryDelegate) OnUnknownPacketLoad(packetType [16]byte, byteCount int) {
-	r.d.OnUnknownPacketLoad(packetType, byteCount)
-}
-
-func (recoveryDelegate) OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int) {}
-
-func (recoveryDelegate) OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error) {
-}
-
-func (recoveryDelegate) OnParityFileLoad(i int, path string, err error) {}
-
-func (recoveryDelegate) OnDetectCorruptDataChunk(fileID [16]byte, filename string, startByteOffset, endByteOffset int) {
-}
-
-func (recoveryDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {}
-
-// LoadParityData searches for parity volumes and loads them into
-// memory.
-func (d *Decoder) LoadParityData() error {
-	ext := path.Ext(d.indexPath)
-	base := d.indexPath[:len(d.indexPath)-len(ext)]
-	matches, err := d.fileIO.FindWithPrefixAndSuffix(base+".", ext)
+	dataShards, corruptFileInfos, err := d.buildDataShards(fileData)
 	if err != nil {
 		return err
 	}
 
-	var parityFiles []file
-	for i, match := range matches {
-		parityFile, err := func() (file, error) {
-			volumeBytes, err := d.fileIO.ReadFile(match)
-			if err != nil {
-				return file{}, err
-			}
-
-			// Ignore all the other packet types other
-			// than recovery packets.
-			_, parityFile, err := readFile(recoveryDelegate{d.delegate}, &d.setID, volumeBytes)
-			if err != nil {
-				// TODO: Relax this check.
-				return file{}, err
-			}
-
-			if parityFile.mainPacket == nil {
-				return file{}, errors.New("no main packet in parity file")
-			}
-
-			if d.sliceByteCount != parityFile.mainPacket.sliceByteCount {
-				return file{}, errors.New("slice size mismatch")
-			}
-
-			if !reflect.DeepEqual(inputFileInfoIDs(d.recoverySet), parityFile.mainPacket.recoverySet) {
-				return file{}, errors.New("recovery set mismatch")
-			}
-
-			if !reflect.DeepEqual(inputFileInfoIDs(d.nonRecoverySet), parityFile.mainPacket.nonRecoverySet) {
-				return file{}, errors.New("non-recovery set mismatch")
-			}
-
-			return parityFile, nil
-		}()
-		d.delegate.OnParityFileLoad(i+1, match, err)
-		if err != nil {
-			return err
-		}
-
-		parityFiles = append(parityFiles, parityFile)
-	}
-
-	var parityShards [][]uint16
-	for _, file := range parityFiles {
-		for exponent, packet := range file.recoveryPackets {
-			if int(exponent) >= len(parityShards) {
-				parityShards = append(parityShards, make([][]uint16, int(exponent+1)-len(parityShards))...)
-			}
-			parityShards[exponent] = packet.data
-		}
-	}
-
-	d.parityShards = parityShards
+	d.dataShards = dataShards
+	d.corruptFileInfos = corruptFileInfos
 	return nil
 }
 
@@ -355,22 +273,13 @@ func findChunk(checksumPair checksumPair, fileData []byte, sliceByteCount, expec
 	return nil, false
 }
 
-type corruptFileInfo struct {
-	i                    int
-	filename             string
-	byteCount            int
-	startIndex, endIndex int
-	hash                 [md5.Size]byte
-	sixteenKHash         [md5.Size]byte
-}
-
-func (d *Decoder) buildDataShards() ([][]uint16, []corruptFileInfo, error) {
+func (d *Decoder) buildDataShards(fileData [][]byte) ([][]uint16, []corruptFileInfo, error) {
 	sliceByteCount := d.sliceByteCount
 
 	var dataShards [][]uint16
 	var corruptFileInfos []corruptFileInfo
 	for i, info := range d.recoverySet {
-		fileData := d.fileData[i]
+		fileData := fileData[i]
 		if len(fileData) == 0 {
 			startIndex := len(dataShards)
 			dataShards = append(dataShards, make([][]uint16, len(info.checksumPairs))...)
@@ -442,22 +351,110 @@ func (d *Decoder) buildDataShards() ([][]uint16, []corruptFileInfo, error) {
 	return dataShards, corruptFileInfos, nil
 }
 
-func (d *Decoder) newCoder(dataShards [][]uint16) (rsec16.Coder, error) {
-	return rsec16.NewCoderPAR2Vandermonde(len(dataShards), len(d.parityShards))
+type recoveryDelegate struct {
+	d DecoderDelegate
+}
+
+func (recoveryDelegate) OnCreatorPacketLoad(clientID string) {}
+
+func (recoveryDelegate) OnMainPacketLoad(sliceByteCount, recoverySetCount, nonRecoverySetCount int) {}
+
+func (recoveryDelegate) OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int) {}
+
+func (recoveryDelegate) OnIFSCPacketLoad(fileID [16]byte) {}
+
+func (r recoveryDelegate) OnRecoveryPacketLoad(exponent uint16, byteCount int) {
+	r.d.OnRecoveryPacketLoad(exponent, byteCount)
+}
+
+func (r recoveryDelegate) OnUnknownPacketLoad(packetType [16]byte, byteCount int) {
+	r.d.OnUnknownPacketLoad(packetType, byteCount)
+}
+
+func (recoveryDelegate) OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int) {}
+
+func (recoveryDelegate) OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error) {
+}
+
+func (recoveryDelegate) OnParityFileLoad(i int, path string, err error) {}
+
+func (recoveryDelegate) OnDetectCorruptDataChunk(fileID [16]byte, filename string, startByteOffset, endByteOffset int) {
+}
+
+func (recoveryDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {}
+
+// LoadParityData searches for parity volumes and loads them into
+// memory.
+func (d *Decoder) LoadParityData() error {
+	ext := path.Ext(d.indexPath)
+	base := d.indexPath[:len(d.indexPath)-len(ext)]
+	matches, err := d.fileIO.FindWithPrefixAndSuffix(base+".", ext)
+	if err != nil {
+		return err
+	}
+
+	var parityFiles []file
+	for i, match := range matches {
+		parityFile, err := func() (file, error) {
+			volumeBytes, err := d.fileIO.ReadFile(match)
+			if err != nil {
+				return file{}, err
+			}
+
+			// Ignore all the other packet types other
+			// than recovery packets.
+			_, parityFile, err := readFile(recoveryDelegate{d.delegate}, &d.setID, volumeBytes)
+			if err != nil {
+				// TODO: Relax this check.
+				return file{}, err
+			}
+
+			if d.sliceByteCount != parityFile.mainPacket.sliceByteCount {
+				return file{}, errors.New("slice size mismatch")
+			}
+
+			if !reflect.DeepEqual(inputFileInfoIDs(d.recoverySet), parityFile.mainPacket.recoverySet) {
+				return file{}, errors.New("recovery set mismatch")
+			}
+
+			if !reflect.DeepEqual(inputFileInfoIDs(d.nonRecoverySet), parityFile.mainPacket.nonRecoverySet) {
+				return file{}, errors.New("non-recovery set mismatch")
+			}
+
+			return parityFile, nil
+		}()
+		d.delegate.OnParityFileLoad(i+1, match, err)
+		if err != nil {
+			return err
+		}
+
+		parityFiles = append(parityFiles, parityFile)
+	}
+
+	var parityShards [][]uint16
+	for _, file := range parityFiles {
+		for exponent, packet := range file.recoveryPackets {
+			if int(exponent) >= len(parityShards) {
+				parityShards = append(parityShards, make([][]uint16, int(exponent+1)-len(parityShards))...)
+			}
+			parityShards[exponent] = packet.data
+		}
+	}
+
+	d.parityShards = parityShards
+	return nil
+}
+
+func (d *Decoder) newCoder() (rsec16.Coder, error) {
+	return rsec16.NewCoderPAR2Vandermonde(len(d.dataShards), len(d.parityShards))
 }
 
 // Verify checks that all file and known parity data are consistent
 // with each other, and returns the result. If any files are missing,
 // Verify returns false.
 func (d *Decoder) Verify() (bool, error) {
-	if len(d.fileData) != len(d.recoverySet) {
-		return false, errors.New("file data count mismatch")
-	}
-
-	for _, data := range d.fileData {
-		if data == nil {
-			return false, nil
-		}
+	if len(d.corruptFileInfos) > 0 {
+		return false, nil
 	}
 
 	for _, shard := range d.parityShards {
@@ -466,21 +463,12 @@ func (d *Decoder) Verify() (bool, error) {
 		}
 	}
 
-	dataShards, corruptFileInfos, err := d.buildDataShards()
+	coder, err := d.newCoder()
 	if err != nil {
 		return false, err
 	}
 
-	if len(corruptFileInfos) > 0 {
-		return false, nil
-	}
-
-	coder, err := d.newCoder(dataShards)
-	if err != nil {
-		return false, err
-	}
-
-	computedParityShards := coder.GenerateParity(dataShards)
+	computedParityShards := coder.GenerateParity(d.dataShards)
 	eq := reflect.DeepEqual(computedParityShards, d.parityShards)
 	return eq, nil
 }
@@ -489,33 +477,36 @@ func (d *Decoder) Verify() (bool, error) {
 // parity volumes. Returns a list of files that were successfully
 // repaired, which is present even if an error is returned.
 func (d *Decoder) Repair() ([]string, error) {
-	if len(d.fileData) != len(d.recoverySet) {
-		return nil, errors.New("file data count mismatch")
-	}
-
-	dataShards, corruptFileInfos, err := d.buildDataShards()
+	coder, err := d.newCoder()
 	if err != nil {
 		return nil, err
 	}
 
-	coder, err := d.newCoder(dataShards)
+	err = coder.ReconstructData(d.dataShards, d.parityShards)
 	if err != nil {
 		return nil, err
 	}
 
-	err = coder.ReconstructData(dataShards, d.parityShards)
-	if err != nil {
-		return nil, err
+	computedParityShards := coder.GenerateParity(d.dataShards)
+	for i, shard := range d.parityShards {
+		if len(shard) == 0 {
+			continue
+		}
+
+		eq := reflect.DeepEqual(computedParityShards[i], shard)
+		if !eq {
+			return nil, errors.New("repair failed")
+		}
 	}
 
 	dir := filepath.Dir(d.indexPath)
 
 	var repairedFiles []string
 
-	for _, corruptFileInfo := range corruptFileInfos {
+	for _, corruptFileInfo := range d.corruptFileInfos {
 		var data []uint16
 		for i := corruptFileInfo.startIndex; i < corruptFileInfo.endIndex; i++ {
-			data = append(data, dataShards[i]...)
+			data = append(data, d.dataShards[i]...)
 		}
 
 		buf := bytes.NewBuffer(nil)
@@ -533,17 +524,18 @@ func (d *Decoder) Repair() ([]string, error) {
 
 		path := filepath.Join(dir, corruptFileInfo.filename)
 		err = d.fileIO.WriteFile(path, byteData)
-		d.delegate.OnDataFileWrite(corruptFileInfo.i+1, len(d.fileData), path, len(byteData), err)
+		d.delegate.OnDataFileWrite(corruptFileInfo.i+1, len(d.recoverySet), path, len(byteData), err)
 		if err != nil {
 			return repairedFiles, err
 		}
 
 		repairedFiles = append(repairedFiles, corruptFileInfo.filename)
-		d.fileData[corruptFileInfo.i] = byteData
 	}
 
 	// TODO: Repair missing parity volumes, too, and then make
 	// sure d.Verify() passes.
+
+	d.corruptFileInfos = nil
 
 	return repairedFiles, nil
 }
