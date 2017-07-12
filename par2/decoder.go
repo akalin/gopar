@@ -47,7 +47,9 @@ type Decoder struct {
 
 	setID                  recoverySetID
 	clientID               string
-	mainPacket             mainPacket
+	sliceByteCount         int
+	recoverySet            []fileID
+	nonRecoverySet         []fileID
 	fileDescriptionPackets map[fileID]fileDescriptionPacket
 	ifscPackets            map[fileID]ifscPacket
 
@@ -97,7 +99,9 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string) (*Dec
 		fileIO, delegate,
 		indexPath,
 		setID,
-		indexFile.clientID, *indexFile.mainPacket,
+		indexFile.clientID, indexFile.mainPacket.sliceByteCount,
+		indexFile.mainPacket.recoverySet,
+		indexFile.mainPacket.nonRecoverySet,
 		indexFile.fileDescriptionPackets, indexFile.ifscPackets,
 		nil,
 		nil,
@@ -113,10 +117,10 @@ func sixteenKHash(data []byte) [md5.Size]byte {
 
 // LoadFileData loads existing file data into memory.
 func (d *Decoder) LoadFileData() error {
-	fileData := make([][]byte, len(d.mainPacket.recoverySet))
+	fileData := make([][]byte, len(d.recoverySet))
 
 	dir := filepath.Dir(d.indexPath)
-	for i, fileID := range d.mainPacket.recoverySet {
+	for i, fileID := range d.recoverySet {
 		packet, ok := d.fileDescriptionPackets[fileID]
 		if !ok {
 			return errors.New("could not find file description packet for")
@@ -206,8 +210,20 @@ func (d *Decoder) LoadParityData() error {
 				return file{}, err
 			}
 
-			if parityFile.mainPacket == nil || !reflect.DeepEqual(d.mainPacket, *parityFile.mainPacket) {
-				return file{}, errors.New("main packet mismatch")
+			if parityFile.mainPacket == nil {
+				return file{}, errors.New("no main packet in parity file")
+			}
+
+			if d.sliceByteCount != parityFile.mainPacket.sliceByteCount {
+				return file{}, errors.New("slice size mismatch")
+			}
+
+			if !reflect.DeepEqual(d.recoverySet, parityFile.mainPacket.recoverySet) {
+				return file{}, errors.New("recovery set mismatch")
+			}
+
+			if !reflect.DeepEqual(d.nonRecoverySet, parityFile.mainPacket.nonRecoverySet) {
+				return file{}, errors.New("non-recovery set mismatch")
 			}
 
 			return parityFile, nil
@@ -307,12 +323,12 @@ type corruptFileInfo struct {
 }
 
 func (d *Decoder) buildDataShards() ([][]uint16, []corruptFileInfo, error) {
-	sliceByteCount := d.mainPacket.sliceByteCount
+	sliceByteCount := d.sliceByteCount
 
 	var dataShards [][]uint16
 	var corruptFileInfos []corruptFileInfo
 	for i, fileData := range d.fileData {
-		fileID := d.mainPacket.recoverySet[i]
+		fileID := d.recoverySet[i]
 
 		fileDescriptionPacket, ok := d.fileDescriptionPackets[fileID]
 		if !ok {
@@ -403,7 +419,7 @@ func (d *Decoder) newCoder(dataShards [][]uint16) (rsec16.Coder, error) {
 // with each other, and returns the result. If any files are missing,
 // Verify returns false.
 func (d *Decoder) Verify() (bool, error) {
-	if len(d.fileData) != len(d.mainPacket.recoverySet) {
+	if len(d.fileData) != len(d.recoverySet) {
 		return false, errors.New("file data count mismatch")
 	}
 
@@ -442,7 +458,7 @@ func (d *Decoder) Verify() (bool, error) {
 // parity volumes. Returns a list of files that were successfully
 // repaired, which is present even if an error is returned.
 func (d *Decoder) Repair() ([]string, error) {
-	if len(d.fileData) != len(d.mainPacket.recoverySet) {
+	if len(d.fileData) != len(d.recoverySet) {
 		return nil, errors.New("file data count mismatch")
 	}
 
