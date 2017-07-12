@@ -76,13 +76,15 @@ func makeInputFileInfos(fileIDs []fileID, fileDescriptionPackets map[fileID]file
 	return inputFileInfos, nil
 }
 
-type corruptFileInfo struct {
-	i                    int
-	filename             string
-	byteCount            int
-	startIndex, endIndex int
-	hash                 [md5.Size]byte
-	sixteenKHash         [md5.Size]byte
+type fileIntegrityInfo struct {
+	missing           bool
+	corrupt           bool
+	hasWrongByteCount bool
+	dataShards        [][]uint16
+}
+
+func (info fileIntegrityInfo) ok() bool {
+	return !info.missing && !info.corrupt && !info.hasWrongByteCount
 }
 
 // A Decoder keeps track of all information needed to check the
@@ -101,8 +103,8 @@ type Decoder struct {
 	recoverySet    []inputFileInfo
 	nonRecoverySet []inputFileInfo
 
-	dataShards       [][]uint16
-	corruptFileInfos []corruptFileInfo
+	// Indexed the same as recoverySet.
+	fileIntegrityInfos []fileIntegrityInfo
 
 	parityShards [][]uint16
 }
@@ -160,7 +162,7 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string) (*Dec
 		setID,
 		indexFile.clientID, indexFile.mainPacket.sliceByteCount,
 		recoverySet, nonRecoverySet,
-		nil, nil,
+		nil,
 		nil,
 	}, nil
 }
@@ -200,13 +202,12 @@ func (d *Decoder) LoadFileData() error {
 		fileData[i] = data
 	}
 
-	dataShards, corruptFileInfos, err := d.buildDataShards(fileData)
+	fileIntegrityInfos, err := d.buildFileIntegrityInfos(fileData)
 	if err != nil {
 		return err
 	}
 
-	d.dataShards = dataShards
-	d.corruptFileInfos = corruptFileInfos
+	d.fileIntegrityInfos = fileIntegrityInfos
 	return nil
 }
 
@@ -273,57 +274,50 @@ func findChunk(checksumPair checksumPair, fileData []byte, sliceByteCount, expec
 	return nil, false
 }
 
-func (d *Decoder) buildDataShards(fileData [][]byte) ([][]uint16, []corruptFileInfo, error) {
-	sliceByteCount := d.sliceByteCount
-
-	var dataShards [][]uint16
-	var corruptFileInfos []corruptFileInfo
+func (d *Decoder) buildFileIntegrityInfos(fileData [][]byte) ([]fileIntegrityInfo, error) {
+	fileIntegrityInfos := make([]fileIntegrityInfo, len(d.recoverySet))
 	for i, info := range d.recoverySet {
 		fileData := fileData[i]
 		if len(fileData) == 0 {
-			startIndex := len(dataShards)
-			dataShards = append(dataShards, make([][]uint16, len(info.checksumPairs))...)
+			dataShards := make([][]uint16, len(info.checksumPairs))
 			d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, 0, info.byteCount)
-			endIndex := len(dataShards)
-			corruptFileInfos = append(corruptFileInfos, corruptFileInfo{
-				i,
-				info.filename,
-				info.byteCount,
-				startIndex, endIndex,
-				info.hash, info.sixteenKHash,
-			})
+			fileIntegrityInfos[i] = fileIntegrityInfo{
+				missing:    true,
+				dataShards: dataShards,
+			}
 			continue
 		}
 
-		startIndex := len(dataShards)
-		isCorrupt := false
+		var dataShards [][]uint16
+		corrupt := false
 		for j, checksumPair := range info.checksumPairs {
 			// TODO: Handle overflow.
-			expectedStartByteOffset := j * sliceByteCount
-			chunk, ok := findChunk(checksumPair, fileData, sliceByteCount, expectedStartByteOffset)
+			expectedStartByteOffset := j * d.sliceByteCount
+			chunk, ok := findChunk(checksumPair, fileData, d.sliceByteCount, expectedStartByteOffset)
 			// TODO: Pass more info to the delegate
 			// method, like where the chunk was detected
 			// (if not at the expected location).
 			if chunk == nil {
 				dataShards = append(dataShards, nil)
-				d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, expectedStartByteOffset, expectedStartByteOffset+sliceByteCount)
-				isCorrupt = true
+				d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, expectedStartByteOffset, expectedStartByteOffset+d.sliceByteCount)
+				corrupt = true
 				continue
 			} else if !ok {
-				d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, expectedStartByteOffset, expectedStartByteOffset+sliceByteCount)
-				isCorrupt = true
+				d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, expectedStartByteOffset, expectedStartByteOffset+d.sliceByteCount)
+				corrupt = true
 			}
 
 			dataShard := make([]uint16, len(chunk)/2)
 			err := binary.Read(bytes.NewBuffer(chunk), binary.LittleEndian, dataShard)
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 
 			dataShards = append(dataShards, dataShard)
 		}
 
-		if !isCorrupt && len(fileData) != info.byteCount {
+		hasWrongByteCount := false
+		if len(fileData) != info.byteCount {
 			var startByteCount, endByteCount int
 			if len(fileData) < info.byteCount {
 				startByteCount = len(fileData)
@@ -333,22 +327,17 @@ func (d *Decoder) buildDataShards(fileData [][]byte) ([][]uint16, []corruptFileI
 				endByteCount = len(fileData)
 			}
 			d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, startByteCount, endByteCount)
-			isCorrupt = true
+			hasWrongByteCount = true
 		}
 
-		if isCorrupt {
-			endIndex := len(dataShards)
-			corruptFileInfos = append(corruptFileInfos, corruptFileInfo{
-				i,
-				info.filename,
-				info.byteCount,
-				startIndex, endIndex,
-				info.hash, info.sixteenKHash,
-			})
+		fileIntegrityInfos[i] = fileIntegrityInfo{
+			corrupt:           corrupt,
+			hasWrongByteCount: hasWrongByteCount,
+			dataShards:        dataShards,
 		}
 	}
 
-	return dataShards, corruptFileInfos, nil
+	return fileIntegrityInfos, nil
 }
 
 type recoveryDelegate struct {
@@ -445,16 +434,35 @@ func (d *Decoder) LoadParityData() error {
 	return nil
 }
 
-func (d *Decoder) newCoder() (rsec16.Coder, error) {
-	return rsec16.NewCoderPAR2Vandermonde(len(d.dataShards), len(d.parityShards))
+func (d *Decoder) newCoderAndShards() (rsec16.Coder, [][]uint16, error) {
+	var dataShards [][]uint16
+	for _, info := range d.fileIntegrityInfos {
+		dataShards = append(dataShards, info.dataShards...)
+	}
+	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), len(d.parityShards))
+	if err != nil {
+		return rsec16.Coder{}, nil, err
+	}
+
+	return coder, dataShards, err
 }
 
 // Verify checks that all file and known parity data are consistent
 // with each other, and returns the result. If any files are missing,
 // Verify returns false.
 func (d *Decoder) Verify() (bool, error) {
-	if len(d.corruptFileInfos) > 0 {
-		return false, nil
+	if len(d.fileIntegrityInfos) == 0 {
+		return false, errors.New("no file integrity info")
+	}
+
+	if len(d.parityShards) == 0 {
+		return false, errors.New("no parity data")
+	}
+
+	for _, info := range d.fileIntegrityInfos {
+		if !info.ok() {
+			return false, nil
+		}
 	}
 
 	for _, shard := range d.parityShards {
@@ -463,12 +471,12 @@ func (d *Decoder) Verify() (bool, error) {
 		}
 	}
 
-	coder, err := d.newCoder()
+	coder, dataShards, err := d.newCoderAndShards()
 	if err != nil {
 		return false, err
 	}
 
-	computedParityShards := coder.GenerateParity(d.dataShards)
+	computedParityShards := coder.GenerateParity(dataShards)
 	eq := reflect.DeepEqual(computedParityShards, d.parityShards)
 	return eq, nil
 }
@@ -477,17 +485,25 @@ func (d *Decoder) Verify() (bool, error) {
 // parity volumes. Returns a list of files that were successfully
 // repaired, which is present even if an error is returned.
 func (d *Decoder) Repair() ([]string, error) {
-	coder, err := d.newCoder()
+	if len(d.fileIntegrityInfos) == 0 {
+		return nil, errors.New("no file integrity info")
+	}
+
+	if len(d.parityShards) == 0 {
+		return nil, errors.New("no parity shards")
+	}
+
+	coder, dataShards, err := d.newCoderAndShards()
 	if err != nil {
 		return nil, err
 	}
 
-	err = coder.ReconstructData(d.dataShards, d.parityShards)
+	err = coder.ReconstructData(dataShards, d.parityShards)
 	if err != nil {
 		return nil, err
 	}
 
-	computedParityShards := coder.GenerateParity(d.dataShards)
+	computedParityShards := coder.GenerateParity(dataShards)
 	for i, shard := range d.parityShards {
 		if len(shard) == 0 {
 			continue
@@ -503,39 +519,47 @@ func (d *Decoder) Repair() ([]string, error) {
 
 	var repairedFiles []string
 
-	for _, corruptFileInfo := range d.corruptFileInfos {
-		var data []uint16
-		for i := corruptFileInfo.startIndex; i < corruptFileInfo.endIndex; i++ {
-			data = append(data, d.dataShards[i]...)
+	j := 0
+	for i, info := range d.fileIntegrityInfos {
+		shardCount := len(info.dataShards)
+		info.dataShards = dataShards[j : j+shardCount]
+		j += shardCount
+		d.fileIntegrityInfos[i] = info
+	}
+
+	for i, inputFileInfo := range d.recoverySet {
+		fileIntegrityInfo := d.fileIntegrityInfos[i]
+		if fileIntegrityInfo.ok() {
+			continue
 		}
 
 		buf := bytes.NewBuffer(nil)
-		err := binary.Write(buf, binary.LittleEndian, data)
-		if err != nil {
-			return repairedFiles, err
+		for _, dataShard := range fileIntegrityInfo.dataShards {
+			err := binary.Write(buf, binary.LittleEndian, dataShard)
+			if err != nil {
+				return repairedFiles, err
+			}
 		}
 
-		byteData := buf.Bytes()[:corruptFileInfo.byteCount]
-		if sixteenKHash(byteData) != corruptFileInfo.sixteenKHash {
+		data := buf.Bytes()[:inputFileInfo.byteCount]
+		if sixteenKHash(data) != inputFileInfo.sixteenKHash {
 			return repairedFiles, errors.New("hash mismatch (16k) in reconstructed data")
-		} else if md5.Sum(byteData) != corruptFileInfo.hash {
+		} else if md5.Sum(data) != inputFileInfo.hash {
 			return repairedFiles, errors.New("hash mismatch in reconstructed data")
 		}
 
-		path := filepath.Join(dir, corruptFileInfo.filename)
-		err = d.fileIO.WriteFile(path, byteData)
-		d.delegate.OnDataFileWrite(corruptFileInfo.i+1, len(d.recoverySet), path, len(byteData), err)
+		path := filepath.Join(dir, inputFileInfo.filename)
+		err = d.fileIO.WriteFile(path, data)
+		d.delegate.OnDataFileWrite(i+1, len(d.recoverySet), path, len(data), err)
 		if err != nil {
 			return repairedFiles, err
 		}
 
-		repairedFiles = append(repairedFiles, corruptFileInfo.filename)
+		repairedFiles = append(repairedFiles, inputFileInfo.filename)
 	}
 
 	// TODO: Repair missing parity volumes, too, and then make
 	// sure d.Verify() passes.
-
-	d.corruptFileInfos = nil
 
 	return repairedFiles, nil
 }
