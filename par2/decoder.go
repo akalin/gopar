@@ -78,13 +78,14 @@ func makeInputFileInfos(fileIDs []fileID, fileDescriptionPackets map[fileID]file
 
 type fileIntegrityInfo struct {
 	missing           bool
+	hashMismatch      bool
 	corrupt           bool
 	hasWrongByteCount bool
 	dataShards        [][]uint16
 }
 
 func (info fileIntegrityInfo) ok() bool {
-	return !info.missing && !info.corrupt && !info.hasWrongByteCount
+	return !info.missing && !info.hashMismatch && !info.corrupt && !info.hasWrongByteCount
 }
 
 // A Decoder keeps track of all information needed to check the
@@ -119,7 +120,7 @@ type DecoderDelegate interface {
 	OnRecoveryPacketLoad(exponent uint16, byteCount int)
 	OnUnknownPacketLoad(packetType [16]byte, byteCount int)
 	OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int)
-	OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error)
+	OnDataFileLoad(i, n int, path string, byteCount int, hashMismatch, corrupt, hasWrongByteCount bool, err error)
 	OnParityFileLoad(i int, path string, err error)
 	OnDetectCorruptDataChunk(fileID [16]byte, filename string, startByteOffset, endByteOffset int)
 	OnDataFileWrite(i, n int, path string, byteCount int, err error)
@@ -172,43 +173,6 @@ func sixteenKHash(data []byte) [md5.Size]byte {
 		return md5.Sum(data)
 	}
 	return md5.Sum(data[:16*1024])
-}
-
-// LoadFileData loads existing file data into memory.
-func (d *Decoder) LoadFileData() error {
-	fileData := make([][]byte, len(d.recoverySet))
-
-	dir := filepath.Dir(d.indexPath)
-	for i, info := range d.recoverySet {
-		path := filepath.Join(dir, info.filename)
-		data, corrupt, err := func() ([]byte, bool, error) {
-			data, err := d.fileIO.ReadFile(path)
-			if os.IsNotExist(err) {
-				return nil, true, err
-			} else if err != nil {
-				return nil, false, err
-			}
-			corrupt := sixteenKHash(data) != info.sixteenKHash || md5.Sum(data) != info.hash
-			// If corrupt, load data anyway, and let
-			// buildDataShards() sort out which chunks
-			// specifically are corrupt.
-			return data, corrupt, nil
-		}()
-		d.delegate.OnDataFileLoad(i+1, len(d.recoverySet), path, len(data), corrupt, err)
-		if err != nil && !corrupt {
-			return err
-		}
-
-		fileData[i] = data
-	}
-
-	fileIntegrityInfos, err := d.buildFileIntegrityInfos(fileData)
-	if err != nil {
-		return err
-	}
-
-	d.fileIntegrityInfos = fileIntegrityInfos
-	return nil
 }
 
 func getChunkIfMatchesHash(checksumPair checksumPair, fileData []byte, sliceByteCount, startOffset int) []byte {
@@ -274,70 +238,86 @@ func findChunk(checksumPair checksumPair, fileData []byte, sliceByteCount, expec
 	return nil, false
 }
 
-func (d *Decoder) buildFileIntegrityInfos(fileData [][]byte) ([]fileIntegrityInfo, error) {
-	fileIntegrityInfos := make([]fileIntegrityInfo, len(d.recoverySet))
-	for i, info := range d.recoverySet {
-		fileData := fileData[i]
-		if len(fileData) == 0 {
-			dataShards := make([][]uint16, len(info.checksumPairs))
-			d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, 0, info.byteCount)
-			fileIntegrityInfos[i] = fileIntegrityInfo{
-				missing:    true,
-				dataShards: dataShards,
-			}
-			continue
-		}
-
-		var dataShards [][]uint16
-		corrupt := false
-		for j, checksumPair := range info.checksumPairs {
-			// TODO: Handle overflow.
-			expectedStartByteOffset := j * d.sliceByteCount
-			chunk, ok := findChunk(checksumPair, fileData, d.sliceByteCount, expectedStartByteOffset)
-			// TODO: Pass more info to the delegate
-			// method, like where the chunk was detected
-			// (if not at the expected location).
-			if chunk == nil {
-				dataShards = append(dataShards, nil)
-				d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, expectedStartByteOffset, expectedStartByteOffset+d.sliceByteCount)
-				corrupt = true
-				continue
-			} else if !ok {
-				d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, expectedStartByteOffset, expectedStartByteOffset+d.sliceByteCount)
-				corrupt = true
-			}
-
-			dataShard := make([]uint16, len(chunk)/2)
-			err := binary.Read(bytes.NewBuffer(chunk), binary.LittleEndian, dataShard)
-			if err != nil {
-				return nil, err
-			}
-
-			dataShards = append(dataShards, dataShard)
-		}
-
-		hasWrongByteCount := false
-		if len(fileData) != info.byteCount {
-			var startByteCount, endByteCount int
-			if len(fileData) < info.byteCount {
-				startByteCount = len(fileData)
-				endByteCount = info.byteCount
-			} else {
-				startByteCount = info.byteCount
-				endByteCount = len(fileData)
-			}
-			d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, startByteCount, endByteCount)
-			hasWrongByteCount = true
-		}
-
-		fileIntegrityInfos[i] = fileIntegrityInfo{
-			corrupt:           corrupt,
-			hasWrongByteCount: hasWrongByteCount,
-			dataShards:        dataShards,
-		}
+func (d *Decoder) buildFileIntegrityInfo(info inputFileInfo) (int, fileIntegrityInfo, error) {
+	path := filepath.Join(filepath.Dir(d.indexPath), info.filename)
+	data, err := d.fileIO.ReadFile(path)
+	if os.IsNotExist(err) {
+		dataShards := make([][]uint16, len(info.checksumPairs))
+		return 0, fileIntegrityInfo{
+			missing:    true,
+			dataShards: dataShards,
+		}, nil
+	} else if err != nil {
+		return len(data), fileIntegrityInfo{}, err
 	}
 
-	return fileIntegrityInfos, nil
+	hashMismatch := sixteenKHash(data) != info.sixteenKHash || md5.Sum(data) != info.hash
+
+	var dataShards [][]uint16
+	corrupt := false
+	for i, checksumPair := range info.checksumPairs {
+		// TODO: Handle overflow.
+		expectedStartByteOffset := i * d.sliceByteCount
+		chunk, ok := findChunk(checksumPair, data, d.sliceByteCount, expectedStartByteOffset)
+		// TODO: Pass more info to the delegate method, like
+		// where the chunk was detected (if not at the
+		// expected location).
+		if chunk == nil {
+			dataShards = append(dataShards, nil)
+			d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, expectedStartByteOffset, expectedStartByteOffset+d.sliceByteCount)
+			corrupt = true
+			continue
+		} else if !ok {
+			d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, expectedStartByteOffset, expectedStartByteOffset+d.sliceByteCount)
+			corrupt = true
+		}
+
+		dataShard := make([]uint16, len(chunk)/2)
+		err := binary.Read(bytes.NewBuffer(chunk), binary.LittleEndian, dataShard)
+		if err != nil {
+			return len(data), fileIntegrityInfo{}, err
+		}
+
+		dataShards = append(dataShards, dataShard)
+	}
+
+	hasWrongByteCount := false
+	if len(data) != info.byteCount {
+		var startByteOffset, endByteOffset int
+		if len(data) < info.byteCount {
+			startByteOffset = len(data)
+			endByteOffset = info.byteCount
+		} else {
+			startByteOffset = info.byteCount
+			endByteOffset = len(data)
+		}
+		d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, startByteOffset, endByteOffset)
+		hasWrongByteCount = true
+	}
+
+	return len(data), fileIntegrityInfo{
+		hashMismatch:      hashMismatch,
+		corrupt:           corrupt,
+		hasWrongByteCount: hasWrongByteCount,
+		dataShards:        dataShards,
+	}, nil
+}
+
+// LoadFileData loads existing file data into memory.
+func (d *Decoder) LoadFileData() error {
+	fileIntegrityInfos := make([]fileIntegrityInfo, len(d.recoverySet))
+	for i, info := range d.recoverySet {
+		byteCount, fileIntegrityInfo, err := d.buildFileIntegrityInfo(info)
+		d.delegate.OnDataFileLoad(i+1, len(d.recoverySet), info.filename, byteCount, fileIntegrityInfo.hashMismatch, fileIntegrityInfo.corrupt, fileIntegrityInfo.hasWrongByteCount, err)
+		if err != nil {
+			return err
+		}
+
+		fileIntegrityInfos[i] = fileIntegrityInfo
+	}
+
+	d.fileIntegrityInfos = fileIntegrityInfos
+	return nil
 }
 
 type recoveryDelegate struct {
@@ -362,7 +342,7 @@ func (r recoveryDelegate) OnUnknownPacketLoad(packetType [16]byte, byteCount int
 
 func (recoveryDelegate) OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int) {}
 
-func (recoveryDelegate) OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error) {
+func (recoveryDelegate) OnDataFileLoad(i, n int, path string, byteCount int, hashMismatch, corrupt, hasWrongByteCount bool, err error) {
 }
 
 func (recoveryDelegate) OnParityFileLoad(i int, path string, err error) {}

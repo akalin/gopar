@@ -107,11 +107,11 @@ func (par2LogDecoderDelegate) OnOtherPacketSkip(setID [16]byte, packetType [16]b
 	fmt.Printf("Skipped packet with set ID %x of type %q and byte count %d\n", setID, packetType, byteCount)
 }
 
-func (par2LogDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error) {
+func (par2LogDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, hashMismatch, corrupt, hasWrongByteCount bool, err error) {
 	if err != nil {
 		fmt.Printf("[%d/%d] Loading data file %q failed: %+v\n", i, n, path, err)
-	} else if corrupt {
-		fmt.Printf("[%d/%d] Loaded data file %q (%d bytes), but detected corruption\n", i, n, path, byteCount)
+	} else if hashMismatch || corrupt || hasWrongByteCount {
+		fmt.Printf("[%d/%d] Loaded data file %q (%d bytes): hash mismatch=%t, corrupt=%t, has wrong byte count=%t\n", i, n, path, byteCount, hashMismatch, corrupt, hasWrongByteCount)
 	} else {
 		fmt.Printf("[%d/%d] Loaded data file %q (%d bytes)\n", i, n, path, byteCount)
 	}
