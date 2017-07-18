@@ -5,3 +5,7 @@ var creatorPacketType = packetType{'P', 'A', 'R', ' ', '2', '.', '0', '\x00', 'C
 func readCreatorPacket(body []byte) string {
 	return decodeNullPaddedASCIIString(body)
 }
+
+func writeCreatorPacket(clientID string) ([]byte, error) {
+	return encodeASCIIString(clientID)
+}
