@@ -1,6 +1,7 @@
 package par2
 
 import (
+	"errors"
 	"unicode"
 	"unicode/utf8"
 )
@@ -35,4 +36,15 @@ func decodeNullPaddedASCIIString(bs []byte) string {
 	}
 
 	return string(outBytes)
+}
+
+func encodeASCIIString(s string) ([]byte, error) {
+	var bs []byte
+	for _, c := range s {
+		if c > unicode.MaxASCII {
+			return nil, errors.New("invalid ASCII character")
+		}
+		bs = append(bs, byte(c))
+	}
+	return bs, nil
 }
