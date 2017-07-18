@@ -76,16 +76,82 @@ func makeInputFileInfos(fileIDs []fileID, fileDescriptionPackets map[fileID]file
 	return inputFileInfos, nil
 }
 
-type fileIntegrityInfo struct {
-	missing           bool
-	hashMismatch      bool
-	corrupt           bool
-	hasWrongByteCount bool
-	dataShards        [][]uint16
+type shardLocation struct {
+	fileID fileID
+	start  int
 }
 
-func (info fileIntegrityInfo) ok() bool {
-	return !info.missing && !info.hashMismatch && !info.corrupt && !info.hasWrongByteCount
+type shardLocationSet map[shardLocation]bool
+
+type checksumShardLocationMap map[uint32]map[[md5.Size]byte]shardLocationSet
+
+func (m checksumShardLocationMap) put(crc32 uint32, md5Hash [md5.Size]byte, location shardLocation) {
+	byCRC, ok := m[crc32]
+	if !ok {
+		m[crc32] = make(map[[md5.Size]byte]shardLocationSet)
+		byCRC = m[crc32]
+	}
+	byMD5, ok := byCRC[md5Hash]
+	if !ok {
+		byCRC[md5Hash] = make(shardLocationSet)
+		byMD5 = byCRC[md5Hash]
+	}
+	byMD5[location] = true
+}
+
+func (m checksumShardLocationMap) get(data []byte) shardLocationSet {
+	crc32 := crc32.ChecksumIEEE(data)
+	byCRC := m[crc32]
+	if len(byCRC) == 0 {
+		return nil
+	}
+	return byCRC[md5.Sum(data)]
+}
+
+func makeChecksumShardLocationMap(sliceByteCount int, infos []inputFileInfo) checksumShardLocationMap {
+	m := make(checksumShardLocationMap)
+
+	for _, info := range infos {
+		for i, checksumPair := range info.checksumPairs {
+			// TODO: Handle overflow.
+			start := i * sliceByteCount
+			m.put(binary.LittleEndian.Uint32(checksumPair.CRC32[:]), checksumPair.MD5, shardLocation{info.fileID, start})
+		}
+	}
+
+	return m
+}
+
+type shardIntegrityInfo struct {
+	data      []uint16
+	locations shardLocationSet
+}
+
+func (info shardIntegrityInfo) ok(location shardLocation) bool {
+	return len(info.data) != 0 && info.locations[location]
+}
+
+type fileIntegrityInfo struct {
+	fileID            fileID
+	missing           bool
+	hashMismatch      bool
+	hasWrongByteCount bool
+	shardInfos        []shardIntegrityInfo
+}
+
+func (info fileIntegrityInfo) allShardsOK(sliceByteCount int) bool {
+	for i, shardInfo := range info.shardInfos {
+		// TODO: Handle overflow.
+		start := i * sliceByteCount
+		if !shardInfo.ok(shardLocation{info.fileID, start}) {
+			return false
+		}
+	}
+	return true
+}
+
+func (info fileIntegrityInfo) ok(sliceByteCount int) bool {
+	return !info.missing && !info.hashMismatch && !info.hasWrongByteCount && info.allShardsOK(sliceByteCount)
 }
 
 // A Decoder keeps track of all information needed to check the
@@ -103,6 +169,8 @@ type Decoder struct {
 	sliceByteCount int
 	recoverySet    []inputFileInfo
 	nonRecoverySet []inputFileInfo
+
+	checksumToLocation checksumShardLocationMap
 
 	// Indexed the same as recoverySet.
 	fileIntegrityInfos []fileIntegrityInfo
@@ -165,6 +233,7 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string) (*Dec
 		recoverySet, nonRecoverySet,
 		nil,
 		nil,
+		nil,
 	}, nil
 }
 
@@ -175,111 +244,73 @@ func sixteenKHash(data []byte) [md5.Size]byte {
 	return md5.Sum(data[:16*1024])
 }
 
-func getChunkIfMatchesHash(checksumPair checksumPair, fileData []byte, sliceByteCount, startOffset int) []byte {
-	endOffset := startOffset + sliceByteCount
-	if startOffset >= len(fileData) {
-		return nil
-	}
+func (d *Decoder) buildFileIntegrityInfo(checksumToLocation checksumShardLocationMap, info inputFileInfo) (int, fileIntegrityInfo, error) {
+	shardInfos := make([]shardIntegrityInfo, len(info.checksumPairs))
 
-	if endOffset > len(fileData) {
-		endOffset = len(fileData)
-	}
-	inputSlice := fileData[startOffset:endOffset]
-	padding := make([]byte, sliceByteCount-len(inputSlice))
-	inputSlice = append(inputSlice, padding...)
-
-	// TODO: Update the CRC incrementally. Better yet, make a
-	// single pass through the file with the CRC to quickly find
-	// chunks.
-	crc32Int := crc32.ChecksumIEEE(inputSlice)
-	var crc32 [4]byte
-	binary.LittleEndian.PutUint32(crc32[:], crc32Int)
-	if crc32 != checksumPair.CRC32 {
-		return nil
-	}
-
-	if md5.Sum(inputSlice) != checksumPair.MD5 {
-		return nil
-	}
-
-	return inputSlice
-}
-
-func findChunk(checksumPair checksumPair, fileData []byte, sliceByteCount, expectedStartOffset int) ([]byte, bool) {
-	chunk := getChunkIfMatchesHash(checksumPair, fileData, sliceByteCount, expectedStartOffset)
-	if chunk != nil {
-		return chunk, true
-	}
-
-	// TODO: Probably should cap the search or do something more
-	// intelligent, to avoid long processing times for large
-	// files.
-
-	// Search forward first.
-	for i := expectedStartOffset + 1; i < len(fileData); i++ {
-		chunk := getChunkIfMatchesHash(checksumPair, fileData, sliceByteCount, i)
-		if chunk != nil {
-			return chunk, false
-		}
-	}
-
-	// Then search backwards, if possible.
-	start := expectedStartOffset - 1
-	if start >= len(fileData) {
-		start = len(fileData) - 1
-	}
-	for i := start; i >= 0; i-- {
-		chunk := getChunkIfMatchesHash(checksumPair, fileData, sliceByteCount, i)
-		if chunk != nil {
-			return chunk, false
-		}
-	}
-
-	return nil, false
-}
-
-func (d *Decoder) buildFileIntegrityInfo(info inputFileInfo) (int, fileIntegrityInfo, error) {
 	path := filepath.Join(filepath.Dir(d.indexPath), info.filename)
 	data, err := d.fileIO.ReadFile(path)
 	if os.IsNotExist(err) {
-		dataShards := make([][]uint16, len(info.checksumPairs))
+		d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, 0, info.byteCount)
 		return 0, fileIntegrityInfo{
+			fileID:     info.fileID,
 			missing:    true,
-			dataShards: dataShards,
+			shardInfos: shardInfos,
 		}, nil
 	} else if err != nil {
 		return len(data), fileIntegrityInfo{}, err
 	}
 
-	hashMismatch := sixteenKHash(data) != info.sixteenKHash || md5.Sum(data) != info.hash
-
-	var dataShards [][]uint16
-	corrupt := false
-	for i, checksumPair := range info.checksumPairs {
-		// TODO: Handle overflow.
-		expectedStartByteOffset := i * d.sliceByteCount
-		chunk, ok := findChunk(checksumPair, data, d.sliceByteCount, expectedStartByteOffset)
-		// TODO: Pass more info to the delegate method, like
-		// where the chunk was detected (if not at the
-		// expected location).
-		if chunk == nil {
-			dataShards = append(dataShards, nil)
-			d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, expectedStartByteOffset, expectedStartByteOffset+d.sliceByteCount)
-			corrupt = true
+	// TODO: Compute checksum incrementally.
+	//
+	// TODO: Increment i by d.sliceByteCount for the common case (i.e.,
+	// uncorrupted files).
+	for i := 0; i < len(data); i++ {
+		end := i + d.sliceByteCount
+		padLength := 0
+		if end > len(data) {
+			padLength = end - len(data)
+			end = len(data)
+		}
+		slice := data[i:end]
+		if padLength > 0 {
+			slice = append(slice, make([]byte, padLength)...)
+		}
+		foundLocations := checksumToLocation.get(slice)
+		if len(foundLocations) == 0 {
 			continue
-		} else if !ok {
-			d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, expectedStartByteOffset, expectedStartByteOffset+d.sliceByteCount)
-			corrupt = true
 		}
 
-		dataShard := make([]uint16, len(chunk)/2)
-		err := binary.Read(bytes.NewBuffer(chunk), binary.LittleEndian, dataShard)
-		if err != nil {
-			return len(data), fileIntegrityInfo{}, err
-		}
+		location := shardLocation{info.fileID, i}
+		for foundLocation := range foundLocations {
+			// TODO: fill in shardInfos for other files.
+			if foundLocation.fileID != info.fileID {
+				continue
+			}
 
-		dataShards = append(dataShards, dataShard)
+			j := foundLocation.start / d.sliceByteCount
+			if shardInfos[j].data == nil {
+				shardInfos[j] = shardIntegrityInfo{
+					byteToUint16LEArray(slice),
+					shardLocationSet{},
+				}
+			}
+			shardInfos[j].locations[location] = true
+		}
 	}
+
+	for i, shardInfo := range shardInfos {
+		startByteOffset := i * d.sliceByteCount
+		endByteOffset := startByteOffset + d.sliceByteCount
+		if endByteOffset > info.byteCount {
+			endByteOffset = info.byteCount
+		}
+		// TODO: Collapse ranges to send to the delegate.
+		if !shardInfo.ok(shardLocation{info.fileID, startByteOffset}) {
+			d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, startByteOffset, endByteOffset)
+		}
+	}
+
+	hashMismatch := sixteenKHash(data) != info.sixteenKHash || md5.Sum(data) != info.hash
 
 	hasWrongByteCount := false
 	if len(data) != info.byteCount {
@@ -296,19 +327,21 @@ func (d *Decoder) buildFileIntegrityInfo(info inputFileInfo) (int, fileIntegrity
 	}
 
 	return len(data), fileIntegrityInfo{
+		fileID:            info.fileID,
 		hashMismatch:      hashMismatch,
-		corrupt:           corrupt,
 		hasWrongByteCount: hasWrongByteCount,
-		dataShards:        dataShards,
+		shardInfos:        shardInfos,
 	}, nil
 }
 
 // LoadFileData loads existing file data into memory.
 func (d *Decoder) LoadFileData() error {
+	checksumToLocation := makeChecksumShardLocationMap(d.sliceByteCount, d.recoverySet)
+
 	fileIntegrityInfos := make([]fileIntegrityInfo, len(d.recoverySet))
 	for i, info := range d.recoverySet {
-		byteCount, fileIntegrityInfo, err := d.buildFileIntegrityInfo(info)
-		d.delegate.OnDataFileLoad(i+1, len(d.recoverySet), info.filename, byteCount, fileIntegrityInfo.hashMismatch, fileIntegrityInfo.corrupt, fileIntegrityInfo.hasWrongByteCount, err)
+		byteCount, fileIntegrityInfo, err := d.buildFileIntegrityInfo(checksumToLocation, info)
+		d.delegate.OnDataFileLoad(i+1, len(d.recoverySet), info.filename, byteCount, fileIntegrityInfo.hashMismatch, !fileIntegrityInfo.allShardsOK(d.sliceByteCount), fileIntegrityInfo.hasWrongByteCount, err)
 		if err != nil {
 			return err
 		}
@@ -316,6 +349,7 @@ func (d *Decoder) LoadFileData() error {
 		fileIntegrityInfos[i] = fileIntegrityInfo
 	}
 
+	d.checksumToLocation = checksumToLocation
 	d.fileIntegrityInfos = fileIntegrityInfos
 	return nil
 }
@@ -417,7 +451,9 @@ func (d *Decoder) LoadParityData() error {
 func (d *Decoder) newCoderAndShards() (rsec16.Coder, [][]uint16, error) {
 	var dataShards [][]uint16
 	for _, info := range d.fileIntegrityInfos {
-		dataShards = append(dataShards, info.dataShards...)
+		for _, shardInfo := range info.shardInfos {
+			dataShards = append(dataShards, shardInfo.data)
+		}
 	}
 	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), len(d.parityShards))
 	if err != nil {
@@ -440,7 +476,7 @@ func (d *Decoder) Verify() (bool, error) {
 	}
 
 	for _, info := range d.fileIntegrityInfos {
-		if !info.ok() {
+		if !info.ok(d.sliceByteCount) {
 			return false, nil
 		}
 	}
@@ -497,25 +533,33 @@ func (d *Decoder) Repair() ([]string, error) {
 
 	dir := filepath.Dir(d.indexPath)
 
-	var repairedFiles []string
+	wasOK := make([]bool, len(d.fileIntegrityInfos))
 
-	j := 0
+	k := 0
 	for i, info := range d.fileIntegrityInfos {
-		shardCount := len(info.dataShards)
-		info.dataShards = dataShards[j : j+shardCount]
-		j += shardCount
+		wasOK[i] = info.ok(d.sliceByteCount)
+		shardCount := len(info.shardInfos)
+		for j, shard := range dataShards[k : k+shardCount] {
+			info.shardInfos[j] = shardIntegrityInfo{
+				data:      shard,
+				locations: d.checksumToLocation.get(uint16LEToByteArray(shard)),
+			}
+		}
+		k += shardCount
 		d.fileIntegrityInfos[i] = info
 	}
 
+	var repairedFiles []string
+
 	for i, inputFileInfo := range d.recoverySet {
 		fileIntegrityInfo := d.fileIntegrityInfos[i]
-		if fileIntegrityInfo.ok() {
+		if wasOK[i] {
 			continue
 		}
 
 		buf := bytes.NewBuffer(nil)
-		for _, dataShard := range fileIntegrityInfo.dataShards {
-			err := binary.Write(buf, binary.LittleEndian, dataShard)
+		for _, shardInfo := range fileIntegrityInfo.shardInfos {
+			err := binary.Write(buf, binary.LittleEndian, shardInfo.data)
 			if err != nil {
 				return repairedFiles, err
 			}
