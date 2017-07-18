@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"math"
 	"reflect"
 	"sort"
 )
@@ -33,6 +34,22 @@ type mainPacket struct {
 	sliceByteCount int
 	recoverySet    []fileID
 	nonRecoverySet []fileID
+}
+
+func checkFileIDSetsSorted(recoverySet, nonRecoverySet []fileID) error {
+	if !sort.SliceIsSorted(recoverySet, func(i, j int) bool {
+		return fileIDLess(recoverySet[i], recoverySet[j])
+	}) {
+		return errors.New("recovery set IDs not sorted")
+	}
+
+	if !sort.SliceIsSorted(nonRecoverySet, func(i, j int) bool {
+		return fileIDLess(nonRecoverySet[i], nonRecoverySet[j])
+	}) {
+		return errors.New("non-recovery set IDs not sorted")
+	}
+
+	return nil
 }
 
 func readMainPacket(body []byte) (mainPacket, error) {
@@ -72,17 +89,53 @@ func readMainPacket(body []byte) (mainPacket, error) {
 	recoverySet := fileIDs[:int(h.RecoverySetCount)]
 	nonRecoverySet := fileIDs[int(h.RecoverySetCount):]
 
-	if !sort.SliceIsSorted(recoverySet, func(i, j int) bool {
-		return fileIDLess(recoverySet[i], recoverySet[j])
-	}) {
-		return mainPacket{}, errors.New("recovery set IDs not sorted")
-	}
-
-	if !sort.SliceIsSorted(nonRecoverySet, func(i, j int) bool {
-		return fileIDLess(nonRecoverySet[i], nonRecoverySet[j])
-	}) {
-		return mainPacket{}, errors.New("non-recovery set IDs not sorted")
+	err = checkFileIDSetsSorted(recoverySet, nonRecoverySet)
+	if err != nil {
+		return mainPacket{}, err
 	}
 
 	return mainPacket{sliceByteCount, recoverySet, nonRecoverySet}, nil
+}
+
+func writeMainPacket(packet mainPacket) ([]byte, error) {
+	if packet.sliceByteCount == 0 || packet.sliceByteCount%4 != 0 {
+		return nil, errors.New("invalid slice byte count")
+	}
+
+	if len(packet.recoverySet) == 0 {
+		return nil, errors.New("empty recovery set")
+	}
+
+	if int64(len(packet.recoverySet)) > int64(math.MaxUint32) {
+		return nil, errors.New("recovery set too big")
+	}
+
+	err := checkFileIDSetsSorted(packet.recoverySet, packet.nonRecoverySet)
+	if err != nil {
+		return nil, err
+	}
+
+	buf := bytes.NewBuffer(nil)
+
+	h := mainPacketHeader{
+		SliceSize:        uint64(packet.sliceByteCount),
+		RecoverySetCount: uint32(len(packet.recoverySet)),
+	}
+
+	err = binary.Write(buf, binary.LittleEndian, h)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(buf, binary.LittleEndian, packet.recoverySet)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(buf, binary.LittleEndian, packet.nonRecoverySet)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }

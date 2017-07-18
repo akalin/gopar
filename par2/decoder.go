@@ -413,7 +413,7 @@ func (d *Decoder) LoadParityData() error {
 			}
 
 			if d.sliceByteCount != parityFile.mainPacket.sliceByteCount {
-				return file{}, errors.New("slice size mismatch")
+				return file{}, errors.New("slice byte count mismatch")
 			}
 
 			if !reflect.DeepEqual(inputFileInfoIDs(d.recoverySet), parityFile.mainPacket.recoverySet) {
