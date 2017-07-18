@@ -24,6 +24,28 @@ type fileDescriptionPacket struct {
 	filename     string
 }
 
+func computeFileID(sixteenKHash [md5.Size]byte, byteCount uint64, filenameBytes []byte) fileID {
+	var hashInput []byte
+	hashInput = append(hashInput, sixteenKHash[:]...)
+	var byteCountBytes [8]byte
+	binary.LittleEndian.PutUint64(byteCountBytes[:], byteCount)
+	hashInput = append(hashInput, byteCountBytes[:]...)
+	hashInput = append(hashInput, filenameBytes...)
+	return md5.Sum(hashInput)
+}
+
+func checkFilename(filename string) error {
+	if path.IsAbs(filename) {
+		// TODO: Allow this via an option.
+		return errors.New("absolute paths not allowed")
+	}
+	filename = path.Clean(filename)
+	if filename[0] == '.' {
+		return errors.New("traversing outside of the current directory is not allowed")
+	}
+	return nil
+}
+
 func readFileDescriptionPacket(body []byte) (fileID, fileDescriptionPacket, error) {
 	buf := bytes.NewBuffer(body)
 
@@ -34,15 +56,8 @@ func readFileDescriptionPacket(body []byte) (fileID, fileDescriptionPacket, erro
 	}
 
 	filenameBytes := buf.Bytes()
-
-	var hashInput []byte
-	hashInput = append(hashInput, h.SixteenKHash[:]...)
-	var lengthBytes [8]byte
-	binary.LittleEndian.PutUint64(lengthBytes[:], h.Length)
-	hashInput = append(hashInput, lengthBytes[:]...)
-	hashInput = append(hashInput, nullTerminate(filenameBytes)...)
-
-	if md5.Sum(hashInput) != h.FileID {
+	computedFileID := computeFileID(h.SixteenKHash, h.Length, nullTerminate(filenameBytes))
+	if computedFileID != h.FileID {
 		return fileID{}, fileDescriptionPacket{}, errors.New("file ID mismatch")
 	}
 
@@ -56,13 +71,9 @@ func readFileDescriptionPacket(body []byte) (fileID, fileDescriptionPacket, erro
 	}
 
 	filename := decodeNullPaddedASCIIString(filenameBytes)
-	if path.IsAbs(filename) {
-		// TODO: Allow this via an option.
-		return fileID{}, fileDescriptionPacket{}, errors.New("absolute paths not allowed")
-	}
-	filename = path.Clean(filename)
-	if filename[0] == '.' {
-		return fileID{}, fileDescriptionPacket{}, errors.New("traversing outside of the current directory is not allowed")
+	err = checkFilename(filename)
+	if err != nil {
+		return fileID{}, fileDescriptionPacket{}, err
 	}
 
 	// We have to do this since we load entire files in memory.
@@ -76,4 +87,46 @@ func readFileDescriptionPacket(body []byte) (fileID, fileDescriptionPacket, erro
 
 	byteCount := int(h.Length)
 	return h.FileID, fileDescriptionPacket{h.Hash, h.SixteenKHash, byteCount, filename}, nil
+}
+
+func writeFileDescriptionPacket(fileID fileID, packet fileDescriptionPacket) ([]byte, error) {
+	if packet.byteCount <= 0 {
+		return nil, errors.New("invalid byte count")
+	}
+
+	err := checkFilename(packet.filename)
+	if err != nil {
+		return nil, err
+	}
+
+	filenameBytes, err := encodeASCIIString(packet.filename)
+	if err != nil {
+		return nil, err
+	}
+
+	byteCount := uint64(packet.byteCount)
+	computedFileID := computeFileID(packet.sixteenKHash, byteCount, filenameBytes)
+	if computedFileID != fileID {
+		return nil, errors.New("file ID mismatch")
+	}
+
+	buf := bytes.NewBuffer(nil)
+
+	h := fileDescriptionPacketHeader{
+		FileID:       fileID,
+		Hash:         packet.hash,
+		SixteenKHash: packet.sixteenKHash,
+		Length:       byteCount,
+	}
+	err = binary.Write(buf, binary.LittleEndian, h)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = buf.Write(filenameBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }
