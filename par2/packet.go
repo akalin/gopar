@@ -22,6 +22,18 @@ func sizeOfPacketHeader() uint64 {
 	return uint64(reflect.TypeOf(packetHeader{}).Size())
 }
 
+func checkPacketHeader(h packetHeader) error {
+	if h.Magic != expectedMagic {
+		return errors.New("unexpected magic string")
+	}
+
+	if h.Length < sizeOfPacketHeader() || h.Length%4 != 0 {
+		return errors.New("invalid length")
+	}
+
+	return nil
+}
+
 func readPacketHeader(buf *bytes.Buffer) (packetHeader, error) {
 	var h packetHeader
 	err := binary.Read(buf, binary.LittleEndian, &h)
@@ -29,15 +41,21 @@ func readPacketHeader(buf *bytes.Buffer) (packetHeader, error) {
 		return packetHeader{}, err
 	}
 
-	if h.Magic != expectedMagic {
-		return packetHeader{}, errors.New("unexpected magic string")
-	}
-
-	if h.Length < sizeOfPacketHeader() || h.Length%4 != 0 {
-		return packetHeader{}, errors.New("invalid length")
+	err = checkPacketHeader(h)
+	if err != nil {
+		return packetHeader{}, err
 	}
 
 	return h, nil
+}
+
+func writePacketHeader(buf *bytes.Buffer, h packetHeader) error {
+	err := checkPacketHeader(h)
+	if err != nil {
+		return err
+	}
+
+	return binary.Write(buf, binary.LittleEndian, h)
 }
 
 type recoverySetID [16]byte
