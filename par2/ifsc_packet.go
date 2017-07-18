@@ -40,3 +40,23 @@ func readIFSCPacket(body []byte) (fileID, ifscPacket, error) {
 
 	return id, ifscPacket{checksumPairs}, nil
 }
+
+func writeIFSCPacket(id fileID, packet ifscPacket) ([]byte, error) {
+	if len(packet.checksumPairs) == 0 {
+		return nil, errors.New("no checksum pairs to write")
+	}
+
+	buf := bytes.NewBuffer(nil)
+
+	err := binary.Write(buf, binary.LittleEndian, id)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(buf, binary.LittleEndian, packet.checksumPairs)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
