@@ -244,6 +244,19 @@ func sixteenKHash(data []byte) [md5.Size]byte {
 	return md5.Sum(data[:16*1024])
 }
 
+func sliceAndPadByteArray(bs []byte, start, end int) []byte {
+	padLength := 0
+	if end > len(bs) {
+		padLength = end - len(bs)
+		end = len(bs)
+	}
+	slice := bs[start:end]
+	if padLength > 0 {
+		slice = append(slice, make([]byte, padLength)...)
+	}
+	return slice
+}
+
 func (d *Decoder) buildFileIntegrityInfo(checksumToLocation checksumShardLocationMap, info inputFileInfo) (int, fileIntegrityInfo, error) {
 	shardInfos := make([]shardIntegrityInfo, len(info.checksumPairs))
 
@@ -265,16 +278,7 @@ func (d *Decoder) buildFileIntegrityInfo(checksumToLocation checksumShardLocatio
 	// TODO: Increment i by d.sliceByteCount for the common case (i.e.,
 	// uncorrupted files).
 	for i := 0; i < len(data); i++ {
-		end := i + d.sliceByteCount
-		padLength := 0
-		if end > len(data) {
-			padLength = end - len(data)
-			end = len(data)
-		}
-		slice := data[i:end]
-		if padLength > 0 {
-			slice = append(slice, make([]byte, padLength)...)
-		}
+		slice := sliceAndPadByteArray(data, i, i+d.sliceByteCount)
 		foundLocations := checksumToLocation.get(slice)
 		if len(foundLocations) == 0 {
 			continue
