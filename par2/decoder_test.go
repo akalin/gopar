@@ -1,6 +1,7 @@
 package par2
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"sort"
@@ -105,11 +106,16 @@ func buildPAR2Data(t *testing.T, io testFileIO, sliceByteCount, parityShardCount
 
 	io.fileData[base+".par2"] = indexFileBytes
 
-	recoveryFile := indexFile
-	recoveryFile.recoveryPackets = recoveryPackets
-	_, recoveryFileBytes, err := writeFile(recoveryFile)
-	require.NoError(t, err)
-	io.fileData[base+".all.par2"] = recoveryFileBytes
+	for exp, packet := range recoveryPackets {
+		recoveryFile := indexFile
+		recoveryFile.recoveryPackets = map[exponent]recoveryPacket{
+			exp: packet,
+		}
+		_, recoveryFileBytes, err := writeFile(recoveryFile)
+		require.NoError(t, err)
+		filename := fmt.Sprintf("%s.vol%02d+01.par2", base, exp)
+		io.fileData[filename] = recoveryFileBytes
+	}
 }
 
 func TestVerify(t *testing.T) {
@@ -151,4 +157,20 @@ func TestVerify(t *testing.T) {
 	ok, err = decoder.Verify()
 	require.NoError(t, err)
 	require.True(t, ok)
+
+	vol2Data := io.fileData["file.vol02+01.par2"]
+	delete(io.fileData, "file.vol02+01.par2")
+	err = decoder.LoadParityData()
+	require.NoError(t, err)
+	ok, err = decoder.Verify()
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	io.fileData["file.vol02+01.par2"] = vol2Data
+	delete(io.fileData, "file.vol01+01.par2")
+	err = decoder.LoadParityData()
+	require.NoError(t, err)
+	ok, err = decoder.Verify()
+	require.NoError(t, err)
+	require.False(t, ok)
 }
