@@ -61,6 +61,14 @@ func writePacketHeader(buf *bytes.Buffer, h packetHeader) error {
 type recoverySetID [16]byte
 type packetType [16]byte
 
+func computePacketHash(setID recoverySetID, packetType packetType, body []byte) [md5.Size]byte {
+	var hashInput []byte
+	hashInput = append(hashInput, setID[:]...)
+	hashInput = append(hashInput, packetType[:]...)
+	hashInput = append(hashInput, body...)
+	return md5.Sum(hashInput)
+}
+
 func readNextPacket(buf *bytes.Buffer) (recoverySetID, packetType, []byte, error) {
 	h, err := readPacketHeader(buf)
 	if err != nil {
@@ -74,15 +82,30 @@ func readNextPacket(buf *bytes.Buffer) (recoverySetID, packetType, []byte, error
 		return [16]byte{}, packetType{}, nil, errors.New("could not read body")
 	}
 
-	var hashInput []byte
-	hashInput = append(hashInput, h.RecoverySetID[:]...)
-	hashInput = append(hashInput, h.Type[:]...)
-	hashInput = append(hashInput, body...)
-	if md5.Sum(hashInput) != h.Hash {
+	if computePacketHash(h.RecoverySetID, h.Type, body) != h.Hash {
 		return [16]byte{}, packetType{}, nil, errors.New("hash mismatch")
 	}
 
 	bodyCopy := make([]byte, len(body))
 	copy(bodyCopy, body)
 	return h.RecoverySetID, h.Type, bodyCopy, nil
+}
+
+func writeNextPacket(buf *bytes.Buffer, setID recoverySetID, packetType packetType, body []byte) error {
+	// TODO: Handle overflow.
+	length := sizeOfPacketHeader() + uint64(len(body))
+	h := packetHeader{
+		Magic:         expectedMagic,
+		Length:        length,
+		Hash:          computePacketHash(setID, packetType, body),
+		RecoverySetID: setID,
+		Type:          packetType,
+	}
+	err := writePacketHeader(buf, h)
+	if err != nil {
+		return err
+	}
+
+	_, err = buf.Write(body)
+	return err
 }
