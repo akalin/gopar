@@ -252,3 +252,73 @@ func TestRepair(t *testing.T) {
 	require.Equal(t, r03Data, io.fileData["file.r03"])
 	require.Equal(t, r04Data, io.fileData["file.r04"])
 }
+
+func TestRepairAddedBytes(t *testing.T) {
+	io := testFileIO{
+		t: t,
+		fileData: map[string][]byte{
+			"file.rar": []byte{
+				0x01, 0x02, 0x03, 0x04, 0x05,
+				0x11, 0x12, 0x13, 0x14, 0x15,
+				0x21, 0x22, 0x23, 0x24, 0x25,
+				0x31, 0x32, 0x33, 0x34, 0x35,
+			},
+		},
+	}
+
+	buildPAR2Data(t, io, 4, 3)
+
+	decoder, err := newDecoder(io, testDecoderDelegate{t}, "file.par2")
+	require.NoError(t, err)
+
+	rarData := io.fileData["file.rar"]
+	rarDataCopy := make([]byte, len(rarData))
+	copy(rarDataCopy, rarData)
+	io.fileData["file.rar"] = append([]byte{0x00}, rarData...)
+
+	err = decoder.LoadFileData()
+	require.NoError(t, err)
+	err = decoder.LoadParityData()
+	require.NoError(t, err)
+
+	repaired, err := decoder.Repair()
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"file.rar"}, repaired)
+	require.Equal(t, rarDataCopy, io.fileData["file.rar"])
+}
+
+func TestRepairRemovedBytes(t *testing.T) {
+	io := testFileIO{
+		t: t,
+		fileData: map[string][]byte{
+			"file.rar": []byte{
+				0x01, 0x02, 0x03, 0x04, 0x05,
+				0x11, 0x12, 0x13, 0x14, 0x15,
+				0x21, 0x22, 0x23, 0x24, 0x25,
+				0x31, 0x32, 0x33, 0x34, 0x35,
+			},
+		},
+	}
+
+	buildPAR2Data(t, io, 4, 3)
+
+	decoder, err := newDecoder(io, testDecoderDelegate{t}, "file.par2")
+	require.NoError(t, err)
+
+	rarData := io.fileData["file.rar"]
+	rarDataCopy := make([]byte, len(rarData))
+	copy(rarDataCopy, rarData)
+	io.fileData["file.rar"] = rarData[2:]
+
+	err = decoder.LoadFileData()
+	require.NoError(t, err)
+	err = decoder.LoadParityData()
+	require.NoError(t, err)
+
+	repaired, err := decoder.Repair()
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"file.rar"}, repaired)
+	require.Equal(t, rarDataCopy, io.fileData["file.rar"])
+}
