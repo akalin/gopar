@@ -41,8 +41,8 @@ func (d testDecoderDelegate) OnOtherPacketSkip(setID [16]byte, packetType [16]by
 	d.t.Logf("OnOtherPacketSkip(%x, %x, %d)", setID, packetType, byteCount)
 }
 
-func (d testDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, hashMismatch, corrupt, hasWrongByteCount bool, err error) {
-	d.t.Logf("OnDataFileLoad(%d, %d, %s, %d, hashMismatch=%t, corrupt=%t, hasWrongByteCount=%t, %v)", i, n, path, byteCount, hashMismatch, corrupt, hasWrongByteCount, err)
+func (d testDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {
+	d.t.Logf("OnDataFileLoad(%d, %d, %s, %d, %v)", i, n, path, byteCount, err)
 }
 
 func (d testDecoderDelegate) OnParityFileLoad(i int, path string, err error) {
@@ -51,6 +51,14 @@ func (d testDecoderDelegate) OnParityFileLoad(i int, path string, err error) {
 
 func (d testDecoderDelegate) OnDetectCorruptDataChunk(fileID [16]byte, filename string, startOffset, endOffset int) {
 	d.t.Logf("OnDetectCorruptDataChunk(%x, %s, startOffset=%d, endOffset=%d)", fileID, filename, startOffset, endOffset)
+}
+
+func (d testDecoderDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, filename string) {
+	d.t.Logf("OnDetectDataFileHashMismatch(%x, %s)", fileID, filename)
+}
+
+func (d testDecoderDelegate) OnDetectDataFileWrongByteCount(fileID [16]byte, filename string) {
+	d.t.Logf("OnDetectDataFileWrongByteCount(%x, %s)", fileID, filename)
 }
 
 func (d testDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {

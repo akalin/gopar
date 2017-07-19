@@ -107,11 +107,9 @@ func (par2LogDecoderDelegate) OnOtherPacketSkip(setID [16]byte, packetType [16]b
 	fmt.Printf("Skipped packet with set ID %x of type %q and byte count %d\n", setID, packetType, byteCount)
 }
 
-func (par2LogDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, hashMismatch, corrupt, hasWrongByteCount bool, err error) {
+func (par2LogDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {
 	if err != nil {
 		fmt.Printf("[%d/%d] Loading data file %q failed: %+v\n", i, n, path, err)
-	} else if hashMismatch || corrupt || hasWrongByteCount {
-		fmt.Printf("[%d/%d] Loaded data file %q (%d bytes): hash mismatch=%t, corrupt=%t, has wrong byte count=%t\n", i, n, path, byteCount, hashMismatch, corrupt, hasWrongByteCount)
 	} else {
 		fmt.Printf("[%d/%d] Loaded data file %q (%d bytes)\n", i, n, path, byteCount)
 	}
@@ -127,6 +125,14 @@ func (par2LogDecoderDelegate) OnParityFileLoad(i int, path string, err error) {
 
 func (par2LogDecoderDelegate) OnDetectCorruptDataChunk(fileID [16]byte, filename string, startByteOffset, endByteOffset int) {
 	fmt.Printf("Corrupt data chunk: %q (ID %x), bytes %d to %d\n", filename, fileID, startByteOffset, endByteOffset-1)
+}
+
+func (par2LogDecoderDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, filename string) {
+	fmt.Printf("Hash mismatch for %q (ID %x)\n", filename, fileID)
+}
+
+func (par2LogDecoderDelegate) OnDetectDataFileWrongByteCount(fileID [16]byte, filename string) {
+	fmt.Printf("Wrong byte count for %q (ID %x)\n", filename, fileID)
 }
 
 func (par2LogDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {

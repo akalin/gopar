@@ -188,9 +188,11 @@ type DecoderDelegate interface {
 	OnRecoveryPacketLoad(exponent uint16, byteCount int)
 	OnUnknownPacketLoad(packetType [16]byte, byteCount int)
 	OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int)
-	OnDataFileLoad(i, n int, path string, byteCount int, hashMismatch, corrupt, hasWrongByteCount bool, err error)
+	OnDataFileLoad(i, n int, path string, byteCount int, err error)
 	OnParityFileLoad(i int, path string, err error)
 	OnDetectCorruptDataChunk(fileID [16]byte, filename string, startByteOffset, endByteOffset int)
+	OnDetectDataFileHashMismatch(fileID [16]byte, filename string)
+	OnDetectDataFileWrongByteCount(fileID [16]byte, filename string)
 	OnDataFileWrite(i, n int, path string, byteCount int, err error)
 }
 
@@ -257,85 +259,54 @@ func sliceAndPadByteArray(bs []byte, start, end int) []byte {
 	return slice
 }
 
-func (d *Decoder) buildFileIntegrityInfo(checksumToLocation checksumShardLocationMap, info inputFileInfo) (int, fileIntegrityInfo, error) {
-	shardInfos := make([]shardIntegrityInfo, len(info.checksumPairs))
-
+func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocationMap, fileIntegrityInfos []fileIntegrityInfo, fileIDIndices map[fileID]int, i int, info inputFileInfo) (int, error) {
 	path := filepath.Join(filepath.Dir(d.indexPath), info.filename)
 	data, err := d.fileIO.ReadFile(path)
 	if os.IsNotExist(err) {
-		d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, 0, info.byteCount)
-		return 0, fileIntegrityInfo{
-			fileID:     info.fileID,
-			missing:    true,
-			shardInfos: shardInfos,
-		}, nil
+		fileIntegrityInfos[i].missing = true
+		return 0, nil
 	} else if err != nil {
-		return len(data), fileIntegrityInfo{}, err
+		return len(data), err
 	}
 
 	// TODO: Compute checksum incrementally.
 	//
-	// TODO: Increment i by d.sliceByteCount for the common case (i.e.,
+	// TODO: Increment j by d.sliceByteCount for the common case (i.e.,
 	// uncorrupted files).
-	for i := 0; i < len(data); i++ {
-		slice := sliceAndPadByteArray(data, i, i+d.sliceByteCount)
+	for j := 0; j < len(data); j++ {
+		slice := sliceAndPadByteArray(data, j, j+d.sliceByteCount)
 		foundLocations := checksumToLocation.get(slice)
 		if len(foundLocations) == 0 {
 			continue
 		}
 
-		location := shardLocation{info.fileID, i}
+		location := shardLocation{info.fileID, j}
 		for foundLocation := range foundLocations {
-			// TODO: fill in shardInfos for other files.
-			if foundLocation.fileID != info.fileID {
-				continue
-			}
-
-			j := foundLocation.start / d.sliceByteCount
-			if shardInfos[j].data == nil {
-				shardInfos[j] = shardIntegrityInfo{
+			integrityInfo := fileIntegrityInfos[fileIDIndices[foundLocation.fileID]]
+			shardInfo := &integrityInfo.shardInfos[foundLocation.start/d.sliceByteCount]
+			if shardInfo.data == nil {
+				*shardInfo = shardIntegrityInfo{
 					byteToUint16LEArray(slice),
 					shardLocationSet{},
 				}
 			}
-			shardInfos[j].locations[location] = true
-		}
-	}
-
-	for i, shardInfo := range shardInfos {
-		startByteOffset := i * d.sliceByteCount
-		endByteOffset := startByteOffset + d.sliceByteCount
-		if endByteOffset > info.byteCount {
-			endByteOffset = info.byteCount
-		}
-		// TODO: Collapse ranges to send to the delegate.
-		if !shardInfo.ok(shardLocation{info.fileID, startByteOffset}) {
-			d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, startByteOffset, endByteOffset)
+			shardInfo.locations[location] = true
 		}
 	}
 
 	hashMismatch := sixteenKHash(data) != info.sixteenKHash || md5.Sum(data) != info.hash
-
-	hasWrongByteCount := false
-	if len(data) != info.byteCount {
-		var startByteOffset, endByteOffset int
-		if len(data) < info.byteCount {
-			startByteOffset = len(data)
-			endByteOffset = info.byteCount
-		} else {
-			startByteOffset = info.byteCount
-			endByteOffset = len(data)
-		}
-		d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, startByteOffset, endByteOffset)
-		hasWrongByteCount = true
+	fileIntegrityInfos[i].hashMismatch = hashMismatch
+	if hashMismatch {
+		d.delegate.OnDetectDataFileHashMismatch(info.fileID, info.filename)
 	}
 
-	return len(data), fileIntegrityInfo{
-		fileID:            info.fileID,
-		hashMismatch:      hashMismatch,
-		hasWrongByteCount: hasWrongByteCount,
-		shardInfos:        shardInfos,
-	}, nil
+	hasWrongByteCount := len(data) != info.byteCount
+	fileIntegrityInfos[i].hasWrongByteCount = hasWrongByteCount
+	if hasWrongByteCount {
+		d.delegate.OnDetectDataFileWrongByteCount(info.fileID, info.filename)
+	}
+
+	return len(data), nil
 }
 
 // LoadFileData loads existing file data into memory.
@@ -343,14 +314,48 @@ func (d *Decoder) LoadFileData() error {
 	checksumToLocation := makeChecksumShardLocationMap(d.sliceByteCount, d.recoverySet)
 
 	fileIntegrityInfos := make([]fileIntegrityInfo, len(d.recoverySet))
+	fileIDIndices := make(map[fileID]int)
 	for i, info := range d.recoverySet {
-		byteCount, fileIntegrityInfo, err := d.buildFileIntegrityInfo(checksumToLocation, info)
-		d.delegate.OnDataFileLoad(i+1, len(d.recoverySet), info.filename, byteCount, fileIntegrityInfo.hashMismatch, !fileIntegrityInfo.allShardsOK(d.sliceByteCount), fileIntegrityInfo.hasWrongByteCount, err)
+		fileIntegrityInfos[i] = fileIntegrityInfo{
+			fileID:     info.fileID,
+			shardInfos: make([]shardIntegrityInfo, len(info.checksumPairs)),
+		}
+		fileIDIndices[info.fileID] = i
+	}
+
+	for i, info := range d.recoverySet {
+		byteCount, err := d.fillFileIntegrityInfos(checksumToLocation, fileIntegrityInfos, fileIDIndices, i, info)
+		d.delegate.OnDataFileLoad(i+1, len(d.recoverySet), info.filename, byteCount, err)
 		if err != nil {
 			return err
 		}
 
-		fileIntegrityInfos[i] = fileIntegrityInfo
+		if byteCount != info.byteCount {
+			var startByteOffset, endByteOffset int
+			if byteCount < info.byteCount {
+				startByteOffset = byteCount
+				endByteOffset = info.byteCount
+			} else {
+				startByteOffset = info.byteCount
+				endByteOffset = byteCount
+			}
+			d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, startByteOffset, endByteOffset)
+		}
+	}
+
+	for i, info := range d.recoverySet {
+		integrityInfo := fileIntegrityInfos[i]
+		for j, shardInfo := range integrityInfo.shardInfos {
+			startByteOffset := j * d.sliceByteCount
+			endByteOffset := startByteOffset + d.sliceByteCount
+			if endByteOffset > info.byteCount {
+				endByteOffset = info.byteCount
+			}
+			// TODO: Collapse ranges to send to the delegate.
+			if !shardInfo.ok(shardLocation{info.fileID, startByteOffset}) {
+				d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, startByteOffset, endByteOffset)
+			}
+		}
 	}
 
 	d.checksumToLocation = checksumToLocation
@@ -380,13 +385,16 @@ func (r recoveryDelegate) OnUnknownPacketLoad(packetType [16]byte, byteCount int
 
 func (recoveryDelegate) OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int) {}
 
-func (recoveryDelegate) OnDataFileLoad(i, n int, path string, byteCount int, hashMismatch, corrupt, hasWrongByteCount bool, err error) {
-}
+func (recoveryDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {}
 
 func (recoveryDelegate) OnParityFileLoad(i int, path string, err error) {}
 
 func (recoveryDelegate) OnDetectCorruptDataChunk(fileID [16]byte, filename string, startByteOffset, endByteOffset int) {
 }
+
+func (recoveryDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, filename string) {}
+
+func (recoveryDelegate) OnDetectDataFileWrongByteCount(fileID [16]byte, filename string) {}
 
 func (recoveryDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {}
 
