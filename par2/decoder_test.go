@@ -212,3 +212,43 @@ func TestSetIDMismatch(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, ok)
 }
+
+func TestRepair(t *testing.T) {
+	io := testFileIO{
+		t: t,
+		fileData: map[string][]byte{
+			"file.rar": {0x1, 0x2, 0x3, 0x4},
+			"file.r01": {0x5, 0x6, 0x7},
+			"file.r02": {0x8, 0x9, 0xa, 0xb, 0xc},
+			"file.r03": {0xe, 0xf},
+			"file.r04": {0xd},
+		},
+	}
+
+	buildPAR2Data(t, io, 4, 3)
+
+	decoder, err := newDecoder(io, testDecoderDelegate{t}, "file.par2")
+	require.NoError(t, err)
+
+	r02Data := io.fileData["file.r02"]
+	r02DataCopy := make([]byte, len(r02Data))
+	copy(r02DataCopy, r02Data)
+	r02Data[len(r02Data)-1]++
+	r03Data := io.fileData["file.r03"]
+	delete(io.fileData, "file.r03")
+	r04Data := io.fileData["file.r04"]
+	delete(io.fileData, "file.r04")
+
+	err = decoder.LoadFileData()
+	require.NoError(t, err)
+	err = decoder.LoadParityData()
+	require.NoError(t, err)
+
+	repaired, err := decoder.Repair()
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"file.r02", "file.r03", "file.r04"}, repaired)
+	require.Equal(t, r02DataCopy, io.fileData["file.r02"])
+	require.Equal(t, r03Data, io.fileData["file.r03"])
+	require.Equal(t, r04Data, io.fileData["file.r04"])
+}
