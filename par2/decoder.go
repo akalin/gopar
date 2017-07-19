@@ -35,7 +35,7 @@ func (io defaultFileIO) WriteFile(path string, data []byte) error {
 	return ioutil.WriteFile(path, data, 0600)
 }
 
-type inputFileInfo struct {
+type decoderInputFileInfo struct {
 	fileID        fileID
 	filename      string
 	byteCount     int
@@ -44,7 +44,7 @@ type inputFileInfo struct {
 	checksumPairs []checksumPair
 }
 
-func inputFileInfoIDs(infos []inputFileInfo) []fileID {
+func decoderInputFileInfoIDs(infos []decoderInputFileInfo) []fileID {
 	fileIDs := make([]fileID, len(infos))
 	for i, info := range infos {
 		fileIDs[i] = info.fileID
@@ -52,8 +52,8 @@ func inputFileInfoIDs(infos []inputFileInfo) []fileID {
 	return fileIDs
 }
 
-func makeInputFileInfos(fileIDs []fileID, fileDescriptionPackets map[fileID]fileDescriptionPacket, ifscPackets map[fileID]ifscPacket) ([]inputFileInfo, error) {
-	var inputFileInfos []inputFileInfo
+func makeDecoderInputFileInfos(fileIDs []fileID, fileDescriptionPackets map[fileID]fileDescriptionPacket, ifscPackets map[fileID]ifscPacket) ([]decoderInputFileInfo, error) {
+	var decoderInputFileInfos []decoderInputFileInfo
 	for _, fileID := range fileIDs {
 		descriptionPacket, ok := fileDescriptionPackets[fileID]
 		if !ok {
@@ -63,7 +63,7 @@ func makeInputFileInfos(fileIDs []fileID, fileDescriptionPackets map[fileID]file
 		if !ok {
 			return nil, errors.New("input file slice checksum packet not found")
 		}
-		inputFileInfos = append(inputFileInfos, inputFileInfo{
+		decoderInputFileInfos = append(decoderInputFileInfos, decoderInputFileInfo{
 			fileID,
 			descriptionPacket.filename,
 			descriptionPacket.byteCount,
@@ -73,7 +73,7 @@ func makeInputFileInfos(fileIDs []fileID, fileDescriptionPackets map[fileID]file
 		})
 	}
 
-	return inputFileInfos, nil
+	return decoderInputFileInfos, nil
 }
 
 type shardLocation struct {
@@ -108,7 +108,7 @@ func (m checksumShardLocationMap) get(data []byte) shardLocationSet {
 	return byCRC[md5.Sum(data)]
 }
 
-func makeChecksumShardLocationMap(sliceByteCount int, infos []inputFileInfo) checksumShardLocationMap {
+func makeChecksumShardLocationMap(sliceByteCount int, infos []decoderInputFileInfo) checksumShardLocationMap {
 	m := make(checksumShardLocationMap)
 
 	for _, info := range infos {
@@ -167,8 +167,8 @@ type Decoder struct {
 	setID          recoverySetID
 	clientID       string
 	sliceByteCount int
-	recoverySet    []inputFileInfo
-	nonRecoverySet []inputFileInfo
+	recoverySet    []decoderInputFileInfo
+	nonRecoverySet []decoderInputFileInfo
 
 	checksumToLocation checksumShardLocationMap
 
@@ -217,12 +217,12 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string) (*Dec
 		return nil, errors.New("recovery packets found in index file")
 	}
 
-	recoverySet, err := makeInputFileInfos(indexFile.mainPacket.recoverySet, indexFile.fileDescriptionPackets, indexFile.ifscPackets)
+	recoverySet, err := makeDecoderInputFileInfos(indexFile.mainPacket.recoverySet, indexFile.fileDescriptionPackets, indexFile.ifscPackets)
 	if err != nil {
 		return nil, err
 	}
 
-	nonRecoverySet, err := makeInputFileInfos(indexFile.mainPacket.nonRecoverySet, indexFile.fileDescriptionPackets, indexFile.ifscPackets)
+	nonRecoverySet, err := makeDecoderInputFileInfos(indexFile.mainPacket.nonRecoverySet, indexFile.fileDescriptionPackets, indexFile.ifscPackets)
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +259,7 @@ func sliceAndPadByteArray(bs []byte, start, end int) []byte {
 	return slice
 }
 
-func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocationMap, fileIntegrityInfos []fileIntegrityInfo, fileIDIndices map[fileID]int, i int, info inputFileInfo) (int, error) {
+func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocationMap, fileIntegrityInfos []fileIntegrityInfo, fileIDIndices map[fileID]int, i int, info decoderInputFileInfo) (int, error) {
 	path := filepath.Join(filepath.Dir(d.indexPath), info.filename)
 	data, err := d.fileIO.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -430,11 +430,11 @@ func (d *Decoder) LoadParityData() error {
 				return nil, errors.New("slice byte count mismatch")
 			}
 
-			if !reflect.DeepEqual(inputFileInfoIDs(d.recoverySet), parityFile.mainPacket.recoverySet) {
+			if !reflect.DeepEqual(decoderInputFileInfoIDs(d.recoverySet), parityFile.mainPacket.recoverySet) {
 				return nil, errors.New("recovery set mismatch")
 			}
 
-			if !reflect.DeepEqual(inputFileInfoIDs(d.nonRecoverySet), parityFile.mainPacket.nonRecoverySet) {
+			if !reflect.DeepEqual(decoderInputFileInfoIDs(d.nonRecoverySet), parityFile.mainPacket.nonRecoverySet) {
 				return nil, errors.New("non-recovery set mismatch")
 			}
 
@@ -568,7 +568,7 @@ func (d *Decoder) Repair() ([]string, error) {
 
 	var repairedFiles []string
 
-	for i, inputFileInfo := range d.recoverySet {
+	for i, decoderInputFileInfo := range d.recoverySet {
 		fileIntegrityInfo := d.fileIntegrityInfos[i]
 		if wasOK[i] {
 			continue
@@ -582,21 +582,21 @@ func (d *Decoder) Repair() ([]string, error) {
 			}
 		}
 
-		data := buf.Bytes()[:inputFileInfo.byteCount]
-		if sixteenKHash(data) != inputFileInfo.sixteenKHash {
+		data := buf.Bytes()[:decoderInputFileInfo.byteCount]
+		if sixteenKHash(data) != decoderInputFileInfo.sixteenKHash {
 			return repairedFiles, errors.New("hash mismatch (16k) in reconstructed data")
-		} else if md5.Sum(data) != inputFileInfo.hash {
+		} else if md5.Sum(data) != decoderInputFileInfo.hash {
 			return repairedFiles, errors.New("hash mismatch in reconstructed data")
 		}
 
-		path := filepath.Join(dir, inputFileInfo.filename)
+		path := filepath.Join(dir, decoderInputFileInfo.filename)
 		err = d.fileIO.WriteFile(path, data)
 		d.delegate.OnDataFileWrite(i+1, len(d.recoverySet), path, len(data), err)
 		if err != nil {
 			return repairedFiles, err
 		}
 
-		repairedFiles = append(repairedFiles, inputFileInfo.filename)
+		repairedFiles = append(repairedFiles, decoderInputFileInfo.filename)
 	}
 
 	// TODO: Repair missing parity volumes, too, and then make

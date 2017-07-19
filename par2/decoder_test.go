@@ -50,7 +50,7 @@ func buildPAR2Data(t *testing.T, io testFileIO, sliceByteCount, parityShardCount
 	ifscPackets := make(map[fileID]ifscPacket)
 	dataShardsByID := make(map[fileID][][]uint16)
 	for filename, data := range io.fileData {
-		fileID, fileDescriptionPacket, ifscPacket, fileDataShards := makeTestFileInfo(sliceByteCount, filename, data)
+		fileID, fileDescriptionPacket, ifscPacket, fileDataShards := computeDataFileInfo(sliceByteCount, filename, data)
 		recoverySet = append(recoverySet, fileID)
 		fileDescriptionPackets[fileID] = fileDescriptionPacket
 		ifscPackets[fileID] = ifscPacket
