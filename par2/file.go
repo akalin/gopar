@@ -17,6 +17,12 @@ type file struct {
 	unknownPackets         map[packetType][][]byte
 }
 
+type noPacketsFoundError struct{}
+
+func (noPacketsFoundError) Error() string {
+	return "no packets found"
+}
+
 func readFile(delegate DecoderDelegate, expectedSetID *recoverySetID, fileBytes []byte) (recoverySetID, file, error) {
 	buf := bytes.NewBuffer(fileBytes)
 
@@ -115,7 +121,7 @@ func readFile(delegate DecoderDelegate, expectedSetID *recoverySetID, fileBytes 
 	}
 
 	if !foundPacket {
-		return recoverySetID{}, file{}, errors.New("no packets found")
+		return recoverySetID{}, file{}, noPacketsFoundError{}
 	}
 
 	if !foundClientID {

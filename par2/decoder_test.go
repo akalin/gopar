@@ -174,3 +174,41 @@ func TestVerify(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, ok)
 }
+
+func TestSetIDMismatch(t *testing.T) {
+	io1 := testFileIO{
+		t: t,
+		fileData: map[string][]byte{
+			"file.rar": {0x1, 0x2, 0x3, 0x4},
+			"file.r01": {0x5, 0x6, 0x7},
+			"file.r02": {0x8, 0x9, 0xa, 0xb, 0xc},
+			"file.r03": {0xe, 0xf},
+			"file.r04": {0xd},
+		},
+	}
+
+	io2 := testFileIO{
+		t:        t,
+		fileData: make(map[string][]byte),
+	}
+	for k, v := range io1.fileData {
+		io2.fileData[k] = make([]byte, len(v))
+		copy(io2.fileData[k], v)
+	}
+	io2.fileData["file.rar"][0]++
+
+	buildPAR2Data(t, io1, 4, 3)
+	buildPAR2Data(t, io2, 4, 3)
+	// Insert a parity volume that has a different set hash.
+	io1.fileData["file.vol01+01.par2"] = io2.fileData["file.vol01+01.par2"]
+
+	decoder, err := newDecoder(io1, testDecoderDelegate{t}, "file.par2")
+	require.NoError(t, err)
+	err = decoder.LoadFileData()
+	require.NoError(t, err)
+	err = decoder.LoadParityData()
+	require.NoError(t, err)
+	ok, err := decoder.Verify()
+	require.NoError(t, err)
+	require.False(t, ok)
+}

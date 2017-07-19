@@ -402,40 +402,45 @@ func (d *Decoder) LoadParityData() error {
 
 	var parityFiles []file
 	for i, match := range matches {
-		parityFile, err := func() (file, error) {
+		parityFile, err := func() (*file, error) {
 			volumeBytes, err := d.fileIO.ReadFile(match)
 			if err != nil {
-				return file{}, err
+				return nil, err
 			}
 
 			// Ignore all the other packet types other
 			// than recovery packets.
 			_, parityFile, err := readFile(recoveryDelegate{d.delegate}, &d.setID, volumeBytes)
-			if err != nil {
+			if _, ok := err.(noPacketsFoundError); ok {
+				return nil, nil
+			} else if err != nil {
 				// TODO: Relax this check.
-				return file{}, err
+				return nil, err
 			}
 
 			if d.sliceByteCount != parityFile.mainPacket.sliceByteCount {
-				return file{}, errors.New("slice byte count mismatch")
+				return nil, errors.New("slice byte count mismatch")
 			}
 
 			if !reflect.DeepEqual(inputFileInfoIDs(d.recoverySet), parityFile.mainPacket.recoverySet) {
-				return file{}, errors.New("recovery set mismatch")
+				return nil, errors.New("recovery set mismatch")
 			}
 
 			if !reflect.DeepEqual(inputFileInfoIDs(d.nonRecoverySet), parityFile.mainPacket.nonRecoverySet) {
-				return file{}, errors.New("non-recovery set mismatch")
+				return nil, errors.New("non-recovery set mismatch")
 			}
 
-			return parityFile, nil
+			return &parityFile, nil
 		}()
 		d.delegate.OnParityFileLoad(i+1, match, err)
 		if err != nil {
 			return err
 		}
+		if parityFile == nil {
+			continue
+		}
 
-		parityFiles = append(parityFiles, parityFile)
+		parityFiles = append(parityFiles, *parityFile)
 	}
 
 	var parityShards [][]uint16
