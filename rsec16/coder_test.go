@@ -46,20 +46,24 @@ func testCoder(t *testing.T, testFn func(*testing.T, func(int, int) (Coder, erro
 	})
 }
 
-func testCoderGenerateParity(t *testing.T, newCoder func(int, int) (Coder, error)) {
-	data := [][]uint16{
-		{0x1, 0x2},
-		{0x3, 0x4},
-		{0x5, 0x6},
-		{0x7, 0x8},
-		{0x9, 0xa},
+func makeTestData() [][]byte {
+	return [][]byte{
+		{0x0, 0x1, 0x0, 0x2},
+		{0x0, 0x3, 0x0, 0x4},
+		{0x0, 0x5, 0x0, 0x6},
+		{0x0, 0x7, 0x0, 0x8},
+		{0x0, 0x9, 0x0, 0xa},
 	}
+}
+
+func testCoderGenerateParity(t *testing.T, newCoder func(int, int) (Coder, error)) {
+	data := makeTestData()
 	c, err := newCoder(5, 3)
 	require.NoError(t, err)
 	parity := c.GenerateParity(data)
 	require.Equal(t, 3, len(parity))
 	for _, row := range parity {
-		require.Equal(t, 2, len(row))
+		require.Equal(t, 4, len(row))
 	}
 }
 
@@ -68,18 +72,12 @@ func TestCoderGenerateParity(t *testing.T) {
 }
 
 func testCoderReconstructData(t *testing.T, newCoder func(int, int) (Coder, error)) {
-	data := [][]uint16{
-		{0x1, 0x2},
-		{0x3, 0x4},
-		{0x5, 0x6},
-		{0x7, 0x8},
-		{0x9, 0xa},
-	}
+	data := makeTestData()
 	c, err := newCoder(5, 3)
 	require.NoError(t, err)
 	parity := c.GenerateParity(data)
 
-	corruptedData := [][]uint16{
+	corruptedData := [][]byte{
 		nil,
 		data[1],
 		nil,
@@ -96,25 +94,19 @@ func TestCoderReconstructDataNotEnough(t *testing.T) {
 }
 
 func testCoderReconstructDataMissingParity(t *testing.T, newCoder func(int, int) (Coder, error)) {
-	data := [][]uint16{
-		{0x1, 0x2},
-		{0x3, 0x4},
-		{0x5, 0x6},
-		{0x7, 0x8},
-		{0x9, 0xa},
-	}
+	data := makeTestData()
 	c, err := newCoder(5, 3)
 	require.NoError(t, err)
 	parity := c.GenerateParity(data)
 
-	corruptedData := [][]uint16{
+	corruptedData := [][]byte{
 		data[0],
 		nil,
 		data[2],
 		data[3],
 		nil,
 	}
-	corruptedParity := [][]uint16{
+	corruptedParity := [][]byte{
 		nil,
 		parity[1],
 		parity[2],
@@ -130,18 +122,12 @@ func TestCoderReconstructDataMissingParity(t *testing.T) {
 }
 
 func testCoderReconstructDataNotEnough(t *testing.T, newCoder func(int, int) (Coder, error)) {
-	data := [][]uint16{
-		{0x1, 0x2},
-		{0x3, 0x4},
-		{0x5, 0x6},
-		{0x7, 0x8},
-		{0x9, 0xa},
-	}
+	data := makeTestData()
 	c, err := newCoder(5, 3)
 	require.NoError(t, err)
 	parity := c.GenerateParity(data)
 
-	corruptedData := [][]uint16{
+	corruptedData := [][]byte{
 		data[0],
 		nil,
 		nil,
@@ -152,14 +138,14 @@ func testCoderReconstructDataNotEnough(t *testing.T, newCoder func(int, int) (Co
 	err = c.ReconstructData(corruptedData, parity)
 	require.Equal(t, expectedErr, err)
 
-	corruptedData = [][]uint16{
+	corruptedData = [][]byte{
 		data[0],
 		data[1],
 		nil,
 		nil,
 		nil,
 	}
-	corruptedParity := [][]uint16{
+	corruptedParity := [][]byte{
 		nil,
 		parity[1],
 		parity[2],

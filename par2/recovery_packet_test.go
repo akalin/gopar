@@ -9,7 +9,7 @@ import (
 func TestRecoveryPacketRoundTrip(t *testing.T) {
 	var exp exponent = 0xff00
 	packet := recoveryPacket{
-		data: []uint16{0xffff, 0x0000, 0xabcd, 0x0001},
+		data: []byte{0xff, 0xff, 0x00, 0x00, 0xcd, 0xab, 0x01, 0x00},
 	}
 	packetBytes, err := writeRecoveryPacket(exp, packet)
 	require.NoError(t, err)

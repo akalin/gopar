@@ -48,7 +48,7 @@ func buildPAR2Data(t *testing.T, io testFileIO, sliceByteCount, parityShardCount
 	var recoverySet []fileID
 	fileDescriptionPackets := make(map[fileID]fileDescriptionPacket)
 	ifscPackets := make(map[fileID]ifscPacket)
-	dataShardsByID := make(map[fileID][][]uint16)
+	dataShardsByID := make(map[fileID][][]byte)
 	for filename, data := range io.fileData {
 		fileID, fileDescriptionPacket, ifscPacket, fileDataShards := computeDataFileInfo(sliceByteCount, filename, data)
 		recoverySet = append(recoverySet, fileID)
@@ -61,7 +61,7 @@ func buildPAR2Data(t *testing.T, io testFileIO, sliceByteCount, parityShardCount
 		return fileIDLess(recoverySet[i], recoverySet[j])
 	})
 
-	var dataShards [][]uint16
+	var dataShards [][]byte
 	for _, fileID := range recoverySet {
 		dataShards = append(dataShards, dataShardsByID[fileID]...)
 	}

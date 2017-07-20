@@ -50,7 +50,7 @@ func TestEncodeParity(t *testing.T) {
 	require.NoError(t, err)
 
 	var recoverySet []fileID
-	dataShardsByID := make(map[fileID][][]uint16)
+	dataShardsByID := make(map[fileID][][]byte)
 	for filename, data := range io.fileData {
 		fileID, _, _, fileDataShards := computeDataFileInfo(sliceByteCount, filename, data)
 		recoverySet = append(recoverySet, fileID)
@@ -61,7 +61,7 @@ func TestEncodeParity(t *testing.T) {
 		return fileIDLess(recoverySet[i], recoverySet[j])
 	})
 
-	var dataShards [][]uint16
+	var dataShards [][]byte
 	for _, fileID := range recoverySet {
 		dataShards = append(dataShards, dataShardsByID[fileID]...)
 	}

@@ -6,7 +6,7 @@ import (
 	"hash/crc32"
 )
 
-func computeDataFileInfo(sliceByteCount int, filename string, data []byte) (fileID, fileDescriptionPacket, ifscPacket, [][]uint16) {
+func computeDataFileInfo(sliceByteCount int, filename string, data []byte) (fileID, fileDescriptionPacket, ifscPacket, [][]byte) {
 	hash := md5.Sum(data)
 	sixteenKHash := sixteenKHash(data)
 	fileID := computeFileID(sixteenKHash, uint64(len(data)), []byte(filename))
@@ -16,11 +16,11 @@ func computeDataFileInfo(sliceByteCount int, filename string, data []byte) (file
 		byteCount:    len(data),
 		filename:     filename,
 	}
-	var dataShards [][]uint16
+	var dataShards [][]byte
 	var checksumPairs []checksumPair
 	for i := 0; i < len(data); i += sliceByteCount {
 		slice := sliceAndPadByteArray(data, i, i+sliceByteCount)
-		dataShards = append(dataShards, byteToUint16LEArray(slice))
+		dataShards = append(dataShards, slice)
 		crc32 := crc32.ChecksumIEEE(slice)
 		var crc32Bytes [4]byte
 		binary.LittleEndian.PutUint32(crc32Bytes[:], crc32)

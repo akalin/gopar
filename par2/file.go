@@ -107,7 +107,7 @@ func readFile(delegate DecoderDelegate, expectedSetID *recoverySetID, fileBytes 
 				return recoverySetID{}, file{}, err
 			}
 
-			delegate.OnRecoveryPacketLoad(uint16(exponent), 2*len(recoveryPacket.data))
+			delegate.OnRecoveryPacketLoad(uint16(exponent), len(recoveryPacket.data))
 			if existingPacket, ok := recoveryPackets[exponent]; ok {
 				if !reflect.DeepEqual(existingPacket, recoveryPacket) {
 					return recoverySetID{}, file{}, errors.New("recovery packet with duplicate exponent but differing contents")

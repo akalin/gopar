@@ -123,7 +123,7 @@ func makeChecksumShardLocationMap(sliceByteCount int, infos []decoderInputFileIn
 }
 
 type shardIntegrityInfo struct {
-	data      []uint16
+	data      []byte
 	locations shardLocationSet
 }
 
@@ -175,7 +175,7 @@ type Decoder struct {
 	// Indexed the same as recoverySet.
 	fileIntegrityInfos []fileIntegrityInfo
 
-	parityShards [][]uint16
+	parityShards [][]byte
 }
 
 // DecoderDelegate holds methods that are called during the decode
@@ -286,7 +286,7 @@ func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocatio
 			shardInfo := &integrityInfo.shardInfos[foundLocation.start/d.sliceByteCount]
 			if shardInfo.data == nil {
 				*shardInfo = shardIntegrityInfo{
-					byteToUint16LEArray(slice),
+					slice,
 					shardLocationSet{},
 				}
 			}
@@ -451,11 +451,11 @@ func (d *Decoder) LoadParityData() error {
 		parityFiles = append(parityFiles, *parityFile)
 	}
 
-	var parityShards [][]uint16
+	var parityShards [][]byte
 	for _, file := range parityFiles {
 		for exponent, packet := range file.recoveryPackets {
 			if int(exponent) >= len(parityShards) {
-				parityShards = append(parityShards, make([][]uint16, int(exponent+1)-len(parityShards))...)
+				parityShards = append(parityShards, make([][]byte, int(exponent+1)-len(parityShards))...)
 			}
 			parityShards[exponent] = packet.data
 		}
@@ -465,8 +465,8 @@ func (d *Decoder) LoadParityData() error {
 	return nil
 }
 
-func (d *Decoder) newCoderAndShards() (rsec16.Coder, [][]uint16, error) {
-	var dataShards [][]uint16
+func (d *Decoder) newCoderAndShards() (rsec16.Coder, [][]byte, error) {
+	var dataShards [][]byte
 	for _, info := range d.fileIntegrityInfos {
 		for _, shardInfo := range info.shardInfos {
 			dataShards = append(dataShards, shardInfo.data)
@@ -559,7 +559,7 @@ func (d *Decoder) Repair() ([]string, error) {
 		for j, shard := range dataShards[k : k+shardCount] {
 			info.shardInfos[j] = shardIntegrityInfo{
 				data:      shard,
-				locations: d.checksumToLocation.get(uint16LEToByteArray(shard)),
+				locations: d.checksumToLocation.get(shard),
 			}
 		}
 		k += shardCount

@@ -107,12 +107,12 @@ func NewCoderPAR2Vandermonde(dataShards, parityShards int) (Coder, error) {
 
 // GenerateParity takes a list of data shards, which must have length
 // matching the dataShards value passed into NewCoder, and which must
-// have equal-sized uint16 slices, and returns a list of parityShards
-// parity shards.
-func (c Coder) GenerateParity(data [][]uint16) [][]uint16 {
-	parity := make([][]uint16, c.parityShards)
+// have equal-sized byte slices with even length, and returns a list
+// of parityShards parity shards.
+func (c Coder) GenerateParity(data [][]byte) [][]byte {
+	parity := make([][]byte, c.parityShards)
 	for i := range parity {
-		parity[i] = make([]uint16, len(data[0]))
+		parity[i] = make([]byte, len(data[0]))
 	}
 	applyMatrix(c.parityMatrix, data, parity)
 	return parity
@@ -122,9 +122,9 @@ func (c Coder) GenerateParity(data [][]uint16) [][]uint16 {
 // of which may be nil, and tries to reconstruct the missing data
 // shards. If successful, the nil rows of data are filled in and a nil
 // error is returned. Otherwise, an error is returned.
-func (c Coder) ReconstructData(data, parity [][]uint16) error {
+func (c Coder) ReconstructData(data, parity [][]byte) error {
 	var availableRows, missingRows []int
-	var input [][]uint16
+	var input [][]byte
 	for i, dataShard := range data {
 		if dataShard != nil {
 			availableRows = append(availableRows, i)
@@ -176,9 +176,9 @@ func (c Coder) ReconstructData(data, parity [][]uint16) error {
 		return mInv.At(missingRows[i], j)
 	})
 
-	reconstructedData := make([][]uint16, len(missingRows))
+	reconstructedData := make([][]byte, len(missingRows))
 	for i := range reconstructedData {
-		reconstructedData[i] = make([]uint16, len(input[0]))
+		reconstructedData[i] = make([]byte, len(input[0]))
 	}
 	applyMatrix(n, input, reconstructedData)
 	for i, r := range missingRows {

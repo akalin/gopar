@@ -11,7 +11,7 @@ var recoveryPacketType = packetType{'P', 'A', 'R', ' ', '2', '.', '0', '\x00', '
 type exponent uint16
 
 type recoveryPacket struct {
-	data []uint16
+	data []byte
 }
 
 func readRecoveryPacket(body []byte) (exponent, recoveryPacket, error) {
@@ -24,18 +24,15 @@ func readRecoveryPacket(body []byte) (exponent, recoveryPacket, error) {
 		return 0, recoveryPacket{}, errors.New("exponent out of range")
 	}
 
-	return exponent(exp), recoveryPacket{byteToUint16LEArray(body[4:])}, nil
+	return exponent(exp), recoveryPacket{body[4:]}, nil
 }
 
 func writeRecoveryPacket(exp exponent, packet recoveryPacket) ([]byte, error) {
-	// Remember that packet.data is []uint16, so its size must be
-	// a multiple of 2 in order for the byte count to be a
-	// multiple of 4.
-	if len(packet.data) == 0 || len(packet.data)%2 != 0 {
+	if len(packet.data) == 0 || len(packet.data)%4 != 0 {
 		return nil, errors.New("invalid recovery data byte count")
 	}
 
 	var expBytes [4]byte
 	binary.LittleEndian.PutUint32(expBytes[:], uint32(exp))
-	return append(expBytes[:], uint16LEToByteArray(packet.data)...), nil
+	return append(expBytes[:], packet.data...), nil
 }

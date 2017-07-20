@@ -11,7 +11,7 @@ import (
 type encoderInputFileInfo struct {
 	fileDescriptionPacket fileDescriptionPacket
 	ifscPacket            ifscPacket
-	dataShards            [][]uint16
+	dataShards            [][]byte
 }
 
 // An Encoder keeps track of all information needed to create parity
@@ -29,7 +29,7 @@ type Encoder struct {
 	recoverySet      []fileID
 	recoverySetInfos map[fileID]encoderInputFileInfo
 
-	parityShards [][]uint16
+	parityShards [][]byte
 }
 
 // EncoderDelegate holds methods that are called during the encode
@@ -81,7 +81,7 @@ func (e *Encoder) LoadFileData() error {
 
 // ComputeParityData computes the parity data for the files.
 func (e *Encoder) ComputeParityData() error {
-	var dataShards [][]uint16
+	var dataShards [][]byte
 	for _, fileID := range e.recoverySet {
 		dataShards = append(dataShards, e.recoverySetInfos[fileID].dataShards...)
 	}

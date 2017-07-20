@@ -1,16 +1,24 @@
 package gf2p16
 
-// MulSlice sets each out[i] to c.Times(in[i]), treating in and out like []T.
-func MulSlice(c T, in, out []uint16) {
-	for i, x := range in {
-		out[i] = uint16(c.Times(T(x)))
+// MulByteSliceLE treats in and out as arrays of Ts stored in
+// little-endian format, and sets each out<T>[i] to c.Times(in<T>[i]).
+func MulByteSliceLE(c T, in, out []byte) {
+	for i := 0; i < len(in); i += 2 {
+		x := T(in[i]) + (T(in[i+1]) << 8)
+		cx := c.Times(x)
+		out[i] = byte(cx)
+		out[i+1] = byte(cx >> 8)
 	}
 }
 
-// MulAndAddSlice adds c.Times(in[i]) to out[i], for each i, treating
-// in and out like []T.
-func MulAndAddSlice(c T, in, out []uint16) {
-	for i, x := range in {
-		out[i] ^= uint16(c.Times(T(x)))
+// MulAndAddByteSliceLE treats in and out as arrays of Ts stored in
+// little-endian format, and adds c.Times(in<T>[i]) to out<T>[i], for
+// each i.
+func MulAndAddByteSliceLE(c T, in, out []byte) {
+	for i := 0; i < len(in); i += 2 {
+		x := T(in[i]) + (T(in[i+1]) << 8)
+		cx := c.Times(x)
+		out[i] ^= byte(cx)
+		out[i+1] ^= byte(cx >> 8)
 	}
 }
