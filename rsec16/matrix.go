@@ -7,14 +7,13 @@ func applyMatrix(m gf2p16.Matrix, in, out [][]uint16) {
 		panic("mismatched lengths")
 	}
 
-	// TODO: Optimize this.
-	n := gf2p16.NewMatrixFromFunction(len(in), len(in[0]), func(i, j int) gf2p16.T {
-		return gf2p16.T(in[i][j])
-	})
-	prod := m.Times(n)
-	for i := 0; i < len(out); i++ {
-		for j := 0; j < len(out[0]); j++ {
-			out[i][j] = uint16(prod.At(i, j))
+	// TODO: Maybe iterate over input slices first.
+	for i, outSlice := range out {
+		c := m.At(i, 0)
+		gf2p16.MulSlice(c, in[0], outSlice)
+		for j := 1; j < len(in); j++ {
+			c := m.At(i, j)
+			gf2p16.MulAndAddSlice(c, in[j], outSlice)
 		}
 	}
 }
