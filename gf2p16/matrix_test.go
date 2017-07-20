@@ -173,3 +173,24 @@ func TestMatrixInverseSingular(t *testing.T) {
 	_, err := m.Inverse()
 	require.Equal(t, errors.New("singular matrix"), err)
 }
+
+func benchmarkMatrixInverse(b *testing.B, count int) {
+	m := NewMatrixFromFunction(count, count, func(i, j int) T {
+		return (T(count+i) ^ T(j)).Inverse()
+	})
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := m.Inverse()
+		require.NoError(b, err)
+	}
+}
+
+func BenchmarkMatrixInverse(b *testing.B) {
+	b.Run("100", func(b *testing.B) {
+		benchmarkMatrixInverse(b, 100)
+	})
+	b.Run("1000", func(b *testing.B) {
+		benchmarkMatrixInverse(b, 1000)
+	})
+}
