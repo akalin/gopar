@@ -160,3 +160,25 @@ func BenchmarkMatrixInverse(b *testing.B) {
 		benchmarkMatrixInverse(b, 1000)
 	})
 }
+
+func TestMatrixRowReduceForInverse(t *testing.T) {
+	m := NewMatrixFromSlice(3, 3, []T{
+		1, 2, 3,
+		4, 5, 6,
+		7, 8, 9,
+	})
+	n, err := m.RowReduceForInverse(NewMatrixFromSlice(3, 1, []T{
+		1,
+		0,
+		0,
+	}))
+	require.NoError(t, err)
+
+	mInv, err := m.Inverse()
+	require.NoError(t, err)
+	expectedN := NewMatrixFromFunction(3, 1, func(i, j int) T {
+		return mInv.At(i, j)
+	})
+
+	require.Equal(t, expectedN, n)
+}

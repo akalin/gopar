@@ -127,30 +127,23 @@ func (c Coder) GenerateParity(data [][]byte) [][]byte {
 }
 
 func makeReconstructionMatrix(dataShards int, availableRows, missingRows, usedParityRows []int, parityMatrix gf2p16.Matrix) (gf2p16.Matrix, error) {
-	m := gf2p16.NewMatrixFromFunction(dataShards, dataShards, func(i, j int) gf2p16.T {
-		if i < len(availableRows) {
-			k := availableRows[i]
-			// Take the kth row of the c.dataShards x
-			// c.dataShards identity matrix.
-			if j == k {
-				return 1
-			}
-			return 0
-		}
-
-		// Take the rest of the rows from the parity matrix
-		// corresponding to the used parity shards.
-		k := usedParityRows[i-len(availableRows)]
-		return parityMatrix.At(k, j)
+	m := gf2p16.NewMatrixFromFunction(len(usedParityRows), len(usedParityRows), func(i, j int) gf2p16.T {
+		k := usedParityRows[i]
+		l := missingRows[j]
+		return parityMatrix.At(k, l)
 	})
-	mInv, err := m.Inverse()
-	if err != nil {
-		return gf2p16.Matrix{}, err
-	}
-
-	return gf2p16.NewMatrixFromFunction(len(missingRows), dataShards, func(i, j int) gf2p16.T {
-		return mInv.At(missingRows[i], j)
-	}), nil
+	n := gf2p16.NewMatrixFromFunction(len(usedParityRows), dataShards, func(i, j int) gf2p16.T {
+		if j < len(availableRows) {
+			k := usedParityRows[i]
+			l := availableRows[j]
+			return parityMatrix.At(k, l)
+		}
+		if i == j-len(availableRows) {
+			return 1
+		}
+		return 0
+	})
+	return m.RowReduceForInverse(n)
 }
 
 // ReconstructData takes a list of data shards and parity shards, some

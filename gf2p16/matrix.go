@@ -145,8 +145,7 @@ func (m Matrix) addScaledRow(dest, src int, c T) {
 	}
 }
 
-func (m Matrix) rowReduceForInverse() (Matrix, error) {
-	mInv := NewIdentityMatrix(m.columns)
+func (m Matrix) rowReduceForInverse(n Matrix) error {
 	// Convert to row echelon form.
 	for i := 0; i < m.rows; i++ {
 		// Swap the ith row with the first row with a non-zero
@@ -155,26 +154,26 @@ func (m Matrix) rowReduceForInverse() (Matrix, error) {
 		for j := i; j < m.rows; j++ {
 			if m.At(j, i) != 0 {
 				m.swapRows(i, j)
-				mInv.swapRows(i, j)
+				n.swapRows(i, j)
 				pivot = m.At(i, i)
 				break
 			}
 		}
 		if pivot == 0 {
-			return Matrix{}, errors.New("singular matrix")
+			return errors.New("singular matrix")
 		}
 
 		// Scale the ith row to have 1 as the pivot.
 		pivotInv := pivot.Inverse()
 		m.scaleRow(i, pivotInv)
-		mInv.scaleRow(i, pivotInv)
+		n.scaleRow(i, pivotInv)
 
 		// Zero out all elements below m_ii.
 		for j := i + 1; j < m.rows; j++ {
 			t := m.At(j, i)
 			if t != 0 {
 				m.addScaledRow(j, i, t)
-				mInv.addScaledRow(j, i, t)
+				n.addScaledRow(j, i, t)
 			}
 		}
 	}
@@ -186,12 +185,12 @@ func (m Matrix) rowReduceForInverse() (Matrix, error) {
 			t := m.At(j, i)
 			if t != 0 {
 				m.addScaledRow(j, i, t)
-				mInv.addScaledRow(j, i, t)
+				n.addScaledRow(j, i, t)
 			}
 		}
 	}
 
-	return mInv, nil
+	return nil
 }
 
 // Inverse returns the matrix inverse of m, which must be square, or
@@ -200,10 +199,39 @@ func (m Matrix) Inverse() (Matrix, error) {
 	if m.rows != m.columns {
 		panic("cannot invert non-square matrix")
 	}
-	mInv, err := m.clone().rowReduceForInverse()
+	mInv := NewIdentityMatrix(m.columns)
+	err := m.clone().rowReduceForInverse(mInv)
 	if err != nil {
 		return Matrix{}, err
 	}
 
 	return mInv, nil
+}
+
+// RowReduceForInverse runs row reduction on copies of m, which must
+// be square, and n, which must have the same number of rows as m. The
+// row-reduced copy of n is returned if m is non-singular; otherwise,
+// an empty matrix and an error is returned.
+//
+// Note that if n is the identity matrix, then the inverse of m is
+// returned. This is the special case of the following fact: if n is
+// equal to some matrix ( n_L | I ), where I is the
+// appropriately-sized identity matrix and | denotes horizontal
+// augmentation, then if the returned matrix is n', the matrix
+// ( I / n' ) is the inverse of ( I / n_L | 0 / m ), where / denotes
+// vertical augmentation.
+func (m Matrix) RowReduceForInverse(n Matrix) (Matrix, error) {
+	if m.rows != m.columns {
+		panic("cannot row-reduce non-square matrix")
+	}
+	if n.rows != m.rows {
+		panic("n must have the same number of rows as m")
+	}
+	nReduced := n.clone()
+	err := m.clone().rowReduceForInverse(nReduced)
+	if err != nil {
+		return Matrix{}, err
+	}
+
+	return nReduced, nil
 }
