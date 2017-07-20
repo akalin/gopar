@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"runtime/pprof"
@@ -238,6 +239,15 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt)
+		go func() {
+			<-c
+			pprof.StopCPUProfile()
+			os.Exit(1)
+		}()
+
 		defer pprof.StopCPUProfile()
 	}
 
