@@ -105,19 +105,6 @@ func NewCoderPAR2Vandermonde(dataShards, parityShards int) (Coder, error) {
 	return Coder{dataShards, parityShards, parityMatrix}, nil
 }
 
-func applyMatrix(m gf2p16.Matrix, in, out [][]uint16) {
-	// TODO: Optimize this.
-	n := gf2p16.NewMatrixFromFunction(len(in), len(in[0]), func(i, j int) gf2p16.T {
-		return gf2p16.T(in[i][j])
-	})
-	prod := m.Times(n)
-	for i := 0; i < len(out); i++ {
-		for j := 0; j < len(out[0]); j++ {
-			out[i][j] = uint16(prod.At(i, j))
-		}
-	}
-}
-
 // GenerateParity takes a list of data shards, which must have length
 // matching the dataShards value passed into NewCoder, and which must
 // have equal-sized uint16 slices, and returns a list of parityShards

@@ -7,12 +7,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestVandermondeMatrix(t *testing.T) {
-	alphaFunc := func(i int) gf2p16.T {
+func newTestVandermondeMatrix(rows, columns int) gf2p16.Matrix {
+	return newVandermondeMatrix(rows, columns, func(i int) gf2p16.T {
 		return gf2p16.T(i)
-	}
+	})
+}
+
+func TestVandermondeMatrix(t *testing.T) {
 	for i := 1; i < 100; i++ {
-		m := newVandermondeMatrix(i, i, alphaFunc)
+		m := newTestVandermondeMatrix(i, i)
 		_, err := m.Inverse()
 		require.NoError(t, err)
 	}
