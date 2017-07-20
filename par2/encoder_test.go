@@ -16,8 +16,12 @@ func (d testEncoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int
 	d.t.Logf("OnDataFileLoad(%d, %d, byteCount=%d, %s, %v)", i, n, byteCount, path, err)
 }
 
-func (d testEncoderDelegate) OnParityFileWrite(i, n int, path string, dataByteCount, byteCount int, err error) {
-	d.t.Logf("OnParityFileWrite(%d, %d, %s, %v, dataByteCount=%d, byteCount=%d)", i, n, path, dataByteCount, byteCount, err)
+func (d testEncoderDelegate) OnIndexFileWrite(path string, byteCount int, err error) {
+	d.t.Logf("OnIndexFileWrite(%s, %d, %v)", path, byteCount, err)
+}
+
+func (d testEncoderDelegate) OnRecoveryFileWrite(start, count, total int, path string, dataByteCount, byteCount int, err error) {
+	d.t.Logf("OnRecoveryFileWrite(start=%d, count=%d, total=%d, %s, dataByteCount=%d, byteCount=%d, %v)", start, count, total, path, dataByteCount, byteCount, err)
 }
 
 func TestEncodeParity(t *testing.T) {
@@ -67,4 +71,45 @@ func TestEncodeParity(t *testing.T) {
 
 	computedParityShards := coder.GenerateParity(dataShards)
 	require.Equal(t, computedParityShards, encoder.parityShards)
+}
+
+func TestWriteParity(t *testing.T) {
+	io := testFileIO{
+		t: t,
+		fileData: map[string][]byte{
+			"file.rar": {0x1, 0x2, 0x3},
+			"file.r01": {0x5, 0x6, 0x7, 0x8},
+			"file.r02": {0x9, 0xa, 0xb, 0xc},
+			"file.r03": {0xd, 0xe},
+			"file.r04": {0xf},
+		},
+	}
+
+	paths := []string{"file.rar", "file.r01", "file.r02", "file.r03", "file.r04"}
+
+	sliceByteCount := 4
+	parityShardCount := 100
+	encoder, err := newEncoder(io, testEncoderDelegate{t}, paths, sliceByteCount, parityShardCount)
+	require.NoError(t, err)
+
+	err = encoder.LoadFileData()
+	require.NoError(t, err)
+
+	err = encoder.ComputeParityData()
+	require.NoError(t, err)
+
+	err = encoder.Write("parity.par2")
+	require.NoError(t, err)
+
+	decoder, err := newDecoder(io, testDecoderDelegate{t}, "parity.par2")
+	require.NoError(t, err)
+
+	err = decoder.LoadFileData()
+	require.NoError(t, err)
+	err = decoder.LoadParityData()
+	require.NoError(t, err)
+
+	ok, err := decoder.Verify()
+	require.NoError(t, err)
+	require.True(t, ok)
 }
