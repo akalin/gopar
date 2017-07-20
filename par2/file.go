@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"reflect"
+	"sort"
 )
 
 type file struct {
@@ -202,9 +203,14 @@ func writeFile(file file) (recoverySetID, []byte, error) {
 		}
 	}
 
-	// TODO: Sort exponents before iterating.
-	for exp, packet := range file.recoveryPackets {
-		recoveryPacketBytes, err := writeRecoveryPacket(exp, packet)
+	var exponents []int
+	for exp := range file.recoveryPackets {
+		exponents = append(exponents, int(exp))
+	}
+	sort.Ints(exponents)
+
+	for _, exp := range exponents {
+		recoveryPacketBytes, err := writeRecoveryPacket(exponent(exp), file.recoveryPackets[exponent(exp)])
 		if err != nil {
 			return recoverySetID{}, nil, err
 		}
