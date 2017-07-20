@@ -108,40 +108,6 @@ func TestMatrixAddScaledRow(t *testing.T) {
 	require.Equal(t, expectedM, m)
 }
 
-func TestMatrixAugmentRight(t *testing.T) {
-	m := NewMatrixFromSlice(3, 2, []T{
-		1, 2,
-		2, 3,
-		3, 4,
-	})
-
-	expectedN := NewMatrixFromSlice(3, 5, []T{
-		1, 2, 1, 0, 0,
-		2, 3, 0, 1, 0,
-		3, 4, 0, 0, 1,
-	})
-
-	n := m.augmentRight(NewIdentityMatrix(3))
-	require.Equal(t, expectedN, n)
-}
-
-func TestMatrixColumnSlice(t *testing.T) {
-	m := NewMatrixFromSlice(3, 5, []T{
-		1, 2, 3, 4, 5,
-		2, 3, 4, 5, 6,
-		3, 4, 5, 6, 7,
-	})
-
-	expectedN := NewMatrixFromSlice(3, 2, []T{
-		2, 3,
-		3, 4,
-		4, 5,
-	})
-
-	n := m.columnSlice(1, 3)
-	require.Equal(t, expectedN, n)
-}
-
 func TestMatrixInverseIdentity(t *testing.T) {
 	for i := 1; i < 100; i++ {
 		m := NewIdentityMatrix(i)

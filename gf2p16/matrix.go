@@ -145,29 +145,8 @@ func (m Matrix) addScaledRow(dest, src int, c T) {
 	}
 }
 
-func (m Matrix) augmentRight(n Matrix) Matrix {
-	if m.rows != n.rows {
-		panic("mismatched dimensions")
-	}
-
-	return NewMatrixFromFunction(m.rows, m.columns+n.columns, func(i, j int) T {
-		if j < m.columns {
-			return m.At(i, j)
-		}
-		return n.At(i, j-m.columns)
-	})
-}
-
-func (m Matrix) columnSlice(i, j int) Matrix {
-	m.checkColumnIndex(i)
-	m.checkColumnIndex(j - 1)
-
-	return NewMatrixFromFunction(m.rows, j-i, func(k, l int) T {
-		return m.At(k, i+l)
-	})
-}
-
-func (m Matrix) rowReduceForInverse() error {
+func (m Matrix) rowReduceForInverse() (Matrix, error) {
+	mInv := NewIdentityMatrix(m.columns)
 	// Convert to row echelon form.
 	for i := 0; i < m.rows; i++ {
 		// Swap the ith row with the first row with a non-zero
@@ -176,22 +155,26 @@ func (m Matrix) rowReduceForInverse() error {
 		for j := i; j < m.rows; j++ {
 			if m.At(j, i) != 0 {
 				m.swapRows(i, j)
+				mInv.swapRows(i, j)
 				pivot = m.At(i, i)
 				break
 			}
 		}
 		if pivot == 0 {
-			return errors.New("singular matrix")
+			return Matrix{}, errors.New("singular matrix")
 		}
 
 		// Scale the ith row to have 1 as the pivot.
-		m.scaleRow(i, pivot.Inverse())
+		pivotInv := pivot.Inverse()
+		m.scaleRow(i, pivotInv)
+		mInv.scaleRow(i, pivotInv)
 
 		// Zero out all elements below m_ii.
 		for j := i + 1; j < m.rows; j++ {
 			t := m.At(j, i)
 			if t != 0 {
 				m.addScaledRow(j, i, t)
+				mInv.addScaledRow(j, i, t)
 			}
 		}
 	}
@@ -203,11 +186,12 @@ func (m Matrix) rowReduceForInverse() error {
 			t := m.At(j, i)
 			if t != 0 {
 				m.addScaledRow(j, i, t)
+				mInv.addScaledRow(j, i, t)
 			}
 		}
 	}
 
-	return nil
+	return mInv, nil
 }
 
 // Inverse returns the matrix inverse of m, which must be square, or
@@ -216,11 +200,10 @@ func (m Matrix) Inverse() (Matrix, error) {
 	if m.rows != m.columns {
 		panic("cannot invert non-square matrix")
 	}
-	t := m.augmentRight(NewIdentityMatrix(m.columns))
-	err := t.rowReduceForInverse()
+	mInv, err := m.clone().rowReduceForInverse()
 	if err != nil {
 		return Matrix{}, err
 	}
 
-	return t.columnSlice(m.columns, 2*m.columns), nil
+	return mInv, nil
 }
