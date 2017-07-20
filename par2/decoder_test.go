@@ -52,9 +52,8 @@ func TestFillShardInfos(t *testing.T) {
 
 	hits, misses := fillShardInfos(sliceByteCount, data, checksumToLocation, id, fileIntegrityInfos, fileIDIndices)
 	expectedHits := (dataByteCount + sliceByteCount - 1) / sliceByteCount
-	expectedMisses := dataByteCount - expectedHits
 	require.Equal(t, expectedHits, hits)
-	require.Equal(t, expectedMisses, misses)
+	require.Equal(t, 0, misses)
 
 	hits, misses = fillShardInfos(sliceByteCount, unrelatedData, checksumToLocation, id, fileIntegrityInfos, fileIDIndices)
 	require.Equal(t, 0, hits)

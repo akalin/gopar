@@ -264,13 +264,11 @@ func fillShardInfos(sliceByteCount int, data []byte, checksumToLocation checksum
 	misses := 0
 
 	// TODO: Compute checksum incrementally.
-	//
-	// TODO: Increment j by sliceByteCount for the common case
-	// (i.e., uncorrupted files).
-	for j := 0; j < len(data); j++ {
+	for j := 0; j < len(data); {
 		slice := sliceAndPadByteArray(data, j, j+sliceByteCount)
 		foundLocations := checksumToLocation.get(slice)
 		if len(foundLocations) == 0 {
+			j++
 			misses++
 			continue
 		}
@@ -288,6 +286,7 @@ func fillShardInfos(sliceByteCount int, data []byte, checksumToLocation checksum
 			shardInfo.locations[location] = true
 		}
 
+		j += sliceByteCount
 		hits++
 	}
 
