@@ -7,7 +7,6 @@ func applyMatrix(m gf2p16.Matrix, in, out [][]uint16) {
 		panic("mismatched lengths")
 	}
 
-	// TODO: Maybe iterate over input slices first.
 	for i, outSlice := range out {
 		c := m.At(i, 0)
 		gf2p16.MulSlice(c, in[0], outSlice)
