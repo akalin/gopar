@@ -77,6 +77,32 @@ func (par1LogDecoderDelegate) OnVolumeFileLoad(i uint64, path string, storedSetH
 	}
 }
 
+type par2LogEncoderDelegate struct{}
+
+func (par2LogEncoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {
+	if err != nil {
+		fmt.Printf("[%d/%d] Loading data file %q failed: %+v\n", i, n, path, err)
+	} else {
+		fmt.Printf("[%d/%d] Loaded data file %q (%d bytes)\n", i, n, path, byteCount)
+	}
+}
+
+func (par2LogEncoderDelegate) OnIndexFileWrite(path string, byteCount int, err error) {
+	if err != nil {
+		fmt.Printf("Writing index file %q failed: %+v\n", path, err)
+	} else {
+		fmt.Printf("Wrote index file %q (%d bytes)\n", path, byteCount)
+	}
+}
+
+func (par2LogEncoderDelegate) OnRecoveryFileWrite(start, count, total int, path string, dataByteCount, byteCount int, err error) {
+	if err != nil {
+		fmt.Printf("[%d+%d/%d] Writing recovery file %q failed: %+v\n", start, count, total, path, err)
+	} else {
+		fmt.Printf("[%d+%d/%d] Wrote recovery file %q (%d data bytes, %d bytes)\n", start, count, total, path, dataByteCount, byteCount)
+	}
+}
+
 type par2LogDecoderDelegate struct{}
 
 func (par2LogDecoderDelegate) OnCreatorPacketLoad(clientID string) {
@@ -158,11 +184,28 @@ Options:
 	os.Exit(2)
 }
 
+type encoder interface {
+	LoadFileData() error
+	ComputeParityData() error
+	Write(string) error
+}
+
 type decoder interface {
 	LoadFileData() error
 	LoadParityData() error
 	Verify() (bool, error)
 	Repair() ([]string, error)
+}
+
+func newEncoder(parFile string, filePaths []string, numParityShards int) (encoder, error) {
+	// TODO: Detect file type more robustly.
+	ext := path.Ext(parFile)
+	// TODO: Make this configurable.
+	const sliceByteCount = 2000
+	if ext == ".par2" {
+		return par2.NewEncoder(par2LogEncoderDelegate{}, filePaths, sliceByteCount, numParityShards)
+	}
+	return par1.NewEncoder(par1LogEncoderDelegate{}, filePaths, numParityShards)
 }
 
 func newDecoder(parFile string) (decoder, error) {
@@ -179,7 +222,7 @@ func main() {
 	flagSet := flag.NewFlagSet(name, flag.ExitOnError)
 	flagSet.SetOutput(os.Stdout)
 	usage := flagSet.Bool("h", false, "print usage info")
-	numParityShards := flagSet.Int("n", 3, "number of parity volumes to create")
+	numParityShards := flagSet.Int("c", 3, "number of recovery blocks to create (or files, for PAR1)")
 	flagSet.Parse(os.Args[1:])
 
 	if flagSet.NArg() < 2 || *usage {
@@ -197,7 +240,7 @@ func main() {
 			printUsageAndExit(name, flagSet)
 		}
 
-		encoder, err := par1.NewEncoder(par1LogEncoderDelegate{}, flagSet.Args()[2:], *numParityShards)
+		encoder, err := newEncoder(parFile, flagSet.Args()[2:], *numParityShards)
 		if err != nil {
 			panic(err)
 		}
