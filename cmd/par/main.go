@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime/pprof"
 	"strings"
 
 	"github.com/akalin/gopar/par1"
@@ -222,8 +223,23 @@ func main() {
 	flagSet := flag.NewFlagSet(name, flag.ExitOnError)
 	flagSet.SetOutput(os.Stdout)
 	usage := flagSet.Bool("h", false, "print usage info")
+	cpuprofile := flagSet.String("cpuprofile", "", "if non-empty, where to write the CPU profile")
 	numParityShards := flagSet.Int("c", 3, "number of recovery blocks to create (or files, for PAR1)")
 	flagSet.Parse(os.Args[1:])
+
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			panic(err)
+		}
+		defer f.Close()
+
+		err = pprof.StartCPUProfile(f)
+		if err != nil {
+			panic(err)
+		}
+		defer pprof.StopCPUProfile()
+	}
 
 	if flagSet.NArg() < 2 || *usage {
 		printUsageAndExit(name, flagSet)
