@@ -14,6 +14,14 @@ type Coder struct {
 	parityMatrix             gf2p16.Matrix
 }
 
+func newCauchyParityMatrix(dataShards, parityShards int) gf2p16.Matrix {
+	return newCauchyMatrix(parityShards, dataShards, func(i int) gf2p16.T {
+		return gf2p16.T(dataShards + i)
+	}, func(i int) gf2p16.T {
+		return gf2p16.T(i)
+	})
+}
+
 // NewCoderCauchy returns a Coder that works with the given number of
 // data and parity shards, using a Cauchy matrix.
 func NewCoderCauchy(dataShards, parityShards int) (Coder, error) {
@@ -28,11 +36,7 @@ func NewCoderCauchy(dataShards, parityShards int) (Coder, error) {
 		return Coder{}, errors.New("too many shards")
 	}
 
-	parityMatrix := newCauchyMatrix(parityShards, dataShards, func(i int) gf2p16.T {
-		return gf2p16.T(dataShards + i)
-	}, func(i int) gf2p16.T {
-		return gf2p16.T(i)
-	})
+	parityMatrix := newCauchyParityMatrix(dataShards, parityShards)
 	return Coder{dataShards, parityShards, parityMatrix}, nil
 }
 
@@ -47,6 +51,12 @@ func init() {
 		g := gf2p16.T(2).Pow(uint32(i))
 		generators = append(generators, g)
 	}
+}
+
+func newVandermondeParityMatrix(dataShards, parityShards int) gf2p16.Matrix {
+	return newVandermondeMatrix(parityShards, dataShards, func(i int) gf2p16.T {
+		return generators[i]
+	})
 }
 
 // NewCoderPAR2Vandermonde returns a Coder that works with the given
@@ -99,9 +109,7 @@ func NewCoderPAR2Vandermonde(dataShards, parityShards int) (Coder, error) {
 		return Coder{}, errors.New("too many parity shards")
 	}
 
-	parityMatrix := newVandermondeMatrix(parityShards, dataShards, func(i int) gf2p16.T {
-		return generators[i]
-	})
+	parityMatrix := newVandermondeParityMatrix(dataShards, parityShards)
 	return Coder{dataShards, parityShards, parityMatrix}, nil
 }
 
@@ -116,6 +124,33 @@ func (c Coder) GenerateParity(data [][]byte) [][]byte {
 	}
 	applyMatrix(c.parityMatrix, data, parity)
 	return parity
+}
+
+func makeReconstructionMatrix(dataShards int, availableRows, missingRows, usedParityRows []int, parityMatrix gf2p16.Matrix) (gf2p16.Matrix, error) {
+	m := gf2p16.NewMatrixFromFunction(dataShards, dataShards, func(i, j int) gf2p16.T {
+		if i < len(availableRows) {
+			k := availableRows[i]
+			// Take the kth row of the c.dataShards x
+			// c.dataShards identity matrix.
+			if j == k {
+				return 1
+			}
+			return 0
+		}
+
+		// Take the rest of the rows from the parity matrix
+		// corresponding to the used parity shards.
+		k := usedParityRows[i-len(availableRows)]
+		return parityMatrix.At(k, j)
+	})
+	mInv, err := m.Inverse()
+	if err != nil {
+		return gf2p16.Matrix{}, err
+	}
+
+	return gf2p16.NewMatrixFromFunction(len(missingRows), dataShards, func(i, j int) gf2p16.T {
+		return mInv.At(missingRows[i], j)
+	}), nil
 }
 
 // ReconstructData takes a list of data shards and parity shards, some
@@ -151,36 +186,16 @@ func (c Coder) ReconstructData(data, parity [][]byte) error {
 		return errors.New("not enough parity shards")
 	}
 
-	m := gf2p16.NewMatrixFromFunction(c.dataShards, c.dataShards, func(i, j int) gf2p16.T {
-		if i < len(availableRows) {
-			k := availableRows[i]
-			// Take the kth row of the c.dataShards x
-			// c.dataShards identity matrix.
-			if j == k {
-				return 1
-			}
-			return 0
-		}
-
-		// Take the rest of the rows from the parity matrix
-		// corresponding to the used parity shards.
-		k := usedParityRows[i-len(availableRows)]
-		return c.parityMatrix.At(k, j)
-	})
-	mInv, err := m.Inverse()
+	reconstructionMatrix, err := makeReconstructionMatrix(c.dataShards, availableRows, missingRows, usedParityRows, c.parityMatrix)
 	if err != nil {
 		return err
 	}
-
-	n := gf2p16.NewMatrixFromFunction(len(missingRows), c.dataShards, func(i, j int) gf2p16.T {
-		return mInv.At(missingRows[i], j)
-	})
 
 	reconstructedData := make([][]byte, len(missingRows))
 	for i := range reconstructedData {
 		reconstructedData[i] = make([]byte, len(input[0]))
 	}
-	applyMatrix(n, input, reconstructedData)
+	applyMatrix(reconstructionMatrix, input, reconstructedData)
 	for i, r := range missingRows {
 		data[r] = reconstructedData[i]
 	}

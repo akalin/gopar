@@ -2,6 +2,7 @@ package rsec16
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/akalin/gopar/gf2p16"
@@ -35,6 +36,102 @@ func TestCoderPAR2VandermondeNewCoderError(t *testing.T) {
 
 	_, err = NewCoderPAR2Vandermonde(32768, 65536)
 	require.Equal(t, errors.New("too many parity shards"), err)
+}
+
+func makeReconstructionMatrixNaive(dataShards int, availableRows, missingRows, usedParityRows []int, parityMatrix gf2p16.Matrix) (gf2p16.Matrix, error) {
+	m := gf2p16.NewMatrixFromFunction(dataShards, dataShards, func(i, j int) gf2p16.T {
+		if i < len(availableRows) {
+			k := availableRows[i]
+			// Take the kth row of the c.dataShards x
+			// c.dataShards identity matrix.
+			if j == k {
+				return 1
+			}
+			return 0
+		}
+
+		// Take the rest of the rows from the parity matrix
+		// corresponding to the used parity shards.
+		k := usedParityRows[i-len(availableRows)]
+		return parityMatrix.At(k, j)
+	})
+	mInv, err := m.Inverse()
+	if err != nil {
+		return gf2p16.Matrix{}, err
+	}
+
+	return gf2p16.NewMatrixFromFunction(len(missingRows), dataShards, func(i, j int) gf2p16.T {
+		return mInv.At(missingRows[i], j)
+	}), nil
+}
+
+func testMakeReconstructionMatrix(t *testing.T, newParityMatrixFn func(int, int) gf2p16.Matrix) {
+	dataShards := 6
+	parityShards := 11
+	availableRows := []int{0, 1, 2, 4}
+	missingRows := []int{3, 5}
+	usedParityRows := []int{9, 10}
+	parityMatrix := newParityMatrixFn(dataShards, parityShards)
+
+	expectedReconstructionMatrix, err := makeReconstructionMatrixNaive(dataShards, availableRows, missingRows, usedParityRows, parityMatrix)
+	require.NoError(t, err)
+
+	reconstructionMatrix, err := makeReconstructionMatrix(dataShards, availableRows, missingRows, usedParityRows, parityMatrix)
+	require.NoError(t, err)
+
+	require.Equal(t, expectedReconstructionMatrix, reconstructionMatrix)
+}
+
+func TestMakeReconstructionMatrix(t *testing.T) {
+	t.Run("Cauchy", func(t *testing.T) {
+		testMakeReconstructionMatrix(t, newCauchyParityMatrix)
+	})
+	t.Run("PAR2Vandermonde", func(t *testing.T) {
+		testMakeReconstructionMatrix(t, newVandermondeParityMatrix)
+	})
+}
+
+func benchmarkMakeReconstructionMatrix(b *testing.B, newParityMatrixFn func(int, int) gf2p16.Matrix, dataShards, parityShards int) {
+	missingRows := make([]int, parityShards)
+	usedParityRows := make([]int, parityShards)
+	for i := range usedParityRows {
+		missingRows[i] = i
+		usedParityRows[i] = i
+	}
+	availableRows := make([]int, dataShards-parityShards)
+	for i := range availableRows {
+		availableRows[i] = parityShards + i
+	}
+	parityMatrix := newVandermondeParityMatrix(dataShards, parityShards)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := makeReconstructionMatrix(dataShards, availableRows, missingRows, usedParityRows, parityMatrix)
+		require.NoError(b, err)
+	}
+}
+
+func benchmarkParityMatrix(b *testing.B, benchmarkFn func(*testing.B, func(int, int) gf2p16.Matrix)) {
+	b.Run("Cauchy", func(b *testing.B) {
+		benchmarkFn(b, newCauchyParityMatrix)
+	})
+	// Shorten name so that the benchmark results line up.
+	b.Run("PAR2Vm", func(b *testing.B) {
+		benchmarkFn(b, newVandermondeParityMatrix)
+	})
+}
+
+func BenchmarkMakeReconstructionMatrix(b *testing.B) {
+	for _, config := range []struct {
+		dataShards   int
+		parityShards int
+	}{{100, 10}, {1000, 10}, {3000, 10}} {
+		b.Run(fmt.Sprintf("%dx%d", config.dataShards, config.parityShards), func(b *testing.B) {
+			benchmarkParityMatrix(b, func(b *testing.B, newParityMatrixFn func(int, int) gf2p16.Matrix) {
+				benchmarkMakeReconstructionMatrix(b, newParityMatrixFn, config.dataShards, config.parityShards)
+			})
+		})
+	}
 }
 
 func testCoder(t *testing.T, testFn func(*testing.T, func(int, int) (Coder, error))) {
