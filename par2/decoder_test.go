@@ -1,7 +1,10 @@
 package par2
 
 import (
+	"crypto/md5"
 	"fmt"
+	"hash/crc32"
+	"math/rand"
 	"os"
 	"path"
 	"sort"
@@ -11,6 +14,71 @@ import (
 	"github.com/akalin/gopar/rsec16"
 	"github.com/stretchr/testify/require"
 )
+
+func makeTestFillShardInfoInputs(tb testing.TB, sliceByteCount, dataByteCount int) (fileID, []byte, checksumShardLocationMap, []fileIntegrityInfo, map[fileID]int, []byte) {
+	rand := rand.New(rand.NewSource(1))
+
+	id := fileID{0x1}
+	data := make([]byte, dataByteCount)
+	n, err := rand.Read(data)
+	require.NoError(tb, err)
+	require.Equal(tb, dataByteCount, n)
+
+	checksumToLocation := make(checksumShardLocationMap)
+	for i := 0; i < dataByteCount; i += sliceByteCount {
+		slice := sliceAndPadByteArray(data, i, i+sliceByteCount)
+		crc32 := crc32.ChecksumIEEE(slice)
+		md5 := md5.Sum(slice)
+		checksumToLocation.put(crc32, md5, shardLocation{id, i})
+	}
+
+	fileIntegrityInfos := []fileIntegrityInfo{{
+		shardInfos: make([]shardIntegrityInfo, (dataByteCount+sliceByteCount-1)/sliceByteCount),
+	}}
+	fileIDIndices := map[fileID]int{id: 0}
+
+	unrelatedData := make([]byte, dataByteCount)
+	n, err = rand.Read(unrelatedData)
+	require.NoError(tb, err)
+	require.Equal(tb, dataByteCount, n)
+
+	return id, data, checksumToLocation, fileIntegrityInfos, fileIDIndices, unrelatedData
+}
+
+func TestFillShardInfos(t *testing.T) {
+	sliceByteCount := 4
+	dataByteCount := 50
+	id, data, checksumToLocation, fileIntegrityInfos, fileIDIndices, unrelatedData := makeTestFillShardInfoInputs(t, sliceByteCount, dataByteCount)
+
+	hits, misses := fillShardInfos(sliceByteCount, data, checksumToLocation, id, fileIntegrityInfos, fileIDIndices)
+	expectedHits := (dataByteCount + sliceByteCount - 1) / sliceByteCount
+	expectedMisses := dataByteCount - expectedHits
+	require.Equal(t, expectedHits, hits)
+	require.Equal(t, expectedMisses, misses)
+
+	hits, misses = fillShardInfos(sliceByteCount, unrelatedData, checksumToLocation, id, fileIntegrityInfos, fileIDIndices)
+	require.Equal(t, 0, hits)
+	require.Equal(t, dataByteCount, misses)
+}
+
+func BenchmarkFillShardInfos(b *testing.B) {
+	sliceByteCount := 2000
+	dataByteCount := 1024 * 1024
+	b.SetBytes(int64(dataByteCount))
+
+	id, data, checksumToLocation, fileIntegrityInfos, fileIDIndices, unrelatedData := makeTestFillShardInfoInputs(b, sliceByteCount, dataByteCount)
+
+	b.Run("related", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			fillShardInfos(sliceByteCount, data, checksumToLocation, id, fileIntegrityInfos, fileIDIndices)
+		}
+	})
+	b.Run("unrelated", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			fillShardInfos(sliceByteCount, unrelatedData, checksumToLocation, id, fileIntegrityInfos, fileIDIndices)
+		}
+	})
+}
 
 type testFileIO struct {
 	t        *testing.T

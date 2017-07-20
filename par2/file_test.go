@@ -39,8 +39,8 @@ func (d testDecoderDelegate) OnOtherPacketSkip(setID [16]byte, packetType [16]by
 	d.t.Logf("OnOtherPacketSkip(%x, %x, %d)", setID, packetType, byteCount)
 }
 
-func (d testDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {
-	d.t.Logf("OnDataFileLoad(%d, %d, %s, %d, %v)", i, n, path, byteCount, err)
+func (d testDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount, hits, misses int, err error) {
+	d.t.Logf("OnDataFileLoad(%d, %d, %s, byteCount=%d, hits=%d, misses=%d, %v)", i, n, path, byteCount, hits, misses, err)
 }
 
 func (d testDecoderDelegate) OnParityFileLoad(i int, path string, err error) {

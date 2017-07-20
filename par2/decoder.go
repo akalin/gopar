@@ -188,7 +188,7 @@ type DecoderDelegate interface {
 	OnRecoveryPacketLoad(exponent uint16, byteCount int)
 	OnUnknownPacketLoad(packetType [16]byte, byteCount int)
 	OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int)
-	OnDataFileLoad(i, n int, path string, byteCount int, err error)
+	OnDataFileLoad(i, n int, path string, byteCount, hits, misses int, err error)
 	OnParityFileLoad(i int, path string, err error)
 	OnDetectCorruptDataChunk(fileID [16]byte, filename string, startByteOffset, endByteOffset int)
 	OnDetectDataFileHashMismatch(fileID [16]byte, filename string)
@@ -259,31 +259,26 @@ func sliceAndPadByteArray(bs []byte, start, end int) []byte {
 	return slice
 }
 
-func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocationMap, fileIntegrityInfos []fileIntegrityInfo, fileIDIndices map[fileID]int, i int, info decoderInputFileInfo) (int, error) {
-	path := filepath.Join(filepath.Dir(d.indexPath), info.filename)
-	data, err := d.fileIO.ReadFile(path)
-	if os.IsNotExist(err) {
-		fileIntegrityInfos[i].missing = true
-		return 0, nil
-	} else if err != nil {
-		return len(data), err
-	}
+func fillShardInfos(sliceByteCount int, data []byte, checksumToLocation checksumShardLocationMap, fileID fileID, fileIntegrityInfos []fileIntegrityInfo, fileIDIndices map[fileID]int) (int, int) {
+	hits := 0
+	misses := 0
 
 	// TODO: Compute checksum incrementally.
 	//
-	// TODO: Increment j by d.sliceByteCount for the common case (i.e.,
-	// uncorrupted files).
+	// TODO: Increment j by sliceByteCount for the common case
+	// (i.e., uncorrupted files).
 	for j := 0; j < len(data); j++ {
-		slice := sliceAndPadByteArray(data, j, j+d.sliceByteCount)
+		slice := sliceAndPadByteArray(data, j, j+sliceByteCount)
 		foundLocations := checksumToLocation.get(slice)
 		if len(foundLocations) == 0 {
+			misses++
 			continue
 		}
 
-		location := shardLocation{info.fileID, j}
+		location := shardLocation{fileID, j}
 		for foundLocation := range foundLocations {
 			integrityInfo := fileIntegrityInfos[fileIDIndices[foundLocation.fileID]]
-			shardInfo := &integrityInfo.shardInfos[foundLocation.start/d.sliceByteCount]
+			shardInfo := &integrityInfo.shardInfos[foundLocation.start/sliceByteCount]
 			if shardInfo.data == nil {
 				*shardInfo = shardIntegrityInfo{
 					slice,
@@ -292,7 +287,24 @@ func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocatio
 			}
 			shardInfo.locations[location] = true
 		}
+
+		hits++
 	}
+
+	return hits, misses
+}
+
+func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocationMap, fileIntegrityInfos []fileIntegrityInfo, fileIDIndices map[fileID]int, i int, info decoderInputFileInfo) (int, int, int, error) {
+	path := filepath.Join(filepath.Dir(d.indexPath), info.filename)
+	data, err := d.fileIO.ReadFile(path)
+	if os.IsNotExist(err) {
+		fileIntegrityInfos[i].missing = true
+		return 0, 0, 0, nil
+	} else if err != nil {
+		return len(data), 0, 0, err
+	}
+
+	hits, misses := fillShardInfos(d.sliceByteCount, data, checksumToLocation, info.fileID, fileIntegrityInfos, fileIDIndices)
 
 	hashMismatch := sixteenKHash(data) != info.sixteenKHash || md5.Sum(data) != info.hash
 	fileIntegrityInfos[i].hashMismatch = hashMismatch
@@ -306,7 +318,7 @@ func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocatio
 		d.delegate.OnDetectDataFileWrongByteCount(info.fileID, info.filename)
 	}
 
-	return len(data), nil
+	return len(data), hits, misses, nil
 }
 
 // LoadFileData loads existing file data into memory.
@@ -324,8 +336,8 @@ func (d *Decoder) LoadFileData() error {
 	}
 
 	for i, info := range d.recoverySet {
-		byteCount, err := d.fillFileIntegrityInfos(checksumToLocation, fileIntegrityInfos, fileIDIndices, i, info)
-		d.delegate.OnDataFileLoad(i+1, len(d.recoverySet), info.filename, byteCount, err)
+		byteCount, hits, misses, err := d.fillFileIntegrityInfos(checksumToLocation, fileIntegrityInfos, fileIDIndices, i, info)
+		d.delegate.OnDataFileLoad(i+1, len(d.recoverySet), info.filename, byteCount, hits, misses, err)
 		if err != nil {
 			return err
 		}
@@ -385,7 +397,8 @@ func (r recoveryDelegate) OnUnknownPacketLoad(packetType [16]byte, byteCount int
 
 func (recoveryDelegate) OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int) {}
 
-func (recoveryDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {}
+func (recoveryDelegate) OnDataFileLoad(i, n int, path string, byteCount, hits, misses int, err error) {
+}
 
 func (recoveryDelegate) OnParityFileLoad(i int, path string, err error) {}
 

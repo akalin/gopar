@@ -135,11 +135,11 @@ func (par2LogDecoderDelegate) OnOtherPacketSkip(setID [16]byte, packetType [16]b
 	fmt.Printf("Skipped packet with set ID %x of type %q and byte count %d\n", setID, packetType, byteCount)
 }
 
-func (par2LogDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {
+func (par2LogDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount, hits, misses int, err error) {
 	if err != nil {
 		fmt.Printf("[%d/%d] Loading data file %q failed: %+v\n", i, n, path, err)
 	} else {
-		fmt.Printf("[%d/%d] Loaded data file %q (%d bytes)\n", i, n, path, byteCount)
+		fmt.Printf("[%d/%d] Loaded data file %q (%d bytes, %d hits, %d misses)\n", i, n, path, byteCount, hits, misses)
 	}
 }
 
