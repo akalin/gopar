@@ -3,6 +3,7 @@ package rsec16
 import (
 	"errors"
 	"math"
+	"runtime"
 
 	"github.com/akalin/gopar/gf2p16"
 )
@@ -113,6 +114,12 @@ func NewCoderPAR2Vandermonde(dataShards, parityShards int) (Coder, error) {
 	return Coder{dataShards, parityShards, parityMatrix}, nil
 }
 
+func (c Coder) applyMatrix(m gf2p16.Matrix, in, out [][]byte) {
+	// TODO: Make this configurable.
+	numGoroutines := runtime.GOMAXPROCS(0)
+	applyMatrixParallelData(m, in, out, numGoroutines)
+}
+
 // GenerateParity takes a list of data shards, which must have length
 // matching the dataShards value passed into NewCoder, and which must
 // have equal-sized byte slices with even length, and returns a list
@@ -122,7 +129,7 @@ func (c Coder) GenerateParity(data [][]byte) [][]byte {
 	for i := range parity {
 		parity[i] = make([]byte, len(data[0]))
 	}
-	applyMatrixSingle(c.parityMatrix, data, parity)
+	c.applyMatrix(c.parityMatrix, data, parity)
 	return parity
 }
 
@@ -188,7 +195,7 @@ func (c Coder) ReconstructData(data, parity [][]byte) error {
 	for i := range reconstructedData {
 		reconstructedData[i] = make([]byte, len(input[0]))
 	}
-	applyMatrixSingle(reconstructionMatrix, input, reconstructedData)
+	c.applyMatrix(reconstructionMatrix, input, reconstructedData)
 	for i, r := range missingRows {
 		data[r] = reconstructedData[i]
 	}
