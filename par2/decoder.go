@@ -99,8 +99,7 @@ func (m checksumShardLocationMap) put(crc32 uint32, md5Hash [md5.Size]byte, loca
 	byMD5[location] = true
 }
 
-func (m checksumShardLocationMap) get(data []byte) shardLocationSet {
-	crc32 := crc32.ChecksumIEEE(data)
+func (m checksumShardLocationMap) get(crc32 uint32, data []byte) shardLocationSet {
 	byCRC := m[crc32]
 	if len(byCRC) == 0 {
 		return nil
@@ -266,13 +265,21 @@ func fillShardInfos(sliceByteCount int, data []byte, checksumToLocation checksum
 	hits := 0
 	misses := 0
 
-	// TODO: Compute checksum incrementally.
+	justMissed := false
+	window := newCRC32Window(sliceByteCount)
+	var crcSlice uint32
 	for j := 0; j < len(data); {
 		slice := sliceAndPadByteArray(data, j, j+sliceByteCount)
-		foundLocations := checksumToLocation.get(slice)
+		if justMissed {
+			crcSlice = window.update(crcSlice, data[j-1], slice[len(slice)-1])
+		} else {
+			crcSlice = crc32.ChecksumIEEE(slice)
+		}
+		foundLocations := checksumToLocation.get(crcSlice, slice)
 		if len(foundLocations) == 0 {
 			j++
 			misses++
+			justMissed = true
 			continue
 		}
 
@@ -289,6 +296,7 @@ func fillShardInfos(sliceByteCount int, data []byte, checksumToLocation checksum
 			shardInfo.locations[location] = true
 		}
 
+		justMissed = false
 		j += sliceByteCount
 		hits++
 	}
@@ -596,7 +604,7 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 		for j, shard := range dataShards[k : k+shardCount] {
 			info.shardInfos[j] = shardIntegrityInfo{
 				data:      shard,
-				locations: d.checksumToLocation.get(shard),
+				locations: d.checksumToLocation.get(crc32.ChecksumIEEE(shard), shard),
 			}
 		}
 		k += shardCount
