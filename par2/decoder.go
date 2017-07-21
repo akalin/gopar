@@ -359,16 +359,30 @@ func (d *Decoder) LoadFileData() error {
 
 	for i, info := range d.recoverySet {
 		integrityInfo := fileIntegrityInfos[i]
+		corruptStartByteOffset := -1
+		corruptEndByteOffset := -1
 		for j, shardInfo := range integrityInfo.shardInfos {
 			startByteOffset := j * d.sliceByteCount
 			endByteOffset := startByteOffset + d.sliceByteCount
 			if endByteOffset > info.byteCount {
 				endByteOffset = info.byteCount
 			}
-			// TODO: Collapse ranges to send to the delegate.
-			if !shardInfo.ok(shardLocation{info.fileID, startByteOffset}) {
-				d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, startByteOffset, endByteOffset)
+			if shardInfo.ok(shardLocation{info.fileID, startByteOffset}) {
+				if corruptStartByteOffset != -1 {
+					d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, corruptStartByteOffset, corruptEndByteOffset)
+					corruptStartByteOffset = -1
+					corruptEndByteOffset = -1
+				}
+			} else {
+				if corruptStartByteOffset == -1 {
+					corruptStartByteOffset = startByteOffset
+				}
+				corruptEndByteOffset = endByteOffset
 			}
+		}
+
+		if corruptStartByteOffset != -1 {
+			d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, corruptStartByteOffset, info.byteCount)
 		}
 	}
 
