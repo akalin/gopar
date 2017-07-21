@@ -160,7 +160,7 @@ func TestVerify(t *testing.T) {
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
 
-	ok, err := decoder.Verify()
+	ok, err := decoder.Verify(true)
 	require.NoError(t, err)
 	require.True(t, ok)
 
@@ -168,14 +168,14 @@ func TestVerify(t *testing.T) {
 	fileData5[len(fileData5)-1]++
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
-	ok, err = decoder.Verify()
+	ok, err = decoder.Verify(true)
 	require.NoError(t, err)
 	require.False(t, ok)
 
 	fileData5[len(fileData5)-1]--
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
-	ok, err = decoder.Verify()
+	ok, err = decoder.Verify(true)
 	require.NoError(t, err)
 	require.True(t, ok)
 
@@ -183,7 +183,7 @@ func TestVerify(t *testing.T) {
 	delete(io.fileData, "file.p03")
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
-	ok, err = decoder.Verify()
+	ok, err = decoder.Verify(true)
 	require.NoError(t, err)
 	require.True(t, ok)
 
@@ -191,7 +191,7 @@ func TestVerify(t *testing.T) {
 	delete(io.fileData, "file.p02")
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
-	ok, err = decoder.Verify()
+	ok, err = decoder.Verify(true)
 	require.NoError(t, err)
 	require.False(t, ok)
 }

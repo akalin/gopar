@@ -249,10 +249,10 @@ func (d *Decoder) newReedSolomon() (reedsolomon.Encoder, error) {
 	return reedsolomon.New(len(d.fileData), len(d.parityData), reedsolomon.WithPAR1Matrix())
 }
 
-// Verify checks that all file and parity data are consistent with
-// each other, and returns the result. If any files or parity volumes
-// are missing, Verify returns false.
-func (d *Decoder) Verify() (bool, error) {
+// Verify checks that all file (and maybe parity) data are consistent
+// with each other, and returns the result. If any files (or maybe
+// parity volumes) are missing, Verify returns false.
+func (d *Decoder) Verify(checkParity bool) (bool, error) {
 	for _, data := range d.fileData {
 		if data == nil {
 			return false, nil
@@ -263,6 +263,10 @@ func (d *Decoder) Verify() (bool, error) {
 		if data == nil {
 			return false, nil
 		}
+	}
+
+	if !checkParity {
+		return true, nil
 	}
 
 	shards := d.buildShards()

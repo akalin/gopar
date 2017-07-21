@@ -492,10 +492,10 @@ func (d *Decoder) newCoderAndShards() (rsec16.Coder, [][]byte, error) {
 	return coder, dataShards, err
 }
 
-// Verify checks that all file and known parity data are consistent
-// with each other, and returns the result. If any files are missing,
-// Verify returns false.
-func (d *Decoder) Verify() (bool, error) {
+// Verify checks that all file (and maybe parity) data are consistent
+// with each other, and returns the result. If any data (or maybe
+// parity) files are missing, Verify returns false.
+func (d *Decoder) Verify(checkParity bool) (bool, error) {
 	if len(d.fileIntegrityInfos) == 0 {
 		return false, errors.New("no file integrity info")
 	}
@@ -514,6 +514,10 @@ func (d *Decoder) Verify() (bool, error) {
 		if shard == nil {
 			return false, nil
 		}
+	}
+
+	if !checkParity {
+		return true, nil
 	}
 
 	coder, dataShards, err := d.newCoderAndShards()

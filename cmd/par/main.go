@@ -195,7 +195,7 @@ type encoder interface {
 type decoder interface {
 	LoadFileData() error
 	LoadParityData() error
-	Verify() (bool, error)
+	Verify(checkParity bool) (bool, error)
 	Repair() ([]string, error)
 }
 
@@ -225,6 +225,7 @@ func main() {
 	flagSet.SetOutput(os.Stdout)
 	usage := flagSet.Bool("h", false, "print usage info")
 	cpuprofile := flagSet.String("cpuprofile", "", "if non-empty, where to write the CPU profile")
+	checkParity := flagSet.Bool("checkparity", false, "check parity when verifying")
 	numParityShards := flagSet.Int("c", 3, "number of recovery blocks to create (or files, for PAR1)")
 	flagSet.Parse(os.Args[1:])
 
@@ -305,7 +306,7 @@ func main() {
 			panic(err)
 		}
 
-		ok, err := decoder.Verify()
+		ok, err := decoder.Verify(*checkParity)
 		if err != nil {
 			panic(err)
 		}
