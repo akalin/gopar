@@ -5,8 +5,8 @@ import (
 )
 
 type crc32Window struct {
-	windowSize    int
-	crcWindowMask uint32
+	windowSize              int
+	crcOldLeaderMaskedTable [256]uint32
 }
 
 func newCRC32Window(windowSize int) crc32Window {
@@ -16,33 +16,36 @@ func newCRC32Window(windowSize int) crc32Window {
 	windowMask := make([]byte, windowSize+1)
 	windowMask[0] = 0xff
 	windowMask[4] = 0xff
+	crcWindowMask := crc32.ChecksumIEEE(windowMask)
+
+	var crcOldLeaderMaskedTable [256]uint32
+	oldLeaderPadded := make([]byte, windowSize+1)
+	for i := 0; i < 256; i++ {
+		oldLeaderPadded[0] = byte(i)
+		crcOldLeaderPadded := crc32.ChecksumIEEE(oldLeaderPadded)
+		crcOldLeaderMaskedTable[i] = crcOldLeaderPadded ^ crcWindowMask
+	}
+
 	return crc32Window{
-		windowSize:    windowSize,
-		crcWindowMask: crc32.ChecksumIEEE(windowMask),
+		windowSize:              windowSize,
+		crcOldLeaderMaskedTable: crcOldLeaderMaskedTable,
 	}
 }
 
 // update returns the crc (crc32.ChecksumIEEE) of a[1:n+1], given the
 // crc of a[0:n], oldLeader = a[0], and newTrailer = a[n], where n is
-// the window size, and a[] is a "virtual" byte slice.
-//
-// TODO: Do so in constant time, i.e. independent of the window size.
+// the window size, and a[] is a "virtual" byte slice. It does so in
+// constant time, i.e. independent of the window size.
 func (w crc32Window) update(crc uint32, oldLeader, newTrailer byte) uint32 {
 	crcExtended := crc32.Update(crc, crc32.IEEETable, []byte{newTrailer})
+	crcOldLeaderMasked := w.crcOldLeaderMaskedTable[oldLeader]
 
-	oldLeaderPadded := make([]byte, w.windowSize+1)
-	oldLeaderPadded[0] = oldLeader
-	crcOldLeaderPadded := crc32.ChecksumIEEE(oldLeaderPadded)
-
-	// TODO: Create a table of oldLeaderPadded ^ w.crcWindow for
-	// each possible byte.
-
-	// We'll show that that crc of a[1:n+1] is equal to
+	// We'll show that
 	//
-	//   crc[0:n+1] ^ a[0].. ^ ff000000ff..,
+	//   crc(a[1:n+1]) =
+	//     crc(a[0:n+1]) ^ crc(a[0]..) ^ crc(ff000000ff..),
 	//
-	// where .. denotes padding with trailing 0s to have length
-	// matching the other operands.
+	// where .. denotes padding with trailing 0s to have length n+1.
 	//
 	// First, let
 	//
@@ -70,5 +73,8 @@ func (w crc32Window) update(crc uint32, oldLeader, newTrailer byte) uint32 {
 	//                                   (ff000000ff.. ^ ffffffff..))
 	//                 = crc(a[0:n+1] ^ a[0].. ^ ff000000ff..)
 	//                 = crc(a[0:n+1]) ^ crc(a[0]..) ^ crc(ff000000ff..).
-	return crcExtended ^ crcOldLeaderPadded ^ w.crcWindowMask
+	//
+	// Finally, we can precompute the latter two terms and build a
+	// table indexed by a[0], which is precisely crcOldLeaderMasked.
+	return crcExtended ^ crcOldLeaderMasked
 }
