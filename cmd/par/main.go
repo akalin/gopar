@@ -200,11 +200,9 @@ type decoder interface {
 	Repair(checkParity bool) ([]string, error)
 }
 
-func newEncoder(parFile string, filePaths []string, numParityShards, numGoroutines int) (encoder, error) {
+func newEncoder(parFile string, filePaths []string, sliceByteCount, numParityShards, numGoroutines int) (encoder, error) {
 	// TODO: Detect file type more robustly.
 	ext := path.Ext(parFile)
-	// TODO: Make this configurable.
-	const sliceByteCount = 2000
 	if ext == ".par2" {
 		return par2.NewEncoder(par2LogEncoderDelegate{}, filePaths, sliceByteCount, numParityShards, numGoroutines)
 	}
@@ -227,6 +225,7 @@ func main() {
 	usage := flagSet.Bool("h", false, "print usage info")
 	cpuprofile := flagSet.String("cpuprofile", "", "if non-empty, where to write the CPU profile")
 	checkParity := flagSet.Bool("checkparity", false, "check parity when verifying or repairing")
+	sliceByteCount := flagSet.Int("s", 2000, "block size in bytes (must be a multiple of 4)")
 	numParityShards := flagSet.Int("c", 3, "number of recovery blocks to create (or files, for PAR1)")
 	// TODO: Detect hyperthreading and use only number of physical cores.
 	numGoroutines := flagSet.Int("g", rsec16.DefaultNumGoroutines(), "number of goroutines to use for encoding/decoding PAR2")
@@ -270,7 +269,7 @@ func main() {
 			printUsageAndExit(name, flagSet)
 		}
 
-		encoder, err := newEncoder(parFile, flagSet.Args()[2:], *numParityShards, *numGoroutines)
+		encoder, err := newEncoder(parFile, flagSet.Args()[2:], *sliceByteCount, *numParityShards, *numGoroutines)
 		if err != nil {
 			panic(err)
 		}

@@ -1,6 +1,7 @@
 package par2
 
 import (
+	"errors"
 	"fmt"
 	"path"
 	"sort"
@@ -43,7 +44,10 @@ type EncoderDelegate interface {
 }
 
 func newEncoder(fileIO fileIO, delegate EncoderDelegate, filePaths []string, sliceByteCount, parityShardCount, numGoroutines int) (*Encoder, error) {
-	// TODO: Check filePaths, sliceByteCount, and parityShardCount.
+	// TODO: Check filePaths and parityShardCount.
+	if sliceByteCount == 0 || sliceByteCount%4 != 0 {
+		return nil, errors.New("invalid slice byte count")
+	}
 	return &Encoder{fileIO, delegate, filePaths, sliceByteCount, parityShardCount, numGoroutines, nil, nil, nil}, nil
 }
 
