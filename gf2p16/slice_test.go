@@ -2,6 +2,8 @@ package gf2p16
 
 import (
 	"encoding/binary"
+	"fmt"
+	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -55,4 +57,67 @@ func TestMulAndAddByteSliceLE(t *testing.T) {
 	MulAndAddByteSliceLE(c, in, out)
 
 	require.Equal(t, expectedOut, out)
+}
+
+func runMulBenchmark(b *testing.B, fn func(*testing.B, int)) {
+	for _, i := range []uint{2, 4, 8, 12, 14, 16, 20, 24, 26, 28} {
+		var name string
+		byteCount := 1 << i
+		if byteCount >= 1024*1024 {
+			name = fmt.Sprintf("%dM", byteCount/(1024*1024))
+		} else if byteCount >= 1024 {
+			name = fmt.Sprintf("%dK", byteCount/1024)
+		} else {
+			name = fmt.Sprintf("%d", byteCount)
+		}
+		b.Run(name, func(b *testing.B) {
+			fn(b, byteCount)
+		})
+	}
+}
+
+func makeBytes(b *testing.B, rand *rand.Rand, byteCount int) []byte {
+	bs := make([]byte, byteCount)
+	n, err := rand.Read(bs)
+	require.NoError(b, err)
+	require.Equal(b, byteCount, n)
+	return bs
+}
+
+func benchMulByteSliceLE(b *testing.B, byteCount int) {
+	b.SetBytes(int64(byteCount))
+
+	rand := rand.New(rand.NewSource(1))
+
+	in := makeBytes(b, rand, byteCount)
+	out := make([]byte, byteCount)
+	c := T(5)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MulByteSliceLE(c, in, out)
+	}
+}
+
+func BenchmarkMulByteSliceLE(b *testing.B) {
+	runMulBenchmark(b, benchMulByteSliceLE)
+}
+
+func benchMulAndAddByteSliceLE(b *testing.B, byteCount int) {
+	b.SetBytes(int64(byteCount))
+
+	rand := rand.New(rand.NewSource(1))
+
+	in := makeBytes(b, rand, byteCount)
+	out := make([]byte, byteCount)
+	c := T(5)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MulAndAddByteSliceLE(c, in, out)
+	}
+}
+
+func BenchmarkMulAndAddByteSliceLE(b *testing.B) {
+	runMulBenchmark(b, benchMulAndAddByteSliceLE)
 }
