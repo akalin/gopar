@@ -22,6 +22,9 @@ const order = 1 << 16
 var logTable [order - 1]uint16
 var expTable [order - 1]T
 
+var mulTableLow [1 << 16][1 << 8]T
+var mulTableHigh [1 << 16][1 << 8]T
+
 func init() {
 	// TODO: Generate tables at compile time.
 
@@ -47,6 +50,15 @@ func init() {
 		expTable[p] = x
 		_, r := gf2.Poly64(x).Times(gf2.Poly64(g)).Div(m)
 		x = T(r)
+	}
+
+	// Since we've filled in logTable and expTable, we can use
+	// T.Times below.
+	for i := 0; i < len(mulTableLow); i++ {
+		for j := 0; j < len(mulTableLow[i]); j++ {
+			mulTableLow[i][j] = T(i).Times(T(j))
+			mulTableHigh[i][j] = T(i).Times(T(j << 8))
+		}
 	}
 }
 
