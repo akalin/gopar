@@ -1,11 +1,23 @@
 package rsec16
 
 import (
+	"fmt"
+	"runtime"
 	"testing"
 
 	"github.com/akalin/gopar/gf2p16"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCalculateParallelParams(t *testing.T) {
+	for totalLength := 1; totalLength < 256; totalLength++ {
+		for numGoroutines := 1; numGoroutines < 17; numGoroutines++ {
+			perGoroutineLength, newNumGoroutines := calculateParallelParams(totalLength, numGoroutines)
+			require.True(t, perGoroutineLength*(newNumGoroutines-1) < totalLength)
+			require.True(t, perGoroutineLength*newNumGoroutines >= totalLength)
+		}
+	}
+}
 
 func byteToUint16LEArray(bs []byte) []uint16 {
 	u16s := make([]uint16, len(bs)/2)
@@ -65,7 +77,27 @@ func makeOut(outputCount, dataByteCount int) [][]byte {
 	return out
 }
 
-func TestApplyMatrixIdentity(t *testing.T) {
+type applyMatrixFunc func(gf2p16.Matrix, [][]byte, [][]byte)
+
+func applyNumGoroutines(fn func(gf2p16.Matrix, [][]byte, [][]byte, int), numGoroutines int) applyMatrixFunc {
+	return func(m gf2p16.Matrix, in, out [][]byte) {
+		fn(m, in, out, numGoroutines)
+	}
+}
+
+func runApplyMatrixTest(t *testing.T, fn func(*testing.T, applyMatrixFunc)) {
+	t.Run("Single", func(t *testing.T) { fn(t, applyMatrixSingle) })
+	var testNumGoroutines = []int{2, 4, 8}
+	for _, numGoroutines := range testNumGoroutines {
+		// Capture range variable.
+		numGoroutines := numGoroutines
+		t.Run(fmt.Sprintf("OutParallel-%d", numGoroutines), func(t *testing.T) {
+			fn(t, applyNumGoroutines(applyMatrixParallelOut, numGoroutines))
+		})
+	}
+}
+
+func testApplyMatrixIdentity(t *testing.T, applyMatrixFn applyMatrixFunc) {
 	count := 4
 	dataByteCount := 10
 	m := gf2p16.NewIdentityMatrix(count)
@@ -73,12 +105,16 @@ func TestApplyMatrixIdentity(t *testing.T) {
 	in := makeIn(count, dataByteCount)
 
 	out := makeOut(count, dataByteCount)
-	applyMatrix(m, in, out)
+	applyMatrixFn(m, in, out)
 
 	require.Equal(t, in, out)
 }
 
-func TestApplyMatrixVandermonde(t *testing.T) {
+func TestApplyMatrixIdentity(t *testing.T) {
+	runApplyMatrixTest(t, testApplyMatrixIdentity)
+}
+
+func testApplyMatrixVandermonde(t *testing.T, applyMatrixFn applyMatrixFunc) {
 	inputCount := 4
 	outputCount := 3
 	dataByteCount := 10
@@ -87,7 +123,7 @@ func TestApplyMatrixVandermonde(t *testing.T) {
 	in := makeIn(inputCount, dataByteCount)
 
 	out := makeOut(outputCount, dataByteCount)
-	applyMatrix(m, in, out)
+	applyMatrixFn(m, in, out)
 
 	expectedOut := makeOut(outputCount, dataByteCount)
 	applyMatrixNaive(m, in, expectedOut)
@@ -95,29 +131,77 @@ func TestApplyMatrixVandermonde(t *testing.T) {
 	require.Equal(t, expectedOut, out)
 }
 
-func benchmarkApplyMatrix(b *testing.B, inputCount, outputCount, dataByteCount int) {
-	b.SetBytes(int64(dataByteCount))
+func TestApplyMatrixVandermonde(t *testing.T) {
+	runApplyMatrixTest(t, testApplyMatrixVandermonde)
+}
 
-	m := newTestVandermondeMatrix(outputCount, inputCount)
+func runApplyMatrixBenchmark(b *testing.B, fn func(*testing.B, applyMatrixFunc)) {
+	b.Run("Single", func(b *testing.B) { fn(b, applyMatrixSingle) })
+	var benchmarkNumGoroutines []int
+	for i := 2; i <= runtime.GOMAXPROCS(0); i *= 2 {
+		benchmarkNumGoroutines = append(benchmarkNumGoroutines, i)
+	}
+	for _, numGoroutines := range benchmarkNumGoroutines {
+		// Capture range variable.
+		numGoroutines := numGoroutines
+		b.Run(fmt.Sprintf("OutParallel-%d", numGoroutines), func(b *testing.B) {
+			fn(b, applyNumGoroutines(applyMatrixParallelOut, numGoroutines))
+		})
+	}
+}
 
-	in := makeIn(inputCount, dataByteCount)
+func sizeString(size int) string {
+	if size%(1024*1024) == 0 {
+		return fmt.Sprintf("%dM", size/(1024*1024))
+	} else if size%1024 == 0 {
+		return fmt.Sprintf("%dK", size/1024)
+	} else {
+		return fmt.Sprintf("%d", size)
+	}
+}
 
-	out := makeOut(outputCount, dataByteCount)
+type applyMatrixBenchmarkConfig struct {
+	inputCount    int
+	outputCount   int
+	dataByteCount int
+}
+
+func (config applyMatrixBenchmarkConfig) String() string {
+	return fmt.Sprintf("ic=%d,oc=%d,db=%s", config.inputCount, config.outputCount, sizeString(config.dataByteCount))
+}
+
+func benchmarkApplyMatrix(b *testing.B, config applyMatrixBenchmarkConfig, applyMatrixFn applyMatrixFunc) {
+	b.SetBytes(int64(config.dataByteCount))
+
+	m := newVandermondeMatrix(config.outputCount, config.inputCount, func(i int) gf2p16.T { return gf2p16.T(i) })
+
+	in := makeIn(config.inputCount, config.dataByteCount)
+
+	out := makeOut(config.outputCount, config.dataByteCount)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		applyMatrix(m, in, out)
+		applyMatrixFn(m, in, out)
 	}
 }
 
 func BenchmarkApplyMatrix(b *testing.B) {
-	b.Run("ic=3,oc=4,db=1K", func(b *testing.B) {
-		benchmarkApplyMatrix(b, 3, 4, 1024)
-	})
-	b.Run("ic=3,oc=4,db=1M", func(b *testing.B) {
-		benchmarkApplyMatrix(b, 3, 4, 1024*1024)
-	})
-	b.Run("ic=3,oc=4,db=10M", func(b *testing.B) {
-		benchmarkApplyMatrix(b, 3, 4, 10*1024*1024)
-	})
+	configs := []applyMatrixBenchmarkConfig{
+		{3, 4, 1024},
+		{3, 4, 1024 * 1024},
+		{3, 4, 10 * 1024 * 1024},
+		{3, 16, 1024},
+		{3, 16, 1024 * 1024},
+		{3, 16, 10 * 1024 * 1024},
+		{3, 64, 1024},
+		{3, 64, 1024 * 1024},
+		{3, 64, 10 * 1024 * 1024},
+	}
+	for _, config := range configs {
+		b.Run(config.String(), func(b *testing.B) {
+			runApplyMatrixBenchmark(b, func(b *testing.B, applyMatrixFn applyMatrixFunc) {
+				benchmarkApplyMatrix(b, config, applyMatrixFn)
+			})
+		})
+	}
 }

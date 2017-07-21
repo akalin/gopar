@@ -122,7 +122,7 @@ func (c Coder) GenerateParity(data [][]byte) [][]byte {
 	for i := range parity {
 		parity[i] = make([]byte, len(data[0]))
 	}
-	applyMatrix(c.parityMatrix, data, parity)
+	applyMatrixSingle(c.parityMatrix, data, parity)
 	return parity
 }
 
@@ -188,7 +188,7 @@ func (c Coder) ReconstructData(data, parity [][]byte) error {
 	for i := range reconstructedData {
 		reconstructedData[i] = make([]byte, len(input[0]))
 	}
-	applyMatrix(reconstructionMatrix, input, reconstructedData)
+	applyMatrixSingle(reconstructionMatrix, input, reconstructedData)
 	for i, r := range missingRows {
 		data[r] = reconstructedData[i]
 	}
