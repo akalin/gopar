@@ -281,8 +281,10 @@ func (d *Decoder) Verify(checkParity bool) (bool, error) {
 
 // Repair tries to repair any missing or corrupted data, using the
 // parity volumes. Returns a list of files that were successfully
-// repaired, which is present even if an error is returned.
-func (d *Decoder) Repair() ([]string, error) {
+// repaired, which is present even if an error is returned. If
+// checkParity is true, extra checking is done of the reconstructed
+// parity data.
+func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 	shards := d.buildShards()
 
 	rs, err := d.newReedSolomon()
@@ -295,13 +297,15 @@ func (d *Decoder) Repair() ([]string, error) {
 		return nil, err
 	}
 
-	ok, err := rs.Verify(shards)
-	if err != nil {
-		return nil, err
-	}
+	if checkParity {
+		ok, err := rs.Verify(shards)
+		if err != nil {
+			return nil, err
+		}
 
-	if !ok {
-		return nil, errors.New("repair failed")
+		if !ok {
+			return nil, errors.New("repair failed")
+		}
 	}
 
 	dir := filepath.Dir(d.indexFile)

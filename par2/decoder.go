@@ -532,8 +532,10 @@ func (d *Decoder) Verify(checkParity bool) (bool, error) {
 
 // Repair tries to repair any missing or corrupted data, using the
 // parity volumes. Returns a list of files that were successfully
-// repaired, which is present even if an error is returned.
-func (d *Decoder) Repair() ([]string, error) {
+// repaired, which is present even if an error is returned. If
+// checkParity is true, extra checking is done of the reconstructed
+// parity data.
+func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 	if len(d.fileIntegrityInfos) == 0 {
 		return nil, errors.New("no file integrity info")
 	}
@@ -552,15 +554,17 @@ func (d *Decoder) Repair() ([]string, error) {
 		return nil, err
 	}
 
-	computedParityShards := coder.GenerateParity(dataShards)
-	for i, shard := range d.parityShards {
-		if len(shard) == 0 {
-			continue
-		}
+	if checkParity {
+		computedParityShards := coder.GenerateParity(dataShards)
+		for i, shard := range d.parityShards {
+			if len(shard) == 0 {
+				continue
+			}
 
-		eq := reflect.DeepEqual(computedParityShards[i], shard)
-		if !eq {
-			return nil, errors.New("repair failed")
+			eq := reflect.DeepEqual(computedParityShards[i], shard)
+			if !eq {
+				return nil, errors.New("repair failed")
+			}
 		}
 	}
 

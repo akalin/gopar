@@ -311,7 +311,7 @@ func TestRepair(t *testing.T) {
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
 
-	repaired, err := decoder.Repair()
+	repaired, err := decoder.Repair(true)
 	require.NoError(t, err)
 
 	require.Equal(t, []string{"file.r02", "file.r03", "file.r04"}, repaired)
@@ -348,7 +348,7 @@ func TestRepairAddedBytes(t *testing.T) {
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
 
-	repaired, err := decoder.Repair()
+	repaired, err := decoder.Repair(true)
 	require.NoError(t, err)
 
 	require.Equal(t, []string{"file.rar"}, repaired)
@@ -383,7 +383,7 @@ func TestRepairRemovedBytes(t *testing.T) {
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
 
-	repaired, err := decoder.Repair()
+	repaired, err := decoder.Repair(true)
 	require.NoError(t, err)
 
 	require.Equal(t, []string{"file.rar"}, repaired)
@@ -423,7 +423,7 @@ func TestRepairSwappedFiles(t *testing.T) {
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
 
-	repaired, err := decoder.Repair()
+	repaired, err := decoder.Repair(true)
 	require.NoError(t, err)
 
 	require.Equal(t, []string{"file.rar", "file.r01"}, repaired)
