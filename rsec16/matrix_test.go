@@ -12,9 +12,15 @@ import (
 func TestCalculateParallelParams(t *testing.T) {
 	for totalLength := 1; totalLength < 256; totalLength++ {
 		for numGoroutines := 1; numGoroutines < 17; numGoroutines++ {
-			perGoroutineLength, newNumGoroutines := calculateParallelParams(totalLength, numGoroutines)
-			require.True(t, perGoroutineLength*(newNumGoroutines-1) < totalLength)
-			require.True(t, perGoroutineLength*newNumGoroutines >= totalLength)
+			for minPerGoroutineLength := 1; minPerGoroutineLength < 4; minPerGoroutineLength++ {
+				for perGoroutineLengthDivisor := 1; perGoroutineLengthDivisor < 8; perGoroutineLengthDivisor++ {
+					perGoroutineLength, newNumGoroutines := calculateParallelParams(totalLength, numGoroutines, minPerGoroutineLength, perGoroutineLengthDivisor)
+					require.True(t, perGoroutineLength >= minPerGoroutineLength)
+					require.Equal(t, 0, perGoroutineLength%perGoroutineLengthDivisor)
+					require.True(t, perGoroutineLength*(newNumGoroutines-1) < totalLength)
+					require.True(t, perGoroutineLength*newNumGoroutines >= totalLength)
+				}
+			}
 		}
 	}
 }
@@ -95,6 +101,13 @@ func runApplyMatrixTest(t *testing.T, fn func(*testing.T, applyMatrixFunc)) {
 			fn(t, applyNumGoroutines(applyMatrixParallelOut, numGoroutines))
 		})
 	}
+	for _, numGoroutines := range testNumGoroutines {
+		// Capture range variable.
+		numGoroutines := numGoroutines
+		t.Run(fmt.Sprintf("DataParallel-%d", numGoroutines), func(t *testing.T) {
+			fn(t, applyNumGoroutines(applyMatrixParallelData, numGoroutines))
+		})
+	}
 }
 
 func testApplyMatrixIdentity(t *testing.T, applyMatrixFn applyMatrixFunc) {
@@ -146,6 +159,13 @@ func runApplyMatrixBenchmark(b *testing.B, fn func(*testing.B, applyMatrixFunc))
 		numGoroutines := numGoroutines
 		b.Run(fmt.Sprintf("OutParallel-%d", numGoroutines), func(b *testing.B) {
 			fn(b, applyNumGoroutines(applyMatrixParallelOut, numGoroutines))
+		})
+	}
+	for _, numGoroutines := range benchmarkNumGoroutines {
+		// Capture range variable.
+		numGoroutines := numGoroutines
+		b.Run(fmt.Sprintf("DataParallel-%d", numGoroutines), func(b *testing.B) {
+			fn(b, applyNumGoroutines(applyMatrixParallelData, numGoroutines))
 		})
 	}
 }
