@@ -36,8 +36,15 @@ func newCRC32Window(windowSize int) crc32Window {
 // crc of a[0:n], oldLeader = a[0], and newTrailer = a[n], where n is
 // the window size, and a[] is a "virtual" byte slice. It does so in
 // constant time, i.e. independent of the window size.
-func (w crc32Window) update(crc uint32, oldLeader, newTrailer byte) uint32 {
-	crcExtended := crc32.Update(crc, crc32.IEEETable, []byte{newTrailer})
+func (w *crc32Window) update(crc uint32, oldLeader, newTrailer byte) uint32 {
+	// Making update a function on *crc32Window gives a
+	// substantial speedup.
+
+	// Inline crc32.simpleUpdate to compute crcExtended.
+	t := ^crc
+	t = crc32.IEEETable[byte(t)^newTrailer] ^ (t >> 8)
+	crcExtended := ^t
+
 	crcOldLeaderMasked := w.crcOldLeaderMaskedTable[oldLeader]
 
 	// We'll show that
