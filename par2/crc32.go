@@ -9,26 +9,70 @@ type crc32Window struct {
 	crcOldLeaderMaskedTable [256]uint32
 }
 
-func newCRC32Window(windowSize int) crc32Window {
+func newCRC32Window(windowSize int) *crc32Window {
 	if windowSize < 4 {
 		panic("window size too small")
 	}
-	windowMask := make([]byte, windowSize+1)
-	windowMask[0] = 0xff
-	windowMask[4] = 0xff
-	crcWindowMask := crc32.ChecksumIEEE(windowMask)
+	a := make([]byte, windowSize+1)
+	crc0 := crc32.ChecksumIEEE(a)
 
-	var crcOldLeaderMaskedTable [256]uint32
-	oldLeaderPadded := make([]byte, windowSize+1)
-	for i := 0; i < 256; i++ {
-		oldLeaderPadded[0] = byte(i)
-		crcOldLeaderPadded := crc32.ChecksumIEEE(oldLeaderPadded)
-		crcOldLeaderMaskedTable[i] = crcOldLeaderPadded ^ crcWindowMask
+	// See comments in crc32Window.update below for why we need
+	// crcWindowMask.
+	a[0] = 0xff
+	a[4] = 0xff
+	crcWindowMask := crc32.ChecksumIEEE(a)
+
+	// Set baseTable[i] to crc((1 << i)..) for 0 <= i < 8,
+	// where .. denotes padding with trailing 0s to have length
+	// windowSize+1.
+	//
+	// TODO: Make only one call to crc32.ChecksumIEEE, and derive
+	// the other entries of baseTable from that.
+	a[4] = 0
+	var baseTable [8]uint32
+	for i := uint(0); i < 8; i++ {
+		a[0] = byte(1 << i)
+		baseTable[i] = crc32.ChecksumIEEE(a)
 	}
 
-	return crc32Window{
+	var maskedTable [256]uint32
+	// Set maskedTable[i] to crc(i..) ^ crcWindowMask for
+	// 0 <= i < 256.
+	maskedTable[0] = crc0 ^ crcWindowMask
+	for i := 1; i < 256; i++ {
+		// Compute crc(i..) using baseTable and the identities
+		//
+		//   crc(a_1 ^ ... ^ a_n) = crc(a_1) ^ ... ^ crc(a^n)
+		//
+		// for odd n, and
+		//
+		//   crc(a_1 ^ ... ^ a_n) =
+		//     crc(a_1) ^ ... ^ crc(a^n) ^ crc(0..)
+		//
+		// for even n, which can be deduced from letting
+		//
+		//   crc(a) = ffffffff ^ crcz(ffffffff.. ^ a)
+		//
+		// and the identity
+		//
+		//   crcz(a ^ b) = crcz(a) ^ crcz(b).
+		var crc uint32
+		crcCount := 0
+		for j := uint(0); j < 8; j++ {
+			if i&(1<<j) != 0 {
+				crc ^= baseTable[j]
+				crcCount++
+			}
+		}
+		if crcCount%2 == 0 {
+			crc ^= crc0
+		}
+		maskedTable[i] = crc ^ crcWindowMask
+	}
+
+	return &crc32Window{
 		windowSize:              windowSize,
-		crcOldLeaderMaskedTable: crcOldLeaderMaskedTable,
+		crcOldLeaderMaskedTable: maskedTable,
 	}
 }
 
