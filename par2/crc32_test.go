@@ -1,6 +1,7 @@
 package par2
 
 import (
+	"fmt"
 	"hash/crc32"
 	"testing"
 
@@ -64,19 +65,16 @@ func benchmarkCRC32(b *testing.B, windowSize int) {
 	}
 }
 
+// 16 and 64 are cutoff points for various implementations of
+// crc32.ChecksumIEEE.
+var benchWindowSizes = []int{4, 8, 15, 16, 63, 64, 128, 256, 512, 1024}
+
 func BenchmarkCRC32(b *testing.B) {
-	b.Run("ws=4", func(b *testing.B) {
-		benchmarkCRC32(b, 4)
-	})
-	b.Run("ws=10", func(b *testing.B) {
-		benchmarkCRC32(b, 10)
-	})
-	b.Run("ws=128", func(b *testing.B) {
-		benchmarkCRC32(b, 128)
-	})
-	b.Run("ws=1024", func(b *testing.B) {
-		benchmarkCRC32(b, 1024)
-	})
+	for _, windowSize := range append([]int{1}, benchWindowSizes...) {
+		b.Run(fmt.Sprintf("ws=%d", windowSize), func(b *testing.B) {
+			benchmarkCRC32(b, windowSize)
+		})
+	}
 }
 
 func benchmarkCRC32Window(b *testing.B, windowSize int) {
@@ -97,16 +95,9 @@ func benchmarkCRC32Window(b *testing.B, windowSize int) {
 }
 
 func BenchmarkCRC32Window(b *testing.B) {
-	b.Run("ws=4", func(b *testing.B) {
-		benchmarkCRC32Window(b, 4)
-	})
-	b.Run("ws=10", func(b *testing.B) {
-		benchmarkCRC32Window(b, 10)
-	})
-	b.Run("ws=128", func(b *testing.B) {
-		benchmarkCRC32Window(b, 128)
-	})
-	b.Run("ws=1024", func(b *testing.B) {
-		benchmarkCRC32Window(b, 1024)
-	})
+	for _, windowSize := range benchWindowSizes {
+		b.Run(fmt.Sprintf("ws=%d", windowSize), func(b *testing.B) {
+			benchmarkCRC32Window(b, windowSize)
+		})
+	}
 }
