@@ -25,9 +25,6 @@ func newCRC32Window(windowSize int) *crc32Window {
 	// Set baseTable[i] to crc((1 << i)..) for 0 <= i < 8,
 	// where .. denotes padding with trailing 0s to have length
 	// windowSize+1.
-	//
-	// TODO: Make only one call to crc32.ChecksumIEEE, and derive
-	// the other entries of baseTable from that.
 	a[4] = 0
 	var baseTable [8]uint32
 	for i := uint(0); i < 8; i++ {
