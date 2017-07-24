@@ -101,3 +101,17 @@ func BenchmarkCRC32Window(b *testing.B) {
 		})
 	}
 }
+
+func benchmarkNewCRC32Window(b *testing.B, windowSize int) {
+	for i := 0; i < b.N; i++ {
+		newCRC32Window(windowSize)
+	}
+}
+
+func BenchmarkNewCRC32Window(b *testing.B) {
+	for _, windowSize := range benchWindowSizes {
+		b.Run(fmt.Sprintf("ws=%d", windowSize), func(b *testing.B) {
+			benchmarkNewCRC32Window(b, windowSize)
+		})
+	}
+}
