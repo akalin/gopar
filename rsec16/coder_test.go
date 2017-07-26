@@ -264,36 +264,37 @@ func TestCoderReconstructData(t *testing.T) {
 }
 
 func TestMatrixStats(t *testing.T) {
-	dataShards := 1000
-	availableRows := make([]int, 900)
-	missingRows := make([]int, 100)
-	usedParityRows := make([]int, 100)
-	for i := 0; i < 100; i++ {
-		missingRows[i] = i
-		usedParityRows[i] = i
-	}
-	for i := 0; i < 900; i++ {
-		availableRows[i] = 100 + i
-	}
-	parityMatrix := newVandermondeParityMatrix(dataShards, 1000)
-	r, err := makeReconstructionMatrix(dataShards, availableRows, missingRows, usedParityRows, parityMatrix)
-	require.NoError(t, err)
-	numZeros := 0
-	numOnes := 0
-	numOther := 0
-	for i := 0; i < 100; i++ {
-		for j := 0; j < 100; j++ {
-			c := r.At(i, j)
-			if c == 0 {
-				numZeros++
-			} else if c == 1 {
-				numOnes++
-			} else {
-				numOther++
+	dataShards := 10000
+	parityShards := 10000
+	missingRowCount := 100
+	for k := 0; k < 100; k++ {
+		dataRows := rand.Perm(dataShards)
+		parityRows := rand.Perm(parityShards)
+		availableRows := dataRows[:dataShards-missingRowCount]
+		missingRows := dataRows[dataShards-missingRowCount:]
+		usedParityRows := parityRows[:missingRowCount]
+		parityMatrix := newVandermondeParityMatrix(dataShards, parityShards)
+		r, err := makeReconstructionMatrix(dataShards, availableRows, missingRows, usedParityRows, parityMatrix)
+		require.NoError(t, err)
+		numZeros := 0
+		numOnes := 0
+		numOther := 0
+		for i := 0; i < missingRowCount; i++ {
+			for j := 0; j < missingRowCount; j++ {
+				c := r.At(i, j)
+				if c == 0 {
+					numZeros++
+				} else if c == 1 {
+					numOnes++
+				} else {
+					numOther++
+				}
 			}
 		}
+		if numOther < missingRowCount*missingRowCount {
+			t.Logf("k=%d #0s=%d, #1s=%d, #other=%d", k, numZeros, numOnes, numOther)
+		}
 	}
-	t.Logf("#0s=%d, #1s=%d, #other=%d", numZeros, numOnes, numOther)
 }
 
 // TODO: Add tests demonstrating the flaws in the PAR2 Vandermonde matrix.
