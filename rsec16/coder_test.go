@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/akalin/gopar/gf2p16"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -186,6 +187,15 @@ func benchmarkCoderGenerateParity(b *testing.B, c Coder, data [][]byte) {
 	}
 }
 
+func fillShards(tb testing.TB, rand *rand.Rand, shards [][]byte, sliceByteCount int) {
+	for i := range shards {
+		shards[i] = make([]byte, sliceByteCount)
+		n, err := rand.Read(shards[i])
+		require.NoError(tb, err)
+		require.Equal(tb, sliceByteCount, n)
+	}
+}
+
 func BenchmarkCoderGenerateParity(b *testing.B) {
 	rand := rand.New(rand.NewSource(1))
 
@@ -202,22 +212,9 @@ func BenchmarkCoderGenerateParity(b *testing.B) {
 			data := make([][]byte, dataShardCount)
 
 			for _, sliceByteCount := range sliceByteCounts {
-				for i := range data {
-					data[i] = make([]byte, sliceByteCount)
-					n, err := rand.Read(data[i])
-					require.NoError(b, err)
-					require.Equal(b, sliceByteCount, n)
-				}
+				fillShards(b, rand, data, sliceByteCount)
 
-				var sliceByteCountStr string
-				if sliceByteCount%(1024*1024) == 0 {
-					sliceByteCountStr = fmt.Sprintf("%dM", sliceByteCount/(1024*1024))
-				} else if sliceByteCount%1024 == 0 {
-					sliceByteCountStr = fmt.Sprintf("%dK", sliceByteCount/1024)
-				} else {
-					sliceByteCountStr = fmt.Sprintf("%d", sliceByteCount)
-				}
-				name := fmt.Sprintf("ds=%d,ps=%d,sb=%s", dataShardCount, parityShardCount, sliceByteCountStr)
+				name := fmt.Sprintf("ds=%d,ps=%d,sb=%s", dataShardCount, parityShardCount, sizeString(sliceByteCount))
 				b.Run("Cauchy-"+name, func(b *testing.B) {
 					benchmarkCoderGenerateParity(b, coderCauchy, data)
 				})
@@ -225,6 +222,85 @@ func BenchmarkCoderGenerateParity(b *testing.B) {
 				b.Run("PAR2Vm-"+name, func(b *testing.B) {
 					benchmarkCoderGenerateParity(b, coderVandermonde, data)
 				})
+			}
+		}
+	}
+}
+
+func benchmarkCoderReconstructData(b *testing.B, rand *rand.Rand, c Coder, missingDataCount int, data, parity [][]byte) {
+	dataSubset := make([][]byte, len(data))
+	paritySubset := make([][]byte, len(parity))
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+
+		for {
+			dataOrder := rand.Perm(c.dataShards)
+			parityOrder := rand.Perm(c.parityShards)
+			missingData, availableData := dataOrder[:missingDataCount], dataOrder[missingDataCount:]
+			usedParity, unusedParity := parityOrder[:missingDataCount], parityOrder[missingDataCount:]
+
+			// This is necessary since sometimes we end up
+			// with a singular matrix when using
+			// PAR2Vandermonde.
+			_, err := makeReconstructionMatrix(c.dataShards, availableData, missingData, usedParity, c.parityMatrix)
+			if err != nil {
+				continue
+			}
+
+			copy(dataSubset, data)
+			for _, j := range missingData {
+				dataSubset[j] = nil
+			}
+			copy(paritySubset, parity)
+			for _, j := range unusedParity {
+				paritySubset[j] = nil
+			}
+
+			break
+		}
+
+		b.StartTimer()
+		err := c.ReconstructData(dataSubset, paritySubset)
+		assert.NoError(b, err)
+	}
+}
+
+func BenchmarkCoderReconstructData(b *testing.B) {
+	rand := rand.New(rand.NewSource(1))
+
+	dataShardCounts := []int{10, 100, 1000}
+	parityShardCounts := []int{10, 100, 1000}
+	sliceByteCounts := []int{4, 16, 128, 1024, 4 * 1024, 16 * 1024}
+	missingDataCounts := []int{1, 10, 100, 1000}
+	for _, dataShardCount := range dataShardCounts {
+		for _, parityShardCount := range parityShardCounts {
+			coderCauchy, err := newCoderCauchy(dataShardCount, parityShardCount)
+			require.NoError(b, err)
+			coderVandermonde, err := newCoderPAR2Vandermonde(dataShardCount, parityShardCount)
+			require.NoError(b, err)
+
+			shards := make([][]byte, dataShardCount+parityShardCount)
+			data, parity := shards[:dataShardCount], shards[dataShardCount:]
+
+			for _, sliceByteCount := range sliceByteCounts {
+				fillShards(b, rand, shards, sliceByteCount)
+
+				for _, missingDataCount := range missingDataCounts {
+					if missingDataCount > dataShardCount || missingDataCount > parityShardCount {
+						continue
+					}
+
+					name := fmt.Sprintf("ds=%d,ps=%d,sb=%s,md=%d", dataShardCount, parityShardCount, sizeString(sliceByteCount), missingDataCount)
+					b.Run("Cauchy-"+name, func(b *testing.B) {
+						benchmarkCoderReconstructData(b, rand, coderCauchy, missingDataCount, data, parity)
+					})
+					// Shorten name so that the benchmark results line up.
+					b.Run("PAR2Vm-"+name, func(b *testing.B) {
+						benchmarkCoderReconstructData(b, rand, coderVandermonde, missingDataCount, data, parity)
+					})
+				}
 			}
 		}
 	}
