@@ -273,7 +273,7 @@ func TestMatrixStats(t *testing.T) {
 		availableRows := dataRows[:dataShards-missingRowCount]
 		missingRows := dataRows[dataShards-missingRowCount:]
 		usedParityRows := parityRows[:missingRowCount]
-		parityMatrix := newVandermondeParityMatrix(dataShards, parityShards)
+		parityMatrix := newCauchyParityMatrix(dataShards, parityShards)
 		r, err := makeReconstructionMatrix(dataShards, availableRows, missingRows, usedParityRows, parityMatrix)
 		require.NoError(t, err)
 		numZeros := 0
