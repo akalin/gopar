@@ -3,6 +3,7 @@ package rsec16
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"testing"
 
 	"github.com/akalin/gopar/gf2p16"
@@ -174,6 +175,59 @@ func testCoderGenerateParity(t *testing.T, newCoder func(int, int) (Coder, error
 
 func TestCoderGenerateParity(t *testing.T) {
 	testCoder(t, testCoderGenerateParity)
+}
+
+func benchmarkCoderGenerateParity(b *testing.B, c Coder, data [][]byte) {
+	b.SetBytes(int64(c.parityShards) * int64(len(data[0])))
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		c.GenerateParity(data)
+	}
+}
+
+func BenchmarkCoderGenerateParity(b *testing.B) {
+	rand := rand.New(rand.NewSource(1))
+
+	dataShardCounts := []int{10, 100}
+	parityShardCounts := []int{10, 100}
+	sliceByteCounts := []int{4, 16, 128, 1024, 4 * 1024, 16 * 1024}
+	for _, dataShardCount := range dataShardCounts {
+		for _, parityShardCount := range parityShardCounts {
+			coderCauchy, err := newCoderCauchy(dataShardCount, parityShardCount)
+			require.NoError(b, err)
+			coderVandermonde, err := newCoderPAR2Vandermonde(dataShardCount, parityShardCount)
+			require.NoError(b, err)
+
+			data := make([][]byte, dataShardCount)
+
+			for _, sliceByteCount := range sliceByteCounts {
+				for i := range data {
+					data[i] = make([]byte, sliceByteCount)
+					n, err := rand.Read(data[i])
+					require.NoError(b, err)
+					require.Equal(b, sliceByteCount, n)
+				}
+
+				var sliceByteCountStr string
+				if sliceByteCount%(1024*1024) == 0 {
+					sliceByteCountStr = fmt.Sprintf("%dM", sliceByteCount/(1024*1024))
+				} else if sliceByteCount%1024 == 0 {
+					sliceByteCountStr = fmt.Sprintf("%dK", sliceByteCount/1024)
+				} else {
+					sliceByteCountStr = fmt.Sprintf("%d", sliceByteCount)
+				}
+				name := fmt.Sprintf("ds=%d,ps=%d,sb=%s", dataShardCount, parityShardCount, sliceByteCountStr)
+				b.Run("Cauchy-"+name, func(b *testing.B) {
+					benchmarkCoderGenerateParity(b, coderCauchy, data)
+				})
+				// Shorten name so that the benchmark results line up.
+				b.Run("PAR2Vm-"+name, func(b *testing.B) {
+					benchmarkCoderGenerateParity(b, coderVandermonde, data)
+				})
+			}
+		}
+	}
 }
 
 func testCoderReconstructData(t *testing.T, newCoder func(int, int) (Coder, error)) {
