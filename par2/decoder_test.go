@@ -80,13 +80,15 @@ func BenchmarkFillShardInfos(b *testing.B) {
 }
 
 type testFileIO struct {
-	t        *testing.T
+	tb       testing.TB
 	fileData map[string][]byte
 }
 
 func (io testFileIO) ReadFile(path string) (data []byte, err error) {
 	defer func() {
-		io.t.Logf("ReadFile(%s) => (%d, %v)", path, len(data), err)
+		if io.tb != nil {
+			io.tb.Logf("ReadFile(%s) => (%d, %v)", path, len(data), err)
+		}
 	}()
 	if data, ok := io.fileData[path]; ok {
 		return data, nil
@@ -101,12 +103,16 @@ func (io testFileIO) FindWithPrefixAndSuffix(prefix, suffix string) ([]string, e
 			matches = append(matches, filename)
 		}
 	}
-	io.t.Logf("FindWithPrefixAndSuffix(%s, %s) => %d files", prefix, suffix, len(matches))
+	if io.tb != nil {
+		io.tb.Logf("FindWithPrefixAndSuffix(%s, %s) => %d files", prefix, suffix, len(matches))
+	}
 	return matches, nil
 }
 
 func (io testFileIO) WriteFile(path string, data []byte) error {
-	io.t.Logf("WriteFile(%s, %d bytes)", path, len(data))
+	if io.tb != nil {
+		io.tb.Logf("WriteFile(%s, %d bytes)", path, len(data))
+	}
 	io.fileData[path] = data
 	return nil
 }
@@ -191,7 +197,7 @@ func newDecoderForTest(t *testing.T, io testFileIO, indexPath string) (*Decoder,
 
 func TestVerify(t *testing.T) {
 	io := testFileIO{
-		t: t,
+		tb: t,
 		fileData: map[string][]byte{
 			"file.rar": {0x1, 0x2, 0x3, 0x4},
 			"file.r01": {0x5, 0x6, 0x7},
@@ -248,7 +254,7 @@ func TestVerify(t *testing.T) {
 
 func TestSetIDMismatch(t *testing.T) {
 	io1 := testFileIO{
-		t: t,
+		tb: t,
 		fileData: map[string][]byte{
 			"file.rar": {0x1, 0x2, 0x3, 0x4},
 			"file.r01": {0x5, 0x6, 0x7},
@@ -259,7 +265,7 @@ func TestSetIDMismatch(t *testing.T) {
 	}
 
 	io2 := testFileIO{
-		t:        t,
+		tb:       t,
 		fileData: make(map[string][]byte),
 	}
 	for k, v := range io1.fileData {
@@ -286,7 +292,7 @@ func TestSetIDMismatch(t *testing.T) {
 
 func TestRepair(t *testing.T) {
 	io := testFileIO{
-		t: t,
+		tb: t,
 		fileData: map[string][]byte{
 			"file.rar": {0x1, 0x2, 0x3, 0x4},
 			"file.r01": {0x5, 0x6, 0x7},
@@ -326,7 +332,7 @@ func TestRepair(t *testing.T) {
 
 func TestRepairAddedBytes(t *testing.T) {
 	io := testFileIO{
-		t: t,
+		tb: t,
 		fileData: map[string][]byte{
 			"file.rar": []byte{
 				0x01, 0x02, 0x03, 0x04, 0x05,
@@ -361,7 +367,7 @@ func TestRepairAddedBytes(t *testing.T) {
 
 func TestRepairRemovedBytes(t *testing.T) {
 	io := testFileIO{
-		t: t,
+		tb: t,
 		fileData: map[string][]byte{
 			"file.rar": []byte{
 				0x01, 0x02, 0x03, 0x04, 0x05,
@@ -396,7 +402,7 @@ func TestRepairRemovedBytes(t *testing.T) {
 
 func TestRepairSwappedFiles(t *testing.T) {
 	io := testFileIO{
-		t: t,
+		tb: t,
 		fileData: map[string][]byte{
 			"file.rar": []byte{
 				0x01, 0x02, 0x03, 0x04, 0x05,
