@@ -8,59 +8,85 @@ import (
 )
 
 type testDecoderDelegate struct {
-	t *testing.T
+	tb testing.TB
 }
 
 func (d testDecoderDelegate) OnCreatorPacketLoad(clientID string) {
-	d.t.Logf("OnCreatorPacketLoad(%s)", clientID)
+	if d.tb != nil {
+		d.tb.Logf("OnCreatorPacketLoad(%s)", clientID)
+	}
 }
 
 func (d testDecoderDelegate) OnMainPacketLoad(sliceByteCount, recoverySetCount, nonRecoverySetCount int) {
-	d.t.Logf("OnMainPacketLoad(sliceByteCount=%d, recoverySetCount=%d, nonRecoverySetCount=%d)", sliceByteCount, recoverySetCount, nonRecoverySetCount)
+	if d.tb != nil {
+		d.tb.Logf("OnMainPacketLoad(sliceByteCount=%d, recoverySetCount=%d, nonRecoverySetCount=%d)", sliceByteCount, recoverySetCount, nonRecoverySetCount)
+	}
 }
 
 func (d testDecoderDelegate) OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int) {
-	d.t.Logf("OnFileDescriptionPacketLoad(%x, %s, %d)", fileID, filename, byteCount)
+	if d.tb != nil {
+		d.tb.Logf("OnFileDescriptionPacketLoad(%x, %s, %d)", fileID, filename, byteCount)
+	}
 }
 
 func (d testDecoderDelegate) OnIFSCPacketLoad(fileID [16]byte) {
-	d.t.Logf("OnIFSCPacketLoad(%x)", fileID)
+	if d.tb != nil {
+		d.tb.Logf("OnIFSCPacketLoad(%x)", fileID)
+	}
 }
 
 func (d testDecoderDelegate) OnRecoveryPacketLoad(exponent uint16, byteCount int) {
-	d.t.Logf("OnRecoveryPacketLoad(%d, %d)", exponent, byteCount)
+	if d.tb != nil {
+		d.tb.Logf("OnRecoveryPacketLoad(%d, %d)", exponent, byteCount)
+	}
 }
 
 func (d testDecoderDelegate) OnUnknownPacketLoad(packetType [16]byte, byteCount int) {
-	d.t.Logf("OnUnknownPacketLoad(%x, %d)", packetType, byteCount)
+	if d.tb != nil {
+		d.tb.Logf("OnUnknownPacketLoad(%x, %d)", packetType, byteCount)
+	}
 }
 
 func (d testDecoderDelegate) OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int) {
-	d.t.Logf("OnOtherPacketSkip(%x, %x, %d)", setID, packetType, byteCount)
+	if d.tb != nil {
+		d.tb.Logf("OnOtherPacketSkip(%x, %x, %d)", setID, packetType, byteCount)
+	}
 }
 
 func (d testDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount, hits, misses int, err error) {
-	d.t.Logf("OnDataFileLoad(%d, %d, %s, byteCount=%d, hits=%d, misses=%d, %v)", i, n, path, byteCount, hits, misses, err)
+	if d.tb != nil {
+		d.tb.Logf("OnDataFileLoad(%d, %d, %s, byteCount=%d, hits=%d, misses=%d, %v)", i, n, path, byteCount, hits, misses, err)
+	}
 }
 
 func (d testDecoderDelegate) OnParityFileLoad(i int, path string, err error) {
-	d.t.Logf("OnParityFileLoad(%d, %s, %v)", i, path, err)
+	if d.tb != nil {
+		d.tb.Logf("OnParityFileLoad(%d, %s, %v)", i, path, err)
+	}
 }
 
 func (d testDecoderDelegate) OnDetectCorruptDataChunk(fileID [16]byte, filename string, startOffset, endOffset int) {
-	d.t.Logf("OnDetectCorruptDataChunk(%x, %s, startOffset=%d, endOffset=%d)", fileID, filename, startOffset, endOffset)
+	if d.tb != nil {
+		d.tb.Logf("OnDetectCorruptDataChunk(%x, %s, startOffset=%d, endOffset=%d)", fileID, filename, startOffset, endOffset)
+	}
 }
 
 func (d testDecoderDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, filename string) {
-	d.t.Logf("OnDetectDataFileHashMismatch(%x, %s)", fileID, filename)
+	if d.tb != nil {
+		d.tb.Logf("OnDetectDataFileHashMismatch(%x, %s)", fileID, filename)
+	}
 }
 
 func (d testDecoderDelegate) OnDetectDataFileWrongByteCount(fileID [16]byte, filename string) {
-	d.t.Logf("OnDetectDataFileWrongByteCount(%x, %s)", fileID, filename)
+	if d.tb != nil {
+		d.tb.Logf("OnDetectDataFileWrongByteCount(%x, %s)", fileID, filename)
+	}
 }
 
 func (d testDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {
-	d.t.Logf("OnDataFileWrite(%d, %d, %s, %d, %v)", i, n, path, byteCount, err)
+	if d.tb != nil {
+		d.tb.Logf("OnDataFileWrite(%d, %d, %s, %d, %v)", i, n, path, byteCount, err)
+	}
 }
 
 func TestFileRoundTrip(t *testing.T) {

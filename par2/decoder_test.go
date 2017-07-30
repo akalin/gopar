@@ -117,7 +117,7 @@ func (io testFileIO) WriteFile(path string, data []byte) error {
 	return nil
 }
 
-func buildPAR2Data(t *testing.T, io testFileIO, sliceByteCount, parityShardCount int) {
+func buildPAR2IndexFile(tb testing.TB, io testFileIO, sliceByteCount int) (file, [][]byte) {
 	var recoverySet []fileID
 	fileDescriptionPackets := make(map[fileID]fileDescriptionPacket)
 	ifscPackets := make(map[fileID]ifscPacket)
@@ -134,35 +134,50 @@ func buildPAR2Data(t *testing.T, io testFileIO, sliceByteCount, parityShardCount
 		return fileIDLess(recoverySet[i], recoverySet[j])
 	})
 
-	var dataShards [][]byte
-	for _, fileID := range recoverySet {
-		dataShards = append(dataShards, dataShardsByID[fileID]...)
-	}
-
-	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), parityShardCount, rsec16.DefaultNumGoroutines())
-	require.NoError(t, err)
-
-	parityShards := coder.GenerateParity(dataShards)
-	recoveryPackets := make(map[exponent]recoveryPacket)
-	for i, parityShard := range parityShards {
-		recoveryPackets[exponent(i)] = recoveryPacket{data: parityShard}
-	}
-
 	mainPacket := mainPacket{
 		sliceByteCount: sliceByteCount,
 		recoverySet:    recoverySet,
 	}
 
-	indexFile := file{
+	var dataShards [][]byte
+	for _, fileID := range recoverySet {
+		dataShards = append(dataShards, dataShardsByID[fileID]...)
+	}
+
+	return file{
 		clientID:               "test client",
 		mainPacket:             &mainPacket,
 		fileDescriptionPackets: fileDescriptionPackets,
 		ifscPackets:            ifscPackets,
+	}, dataShards
+}
+
+func writePAR2Files(tb testing.TB, indexFile file, recoveryPackets map[exponent]recoveryPacket, base string, io testFileIO) string {
+	_, parityFileBytes, err := writeFile(indexFile)
+	require.NoError(tb, err)
+
+	for filename, data := range io.fileData {
+		io.fileData[filename] = data
 	}
 
-	_, indexFileBytes, err := writeFile(indexFile)
-	require.NoError(t, err)
+	indexPath := base + ".par2"
+	io.fileData[indexPath] = parityFileBytes
 
+	for exp, packet := range recoveryPackets {
+		recoveryFile := indexFile
+		recoveryFile.recoveryPackets = map[exponent]recoveryPacket{
+			exp: packet,
+		}
+		_, recoveryFileBytes, err := writeFile(recoveryFile)
+		require.NoError(tb, err)
+		filename := fmt.Sprintf("%s.vol%02d+01.par2", base, exp)
+		io.fileData[filename] = recoveryFileBytes
+	}
+
+	return indexPath
+}
+
+func getBase(tb testing.TB, io testFileIO) string {
 	// Require that all files have the same base.
 	var base string
 	for filename := range io.fileData {
@@ -171,24 +186,27 @@ func buildPAR2Data(t *testing.T, io testFileIO, sliceByteCount, parityShardCount
 		if base == "" {
 			base = filenameBase
 		} else {
-			require.Equal(t, base, filenameBase)
+			require.Equal(tb, base, filenameBase)
 		}
 		break
 	}
-	require.NotEmpty(t, base)
+	require.NotEmpty(tb, base)
+	return base
+}
 
-	io.fileData[base+".par2"] = indexFileBytes
+func buildPAR2Data(tb testing.TB, io testFileIO, sliceByteCount, parityShardCount int) {
+	indexFile, dataShards := buildPAR2IndexFile(tb, io, sliceByteCount)
 
-	for exp, packet := range recoveryPackets {
-		recoveryFile := indexFile
-		recoveryFile.recoveryPackets = map[exponent]recoveryPacket{
-			exp: packet,
-		}
-		_, recoveryFileBytes, err := writeFile(recoveryFile)
-		require.NoError(t, err)
-		filename := fmt.Sprintf("%s.vol%02d+01.par2", base, exp)
-		io.fileData[filename] = recoveryFileBytes
+	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), parityShardCount, rsec16.DefaultNumGoroutines())
+	require.NoError(tb, err)
+
+	parityShards := coder.GenerateParity(dataShards)
+	recoveryPackets := make(map[exponent]recoveryPacket)
+	for i, parityShard := range parityShards {
+		recoveryPackets[exponent(i)] = recoveryPacket{data: parityShard}
 	}
+
+	writePAR2Files(tb, indexFile, recoveryPackets, getBase(tb, io), io)
 }
 
 func newDecoderForTest(t *testing.T, io testFileIO, indexPath string) (*Decoder, error) {
@@ -439,4 +457,119 @@ func TestRepairSwappedFiles(t *testing.T) {
 	require.Equal(t, []string{"file.rar", "file.r01"}, repaired)
 	require.Equal(t, rarData, io.fileData["file.rar"])
 	require.Equal(t, r01Data, io.fileData["file.r01"])
+}
+
+func benchmarkRepair(b *testing.B, io testFileIO, dataShardCount, parityShardCount, corruptedDataCount int, indexFile file, parityShards [][]byte, checksumPairs []*checksumPair) {
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+
+		dataOrder := rand.Perm(dataShardCount)
+		parityOrder := rand.Perm(parityShardCount)
+		corruptedData := dataOrder[:corruptedDataCount]
+		usedParity := parityOrder[:corruptedDataCount]
+
+		// TODO: Filter out cases which lead to a singular
+		// reconstruction matrix.
+
+		for _, i := range corruptedData {
+			checksumPairs[i].CRC32[0]++
+			checksumPairs[i].MD5[0]++
+		}
+
+		recoveryPackets := make(map[exponent]recoveryPacket)
+		for _, i := range usedParity {
+			recoveryPackets[exponent(i)] = recoveryPacket{data: parityShards[i]}
+		}
+
+		localIO := testFileIO{
+			tb:       io.tb,
+			fileData: make(map[string][]byte),
+		}
+
+		for filename, data := range io.fileData {
+			localIO.fileData[filename] = data
+		}
+
+		indexPath := writePAR2Files(b, indexFile, recoveryPackets, getBase(b, io), localIO)
+
+		for _, i := range corruptedData {
+			checksumPairs[i].CRC32[0]--
+			checksumPairs[i].MD5[0]--
+		}
+
+		b.StartTimer()
+
+		decoder, err := newDecoder(localIO, testDecoderDelegate{nil}, indexPath, rsec16.DefaultNumGoroutines())
+		require.NoError(b, err)
+
+		err = decoder.LoadFileData()
+		require.NoError(b, err)
+
+		err = decoder.LoadParityData()
+		require.NoError(b, err)
+
+		repaired, err := decoder.Repair(false)
+		require.NoError(b, err)
+		require.NotEmpty(b, repaired)
+	}
+}
+
+func BenchmarkRepair(b *testing.B) {
+	rand := rand.New(rand.NewSource(1))
+
+	totalByteCounts := []int{100 * 1024, 1024 * 1024, 10 * 1024 * 1024}
+	sliceByteCounts := []int{1024, 4 * 1024}
+	parityShardCounts := []int{10, 100, 1000}
+	corruptedDataCounts := []int{1, 10, 100}
+	fileCount := 16
+	for _, totalByteCount := range totalByteCounts {
+		io := testFileIO{
+			tb:       nil,
+			fileData: make(map[string][]byte),
+		}
+		buildBenchmarkData(b, rand, totalByteCount, fileCount, "file", io)
+
+		for _, sliceByteCount := range sliceByteCounts {
+			if sliceByteCount > totalByteCount {
+				continue
+			}
+
+			dataShardCount := totalByteCount / sliceByteCount
+			if dataShardCount > 30000 {
+				continue
+			}
+
+			indexFile, dataShards := buildPAR2IndexFile(b, io, sliceByteCount)
+
+			for _, parityShardCount := range parityShardCounts {
+				if parityShardCount > 2*dataShardCount {
+					continue
+				}
+
+				coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), parityShardCount, rsec16.DefaultNumGoroutines())
+				require.NoError(b, err)
+
+				parityShards := coder.GenerateParity(dataShards)
+
+				var checksumPairs []*checksumPair
+				for _, fileID := range indexFile.mainPacket.recoverySet {
+					ifscPacket := indexFile.ifscPackets[fileID]
+					for i := range ifscPacket.checksumPairs {
+						checksumPairs = append(checksumPairs, &ifscPacket.checksumPairs[i])
+					}
+				}
+
+				for _, corruptedDataCount := range corruptedDataCounts {
+					if corruptedDataCount > dataShardCount || corruptedDataCount > parityShardCount {
+						continue
+					}
+
+					name := fmt.Sprintf("tb=%s,sb=%s,ps=%d,cd=%d", sizeString(totalByteCount), sizeString(sliceByteCount), parityShardCount, corruptedDataCount)
+					b.Run(name, func(b *testing.B) {
+						benchmarkRepair(b, io, dataShardCount, parityShardCount, corruptedDataCount, indexFile, parityShards, checksumPairs)
+					})
+				}
+			}
+		}
+	}
 }

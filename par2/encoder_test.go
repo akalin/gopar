@@ -128,7 +128,7 @@ func TestWriteParity(t *testing.T) {
 
 func benchmarkWriteParity(b *testing.B, io testFileIO, paths []string, parityShardCount, sliceByteCount int) {
 	for i := 0; i < b.N; i++ {
-		encoder, err := newEncoder(io, testEncoderDelegate{nil}, paths, sliceByteCount, parityShardCount)
+		encoder, err := newEncoder(io, testEncoderDelegate{nil}, paths, sliceByteCount, parityShardCount, rsec16.DefaultNumGoroutines())
 		require.NoError(b, err)
 
 		err = encoder.LoadFileData()
@@ -142,6 +142,19 @@ func benchmarkWriteParity(b *testing.B, io testFileIO, paths []string, paritySha
 
 		b.SetBytes(int64(len(io.fileData["parity.par2"])))
 	}
+}
+
+func buildBenchmarkData(b *testing.B, rand *rand.Rand, totalByteCount, fileCount int, base string, io testFileIO) []string {
+	var paths []string
+	for i := 0; i < fileCount; i++ {
+		path := fmt.Sprintf("%s.%03d", base, i)
+		io.fileData[path] = make([]byte, totalByteCount/fileCount)
+		n, err := rand.Read(io.fileData[path])
+		require.NoError(b, err)
+		require.Equal(b, totalByteCount/fileCount, n)
+		paths = append(paths, path)
+	}
+	return paths
 }
 
 func sizeString(size int) string {
@@ -167,15 +180,7 @@ func BenchmarkWriteParity(b *testing.B) {
 			tb:       nil,
 			fileData: make(map[string][]byte),
 		}
-		var paths []string
-		for i := 0; i < fileCount; i++ {
-			path := fmt.Sprintf("file.%03d", i)
-			io.fileData[path] = make([]byte, totalByteCount/fileCount)
-			n, err := rand.Read(io.fileData[path])
-			require.NoError(b, err)
-			require.Equal(b, totalByteCount/fileCount, n)
-			paths = append(paths, path)
-		}
+		paths := buildBenchmarkData(b, rand, totalByteCount, fileCount, "file", io)
 
 		for _, sliceByteCount := range sliceByteCounts {
 			if sliceByteCount > totalByteCount {
