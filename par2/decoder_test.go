@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"os"
 	"path"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -134,7 +133,7 @@ func buildPAR2Data(t *testing.T, io testFileIO, sliceByteCount, parityShardCount
 		dataShards = append(dataShards, dataShardsByID[fileID]...)
 	}
 
-	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), parityShardCount, runtime.GOMAXPROCS(0))
+	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), parityShardCount, rsec16.DefaultNumGoroutines())
 	require.NoError(t, err)
 
 	parityShards := coder.GenerateParity(dataShards)
@@ -187,7 +186,7 @@ func buildPAR2Data(t *testing.T, io testFileIO, sliceByteCount, parityShardCount
 }
 
 func newDecoderForTest(t *testing.T, io testFileIO, indexPath string) (*Decoder, error) {
-	return newDecoder(io, testDecoderDelegate{t}, indexPath, runtime.GOMAXPROCS(0))
+	return newDecoder(io, testDecoderDelegate{t}, indexPath, rsec16.DefaultNumGoroutines())
 }
 
 func TestVerify(t *testing.T) {

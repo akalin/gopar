@@ -1,7 +1,6 @@
 package par2
 
 import (
-	"runtime"
 	"sort"
 	"testing"
 
@@ -26,7 +25,7 @@ func (d testEncoderDelegate) OnRecoveryFileWrite(start, count, total int, path s
 }
 
 func newEncoderForTest(t *testing.T, io testFileIO, paths []string, sliceByteCount, parityShardCount int) (*Encoder, error) {
-	return newEncoder(io, testEncoderDelegate{t}, paths, sliceByteCount, parityShardCount, runtime.GOMAXPROCS(0))
+	return newEncoder(io, testEncoderDelegate{t}, paths, sliceByteCount, parityShardCount, rsec16.DefaultNumGoroutines())
 }
 
 func TestEncodeParity(t *testing.T) {
@@ -71,7 +70,7 @@ func TestEncodeParity(t *testing.T) {
 		dataShards = append(dataShards, dataShardsByID[fileID]...)
 	}
 
-	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), parityShardCount, runtime.GOMAXPROCS(0))
+	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), parityShardCount, rsec16.DefaultNumGoroutines())
 	require.NoError(t, err)
 
 	computedParityShards := coder.GenerateParity(dataShards)

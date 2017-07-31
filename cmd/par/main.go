@@ -7,12 +7,12 @@ import (
 	"os/signal"
 	"path"
 	"path/filepath"
-	"runtime"
 	"runtime/pprof"
 	"strings"
 
 	"github.com/akalin/gopar/par1"
 	"github.com/akalin/gopar/par2"
+	"github.com/akalin/gopar/rsec16"
 )
 
 type par1LogEncoderDelegate struct{}
@@ -229,7 +229,7 @@ func main() {
 	checkParity := flagSet.Bool("checkparity", false, "check parity when verifying or repairing")
 	numParityShards := flagSet.Int("c", 3, "number of recovery blocks to create (or files, for PAR1)")
 	// TODO: Detect hyperthreading and use only number of physical cores.
-	numGoroutines := flagSet.Int("g", runtime.GOMAXPROCS(0), "number of goroutines to use for encoding/decoding PAR2")
+	numGoroutines := flagSet.Int("g", rsec16.DefaultNumGoroutines(), "number of goroutines to use for encoding/decoding PAR2")
 	flagSet.Parse(os.Args[1:])
 
 	if *cpuprofile != "" {

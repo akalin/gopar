@@ -3,9 +3,27 @@ package rsec16
 import (
 	"errors"
 	"math"
+	"runtime"
 
 	"github.com/akalin/gopar/gf2p16"
+	"github.com/klauspost/cpuid"
 )
+
+// DefaultNumGoroutines returns a default value for the numGoroutines
+// parameter to pass into NewCoderCauchy and
+// NewCoderPAR2Vandermonde. This is not necessarily GOMAXPROCS.
+func DefaultNumGoroutines() int {
+	numGoroutines := runtime.GOMAXPROCS(0)
+	physicalCores := cpuid.CPU.PhysicalCores
+	// Use the number of physical cores as the default instead of
+	// the number of virtual cores, which GOMAXPROCS
+	// is. Hyperthreading doesn't actually help our workload, and
+	// indeed it hurts it a bit.
+	if physicalCores < numGoroutines {
+		numGoroutines = physicalCores
+	}
+	return numGoroutines
+}
 
 // A Coder is an object that can generate parity shards, verify parity
 // shards, and reconstruct data shards from parity shards.

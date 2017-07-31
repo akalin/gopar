@@ -3,7 +3,6 @@ package rsec16
 import (
 	"errors"
 	"fmt"
-	"runtime"
 	"testing"
 
 	"github.com/akalin/gopar/gf2p16"
@@ -11,11 +10,11 @@ import (
 )
 
 func newCoderCauchy(dataShards, parityShards int) (Coder, error) {
-	return NewCoderCauchy(dataShards, parityShards, runtime.GOMAXPROCS(0))
+	return NewCoderCauchy(dataShards, parityShards, DefaultNumGoroutines())
 }
 
 func newCoderPAR2Vandermonde(dataShards, parityShards int) (Coder, error) {
-	return NewCoderPAR2Vandermonde(dataShards, parityShards, runtime.GOMAXPROCS(0))
+	return NewCoderPAR2Vandermonde(dataShards, parityShards, DefaultNumGoroutines())
 }
 
 func TestCoderCauchyNewCoderError(t *testing.T) {
