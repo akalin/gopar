@@ -170,6 +170,8 @@ type Decoder struct {
 	recoverySet    []decoderInputFileInfo
 	nonRecoverySet []decoderInputFileInfo
 
+	numGoroutines int
+
 	checksumToLocation checksumShardLocationMap
 
 	// Indexed the same as recoverySet.
@@ -196,7 +198,7 @@ type DecoderDelegate interface {
 	OnDataFileWrite(i, n int, path string, byteCount int, err error)
 }
 
-func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string) (*Decoder, error) {
+func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string, numGoroutines int) (*Decoder, error) {
 	indexBytes, err := fileIO.ReadFile(indexPath)
 	if err != nil {
 		return nil, err
@@ -233,6 +235,7 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string) (*Dec
 		setID,
 		indexFile.clientID, indexFile.mainPacket.sliceByteCount,
 		recoverySet, nonRecoverySet,
+		numGoroutines,
 		nil,
 		nil,
 		nil,
@@ -484,7 +487,7 @@ func (d *Decoder) newCoderAndShards() (rsec16.Coder, [][]byte, error) {
 			dataShards = append(dataShards, shardInfo.data)
 		}
 	}
-	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), len(d.parityShards))
+	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), len(d.parityShards), d.numGoroutines)
 	if err != nil {
 		return rsec16.Coder{}, nil, err
 	}
@@ -627,6 +630,6 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 
 // NewDecoder reads the given index file, which usually has a .par2
 // extension.
-func NewDecoder(delegate DecoderDelegate, indexFile string) (*Decoder, error) {
-	return newDecoder(defaultFileIO{}, delegate, indexFile)
+func NewDecoder(delegate DecoderDelegate, indexFile string, numGoroutines int) (*Decoder, error) {
+	return newDecoder(defaultFileIO{}, delegate, indexFile, numGoroutines)
 }

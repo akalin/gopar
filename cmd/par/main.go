@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"path"
 	"path/filepath"
+	"runtime"
 	"runtime/pprof"
 	"strings"
 
@@ -199,22 +200,22 @@ type decoder interface {
 	Repair(checkParity bool) ([]string, error)
 }
 
-func newEncoder(parFile string, filePaths []string, numParityShards int) (encoder, error) {
+func newEncoder(parFile string, filePaths []string, numParityShards, numGoroutines int) (encoder, error) {
 	// TODO: Detect file type more robustly.
 	ext := path.Ext(parFile)
 	// TODO: Make this configurable.
 	const sliceByteCount = 2000
 	if ext == ".par2" {
-		return par2.NewEncoder(par2LogEncoderDelegate{}, filePaths, sliceByteCount, numParityShards)
+		return par2.NewEncoder(par2LogEncoderDelegate{}, filePaths, sliceByteCount, numParityShards, numGoroutines)
 	}
 	return par1.NewEncoder(par1LogEncoderDelegate{}, filePaths, numParityShards)
 }
 
-func newDecoder(parFile string) (decoder, error) {
+func newDecoder(parFile string, numGoroutines int) (decoder, error) {
 	// TODO: Detect file type more robustly.
 	ext := path.Ext(parFile)
 	if ext == ".par2" {
-		return par2.NewDecoder(par2LogDecoderDelegate{}, parFile)
+		return par2.NewDecoder(par2LogDecoderDelegate{}, parFile, numGoroutines)
 	}
 	return par1.NewDecoder(par1LogDecoderDelegate{}, parFile)
 }
@@ -227,6 +228,8 @@ func main() {
 	cpuprofile := flagSet.String("cpuprofile", "", "if non-empty, where to write the CPU profile")
 	checkParity := flagSet.Bool("checkparity", false, "check parity when verifying or repairing")
 	numParityShards := flagSet.Int("c", 3, "number of recovery blocks to create (or files, for PAR1)")
+	// TODO: Detect hyperthreading and use only number of physical cores.
+	numGoroutines := flagSet.Int("g", runtime.GOMAXPROCS(0), "number of goroutines to use for encoding/decoding PAR2")
 	flagSet.Parse(os.Args[1:])
 
 	if *cpuprofile != "" {
@@ -267,7 +270,7 @@ func main() {
 			printUsageAndExit(name, flagSet)
 		}
 
-		encoder, err := newEncoder(parFile, flagSet.Args()[2:], *numParityShards)
+		encoder, err := newEncoder(parFile, flagSet.Args()[2:], *numParityShards, *numGoroutines)
 		if err != nil {
 			panic(err)
 		}
@@ -291,7 +294,7 @@ func main() {
 	case "v":
 		fallthrough
 	case "verify":
-		decoder, err := newDecoder(parFile)
+		decoder, err := newDecoder(parFile, *numGoroutines)
 		if err != nil {
 			panic(err)
 		}
@@ -319,7 +322,7 @@ func main() {
 	case "r":
 		fallthrough
 	case "repair":
-		decoder, err := newDecoder(parFile)
+		decoder, err := newDecoder(parFile, *numGoroutines)
 		if err != nil {
 			panic(err)
 		}

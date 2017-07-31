@@ -1,6 +1,7 @@
 package par2
 
 import (
+	"runtime"
 	"sort"
 	"testing"
 
@@ -24,6 +25,10 @@ func (d testEncoderDelegate) OnRecoveryFileWrite(start, count, total int, path s
 	d.t.Logf("OnRecoveryFileWrite(start=%d, count=%d, total=%d, %s, dataByteCount=%d, byteCount=%d, %v)", start, count, total, path, dataByteCount, byteCount, err)
 }
 
+func newEncoderForTest(t *testing.T, io testFileIO, paths []string, sliceByteCount, parityShardCount int) (*Encoder, error) {
+	return newEncoder(io, testEncoderDelegate{t}, paths, sliceByteCount, parityShardCount, runtime.GOMAXPROCS(0))
+}
+
 func TestEncodeParity(t *testing.T) {
 	io := testFileIO{
 		t: t,
@@ -40,7 +45,7 @@ func TestEncodeParity(t *testing.T) {
 
 	sliceByteCount := 4
 	parityShardCount := 3
-	encoder, err := newEncoder(io, testEncoderDelegate{t}, paths, sliceByteCount, parityShardCount)
+	encoder, err := newEncoderForTest(t, io, paths, sliceByteCount, parityShardCount)
 	require.NoError(t, err)
 
 	err = encoder.LoadFileData()
@@ -66,7 +71,7 @@ func TestEncodeParity(t *testing.T) {
 		dataShards = append(dataShards, dataShardsByID[fileID]...)
 	}
 
-	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), parityShardCount)
+	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), parityShardCount, runtime.GOMAXPROCS(0))
 	require.NoError(t, err)
 
 	computedParityShards := coder.GenerateParity(dataShards)
@@ -89,7 +94,7 @@ func TestWriteParity(t *testing.T) {
 
 	sliceByteCount := 4
 	parityShardCount := 100
-	encoder, err := newEncoder(io, testEncoderDelegate{t}, paths, sliceByteCount, parityShardCount)
+	encoder, err := newEncoderForTest(t, io, paths, sliceByteCount, parityShardCount)
 	require.NoError(t, err)
 
 	err = encoder.LoadFileData()
@@ -101,7 +106,7 @@ func TestWriteParity(t *testing.T) {
 	err = encoder.Write("parity.par2")
 	require.NoError(t, err)
 
-	decoder, err := newDecoder(io, testDecoderDelegate{t}, "parity.par2")
+	decoder, err := newDecoderForTest(t, io, "parity.par2")
 	require.NoError(t, err)
 
 	err = decoder.LoadFileData()

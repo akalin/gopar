@@ -3,7 +3,6 @@ package rsec16
 import (
 	"errors"
 	"math"
-	"runtime"
 
 	"github.com/akalin/gopar/gf2p16"
 )
@@ -12,6 +11,7 @@ import (
 // shards, and reconstruct data shards from parity shards.
 type Coder struct {
 	dataShards, parityShards int
+	numGoroutines            int
 	parityMatrix             gf2p16.Matrix
 }
 
@@ -25,12 +25,15 @@ func newCauchyParityMatrix(dataShards, parityShards int) gf2p16.Matrix {
 
 // NewCoderCauchy returns a Coder that works with the given number of
 // data and parity shards, using a Cauchy matrix.
-func NewCoderCauchy(dataShards, parityShards int) (Coder, error) {
+func NewCoderCauchy(dataShards, parityShards, numGoroutines int) (Coder, error) {
 	if dataShards <= 0 {
 		panic("invalid data shard count")
 	}
 	if parityShards <= 0 {
 		panic("invalid parity shard count")
+	}
+	if numGoroutines <= 0 {
+		panic("invalid goroutine count")
 	}
 
 	if dataShards+parityShards > math.MaxUint16 {
@@ -38,7 +41,7 @@ func NewCoderCauchy(dataShards, parityShards int) (Coder, error) {
 	}
 
 	parityMatrix := newCauchyParityMatrix(dataShards, parityShards)
-	return Coder{dataShards, parityShards, parityMatrix}, nil
+	return Coder{dataShards, parityShards, numGoroutines, parityMatrix}, nil
 }
 
 var generators []gf2p16.T
@@ -64,7 +67,7 @@ func newVandermondeParityMatrix(dataShards, parityShards int) gf2p16.Matrix {
 // number of data and parity shards, using a Vandermonde matrix as
 // specified in the PAR2 spec. Note that this matrix is flawed, so
 // ReconstructData may fail.
-func NewCoderPAR2Vandermonde(dataShards, parityShards int) (Coder, error) {
+func NewCoderPAR2Vandermonde(dataShards, parityShards, numGoroutines int) (Coder, error) {
 	// The PAR2 encoding matrix looks like:
 	//
 	// 1       0       0        ... 0             0             0
@@ -101,6 +104,9 @@ func NewCoderPAR2Vandermonde(dataShards, parityShards int) (Coder, error) {
 	if parityShards <= 0 {
 		panic("invalid parity shard count")
 	}
+	if numGoroutines <= 0 {
+		panic("invalid goroutine count")
+	}
 
 	if dataShards > len(generators) {
 		return Coder{}, errors.New("too many data shards")
@@ -111,13 +117,11 @@ func NewCoderPAR2Vandermonde(dataShards, parityShards int) (Coder, error) {
 	}
 
 	parityMatrix := newVandermondeParityMatrix(dataShards, parityShards)
-	return Coder{dataShards, parityShards, parityMatrix}, nil
+	return Coder{dataShards, parityShards, numGoroutines, parityMatrix}, nil
 }
 
 func (c Coder) applyMatrix(m gf2p16.Matrix, in, out [][]byte) {
-	// TODO: Make this configurable.
-	numGoroutines := runtime.GOMAXPROCS(0)
-	applyMatrixParallelData(m, in, out, numGoroutines)
+	applyMatrixParallelData(m, in, out, c.numGoroutines)
 }
 
 // GenerateParity takes a list of data shards, which must have length

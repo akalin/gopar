@@ -3,16 +3,25 @@ package rsec16
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"testing"
 
 	"github.com/akalin/gopar/gf2p16"
 	"github.com/stretchr/testify/require"
 )
 
+func newCoderCauchy(dataShards, parityShards int) (Coder, error) {
+	return NewCoderCauchy(dataShards, parityShards, runtime.GOMAXPROCS(0))
+}
+
+func newCoderPAR2Vandermonde(dataShards, parityShards int) (Coder, error) {
+	return NewCoderPAR2Vandermonde(dataShards, parityShards, runtime.GOMAXPROCS(0))
+}
+
 func TestCoderCauchyNewCoderError(t *testing.T) {
 	// Ideally, we'd test that NewCoder(32768, 32767) succeeds,
 	// but doing so takes 15 seconds!
-	_, err := NewCoderCauchy(32768, 32768)
+	_, err := newCoderCauchy(32768, 32768)
 	require.Equal(t, errors.New("too many shards"), err)
 }
 
@@ -31,10 +40,10 @@ func TestCoderPAR2VandermondeNewCoderError(t *testing.T) {
 	// Ideally, we'd test that NewCoder(32768, 65535) succeeds,
 	// but doing so would probably take even longer than 15
 	// seconds.
-	_, err := NewCoderPAR2Vandermonde(32769, 65535)
+	_, err := newCoderPAR2Vandermonde(32769, 65535)
 	require.Equal(t, errors.New("too many data shards"), err)
 
-	_, err = NewCoderPAR2Vandermonde(32768, 65536)
+	_, err = newCoderPAR2Vandermonde(32768, 65536)
 	require.Equal(t, errors.New("too many parity shards"), err)
 }
 
@@ -136,10 +145,10 @@ func BenchmarkMakeReconstructionMatrix(b *testing.B) {
 
 func testCoder(t *testing.T, testFn func(*testing.T, func(int, int) (Coder, error))) {
 	t.Run("Cauchy", func(t *testing.T) {
-		testFn(t, NewCoderCauchy)
+		testFn(t, newCoderCauchy)
 	})
 	t.Run("PAR2Vandermonde", func(t *testing.T) {
-		testFn(t, NewCoderPAR2Vandermonde)
+		testFn(t, newCoderPAR2Vandermonde)
 	})
 }
 

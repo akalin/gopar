@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -133,7 +134,7 @@ func buildPAR2Data(t *testing.T, io testFileIO, sliceByteCount, parityShardCount
 		dataShards = append(dataShards, dataShardsByID[fileID]...)
 	}
 
-	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), parityShardCount)
+	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), parityShardCount, runtime.GOMAXPROCS(0))
 	require.NoError(t, err)
 
 	parityShards := coder.GenerateParity(dataShards)
@@ -185,6 +186,10 @@ func buildPAR2Data(t *testing.T, io testFileIO, sliceByteCount, parityShardCount
 	}
 }
 
+func newDecoderForTest(t *testing.T, io testFileIO, indexPath string) (*Decoder, error) {
+	return newDecoder(io, testDecoderDelegate{t}, indexPath, runtime.GOMAXPROCS(0))
+}
+
 func TestVerify(t *testing.T) {
 	io := testFileIO{
 		t: t,
@@ -199,7 +204,7 @@ func TestVerify(t *testing.T) {
 
 	buildPAR2Data(t, io, 4, 3)
 
-	decoder, err := newDecoder(io, testDecoderDelegate{t}, "file.par2")
+	decoder, err := newDecoderForTest(t, io, "file.par2")
 	require.NoError(t, err)
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
@@ -269,7 +274,7 @@ func TestSetIDMismatch(t *testing.T) {
 	// Insert a parity volume that has a different set hash.
 	io1.fileData["file.vol01+01.par2"] = io2.fileData["file.vol01+01.par2"]
 
-	decoder, err := newDecoder(io1, testDecoderDelegate{t}, "file.par2")
+	decoder, err := newDecoderForTest(t, io1, "file.par2")
 	require.NoError(t, err)
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
@@ -294,7 +299,7 @@ func TestRepair(t *testing.T) {
 
 	buildPAR2Data(t, io, 4, 3)
 
-	decoder, err := newDecoder(io, testDecoderDelegate{t}, "file.par2")
+	decoder, err := newDecoderForTest(t, io, "file.par2")
 	require.NoError(t, err)
 
 	r02Data := io.fileData["file.r02"]
@@ -335,7 +340,7 @@ func TestRepairAddedBytes(t *testing.T) {
 
 	buildPAR2Data(t, io, 4, 3)
 
-	decoder, err := newDecoder(io, testDecoderDelegate{t}, "file.par2")
+	decoder, err := newDecoderForTest(t, io, "file.par2")
 	require.NoError(t, err)
 
 	rarData := io.fileData["file.rar"]
@@ -370,7 +375,7 @@ func TestRepairRemovedBytes(t *testing.T) {
 
 	buildPAR2Data(t, io, 4, 3)
 
-	decoder, err := newDecoder(io, testDecoderDelegate{t}, "file.par2")
+	decoder, err := newDecoderForTest(t, io, "file.par2")
 	require.NoError(t, err)
 
 	rarData := io.fileData["file.rar"]
@@ -410,7 +415,7 @@ func TestRepairSwappedFiles(t *testing.T) {
 
 	buildPAR2Data(t, io, 4, 3)
 
-	decoder, err := newDecoder(io, testDecoderDelegate{t}, "file.par2")
+	decoder, err := newDecoderForTest(t, io, "file.par2")
 	require.NoError(t, err)
 
 	rarData := io.fileData["file.rar"]

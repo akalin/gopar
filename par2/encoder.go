@@ -26,6 +26,8 @@ type Encoder struct {
 	sliceByteCount   int
 	parityShardCount int
 
+	numGoroutines int
+
 	recoverySet      []fileID
 	recoverySetInfos map[fileID]encoderInputFileInfo
 
@@ -40,15 +42,15 @@ type EncoderDelegate interface {
 	OnRecoveryFileWrite(start, count, total int, path string, dataByteCount, byteCount int, err error)
 }
 
-func newEncoder(fileIO fileIO, delegate EncoderDelegate, filePaths []string, sliceByteCount, parityShardCount int) (*Encoder, error) {
+func newEncoder(fileIO fileIO, delegate EncoderDelegate, filePaths []string, sliceByteCount, parityShardCount, numGoroutines int) (*Encoder, error) {
 	// TODO: Check filePaths, sliceByteCount, and parityShardCount.
-	return &Encoder{fileIO, delegate, filePaths, sliceByteCount, parityShardCount, nil, nil, nil}, nil
+	return &Encoder{fileIO, delegate, filePaths, sliceByteCount, parityShardCount, numGoroutines, nil, nil, nil}, nil
 }
 
 // NewEncoder creates an encoder with the given list of file paths,
 // and with the given number of intended parity volumes.
-func NewEncoder(delegate EncoderDelegate, filePaths []string, sliceByteCount, parityShardCount int) (*Encoder, error) {
-	return newEncoder(defaultFileIO{}, delegate, filePaths, sliceByteCount, parityShardCount)
+func NewEncoder(delegate EncoderDelegate, filePaths []string, sliceByteCount, parityShardCount, numGoroutines int) (*Encoder, error) {
+	return newEncoder(defaultFileIO{}, delegate, filePaths, sliceByteCount, parityShardCount, numGoroutines)
 }
 
 // LoadFileData loads the file data into memory.
@@ -86,7 +88,7 @@ func (e *Encoder) ComputeParityData() error {
 		dataShards = append(dataShards, e.recoverySetInfos[fileID].dataShards...)
 	}
 
-	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), e.parityShardCount)
+	coder, err := rsec16.NewCoderPAR2Vandermonde(len(dataShards), e.parityShardCount, e.numGoroutines)
 	if err != nil {
 		return err
 	}
