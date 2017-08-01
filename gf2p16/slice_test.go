@@ -47,7 +47,7 @@ func mulAndAddUint16Slice(c T, in, out []uint16) {
 	}
 }
 
-func TestMulByteSliceLE(t *testing.T) {
+func testMulByteSliceLE(t *testing.T, mulFn func(T, []byte, []byte)) {
 	in := []byte{0xff, 0xfe, 0xaa, 0xab}
 	out := []byte{0x3, 0x4, 0x5, 0x6}
 	c := T(0x3)
@@ -56,12 +56,26 @@ func TestMulByteSliceLE(t *testing.T) {
 	mulAndAddUint16Slice(c, byteToUint16LEArray(in), expectedOutU16)
 	expectedOut := uint16LEToByteArray(expectedOutU16)
 
-	MulByteSliceLE(c, in, out)
+	mulFn(c, in, out)
 
 	require.Equal(t, expectedOut, out)
 }
 
-func TestMulAndAddByteSliceLE(t *testing.T) {
+func TestMulByteSliceLE(t *testing.T) {
+	t.Run("generic", func(t *testing.T) {
+		testMulByteSliceLE(t, mulByteSliceLEGeneric)
+	})
+	t.Run("exported", func(t *testing.T) {
+		testMulByteSliceLE(t, MulByteSliceLE)
+	})
+	if platformLittleEndian {
+		t.Run("platformLE", func(t *testing.T) {
+			testMulByteSliceLE(t, mulByteSliceLEPlatformLE)
+		})
+	}
+}
+
+func testMulAndAddByteSliceLE(t *testing.T, mulAndAddFn func(T, []byte, []byte)) {
 	in := []byte{0xff, 0xfe, 0xaa, 0xab}
 	out := []byte{0x3, 0x4, 0x5, 0x6}
 	c := T(0x3)
@@ -70,9 +84,23 @@ func TestMulAndAddByteSliceLE(t *testing.T) {
 	mulAndAddUint16Slice(c, byteToUint16LEArray(in), expectedOutU16)
 	expectedOut := uint16LEToByteArray(expectedOutU16)
 
-	MulAndAddByteSliceLE(c, in, out)
+	mulAndAddFn(c, in, out)
 
 	require.Equal(t, expectedOut, out)
+}
+
+func TestMulAndAddByteSliceLE(t *testing.T) {
+	t.Run("generic", func(t *testing.T) {
+		testMulAndAddByteSliceLE(t, mulAndAddByteSliceLEGeneric)
+	})
+	t.Run("exported", func(t *testing.T) {
+		testMulAndAddByteSliceLE(t, MulAndAddByteSliceLE)
+	})
+	if platformLittleEndian {
+		t.Run("platformLE", func(t *testing.T) {
+			testMulAndAddByteSliceLE(t, mulAndAddByteSliceLEPlatformLE)
+		})
+	}
 }
 
 func TestMulSlice(t *testing.T) {
