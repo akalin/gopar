@@ -132,17 +132,13 @@ func (m Matrix) swapRows(i, j int) {
 
 func (m Matrix) scaleRow(i int, c T) {
 	row := m.row(i)
-	for j, e := range row {
-		row[j] = e.Times(c)
-	}
+	mulSlice(c, row, row)
 }
 
 func (m Matrix) addScaledRow(dest, src int, c T) {
 	rowSrc := m.row(src)
 	rowDest := m.row(dest)
-	for j, e := range rowSrc {
-		rowDest[j] ^= e.Times(c)
-	}
+	mulAndAddSlice(c, rowSrc, rowDest)
 }
 
 func (m Matrix) rowReduceForInverse(n Matrix) error {
