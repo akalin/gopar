@@ -25,7 +25,23 @@ func uint16LEToByteArray(u16s []uint16) []byte {
 	return bs
 }
 
-func mulAndAddSlice(c T, in, out []uint16) {
+func tToUint16Array(ts []T) []uint16 {
+	u16s := make([]uint16, len(ts))
+	for i := range u16s {
+		u16s[i] = uint16(ts[i])
+	}
+	return u16s
+}
+
+func uint16ToTArray(u16s []uint16) []T {
+	ts := make([]T, len(u16s))
+	for i := range ts {
+		ts[i] = T(u16s[i])
+	}
+	return ts
+}
+
+func mulAndAddUint16Slice(c T, in, out []uint16) {
 	for i, x := range in {
 		out[i] ^= uint16(c.Times(T(x)))
 	}
@@ -37,7 +53,7 @@ func TestMulByteSliceLE(t *testing.T) {
 	c := T(0x3)
 
 	expectedOutU16 := make([]uint16, 2)
-	mulAndAddSlice(c, byteToUint16LEArray(in), expectedOutU16)
+	mulAndAddUint16Slice(c, byteToUint16LEArray(in), expectedOutU16)
 	expectedOut := uint16LEToByteArray(expectedOutU16)
 
 	MulByteSliceLE(c, in, out)
@@ -51,10 +67,38 @@ func TestMulAndAddByteSliceLE(t *testing.T) {
 	c := T(0x3)
 
 	expectedOutU16 := byteToUint16LEArray(out)
-	mulAndAddSlice(c, byteToUint16LEArray(in), expectedOutU16)
+	mulAndAddUint16Slice(c, byteToUint16LEArray(in), expectedOutU16)
 	expectedOut := uint16LEToByteArray(expectedOutU16)
 
 	MulAndAddByteSliceLE(c, in, out)
+
+	require.Equal(t, expectedOut, out)
+}
+
+func TestMulSlice(t *testing.T) {
+	in := []T{0xfeff, 0xabaa}
+	out := []T{0x0403, 0x0605}
+	c := T(0x3)
+
+	expectedOutU16 := make([]uint16, 2)
+	mulAndAddUint16Slice(c, tToUint16Array(in), expectedOutU16)
+	expectedOut := uint16ToTArray(expectedOutU16)
+
+	mulSlice(c, in, out)
+
+	require.Equal(t, expectedOut, out)
+}
+
+func TestMulAndAddSlice(t *testing.T) {
+	in := []T{0xfeff, 0xabaa}
+	out := []T{0x0403, 0x0605}
+	c := T(0x3)
+
+	expectedOutU16 := tToUint16Array(out)
+	mulAndAddUint16Slice(c, tToUint16Array(in), expectedOutU16)
+	expectedOut := uint16ToTArray(expectedOutU16)
+
+	mulAndAddSlice(c, in, out)
 
 	require.Equal(t, expectedOut, out)
 }
@@ -120,4 +164,69 @@ func benchMulAndAddByteSliceLE(b *testing.B, byteCount int) {
 
 func BenchmarkMulAndAddByteSliceLE(b *testing.B) {
 	runMulBenchmark(b, benchMulAndAddByteSliceLE)
+}
+
+func byteToTLEArray(bs []byte) []T {
+	ts := make([]T, len(bs)/2)
+	for i := range ts {
+		ts[i] = T(binary.LittleEndian.Uint16(bs[2*i:]))
+	}
+	return ts
+}
+
+func benchMulSlice(b *testing.B, byteCount int) {
+	b.SetBytes(int64(byteCount))
+
+	rand := rand.New(rand.NewSource(1))
+
+	in := byteToTLEArray(makeBytes(b, rand, byteCount))
+	out := make([]T, byteCount/2)
+	c := T(5)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		mulSlice(c, in, out)
+	}
+}
+
+func BenchmarkMulSlice(b *testing.B) {
+	runMulBenchmark(b, benchMulSlice)
+}
+
+func benchMulAndAddSlice(b *testing.B, byteCount int) {
+	b.SetBytes(int64(byteCount))
+
+	rand := rand.New(rand.NewSource(1))
+
+	in := byteToTLEArray(makeBytes(b, rand, byteCount))
+	out := make([]T, byteCount/2)
+	c := T(5)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		mulAndAddSlice(c, in, out)
+	}
+}
+
+func BenchmarkMulAndAddSlice(b *testing.B) {
+	runMulBenchmark(b, benchMulAndAddSlice)
+}
+
+func benchMulAndAddUint16Slice(b *testing.B, byteCount int) {
+	b.SetBytes(int64(byteCount))
+
+	rand := rand.New(rand.NewSource(1))
+
+	in := byteToUint16LEArray(makeBytes(b, rand, byteCount))
+	out := make([]uint16, byteCount/2)
+	c := T(5)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		mulAndAddUint16Slice(c, in, out)
+	}
+}
+
+func BenchmarkMulAndAddUint16Slice(b *testing.B) {
+	runMulBenchmark(b, benchMulAndAddUint16Slice)
 }
