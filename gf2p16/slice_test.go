@@ -115,16 +115,18 @@ func testMulSlice(t *testing.T, byteCount int, mulFn func(T, []T, []T)) {
 	rand := rand.New(rand.NewSource(1))
 
 	in := byteToTLEArray(makeBytes(t, rand, byteCount))
-	out := make([]T, len(in))
+	out := make([]T, len(in)+1)
+	out[len(in)] = T(0xffff)
 	c := T(0x3)
 
 	expectedOutU16 := make([]uint16, len(in))
 	mulAndAddUint16Slice(c, tToUint16Array(in), expectedOutU16)
 	expectedOut := uint16ToTArray(expectedOutU16)
 
-	mulFn(c, in, out)
+	mulFn(c, in, out[:len(in)])
 
-	require.Equal(t, expectedOut, out)
+	require.Equal(t, expectedOut, out[:len(in)])
+	require.Equal(t, T(0xffff), out[len(in)])
 }
 
 func TestMulSlice(t *testing.T) {
