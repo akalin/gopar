@@ -103,32 +103,66 @@ func TestMulAndAddByteSliceLE(t *testing.T) {
 	}
 }
 
-func TestMulSlice(t *testing.T) {
-	in := []T{0xfeff, 0xabaa}
-	out := []T{0x0403, 0x0605}
+func makeBytes(tb testing.TB, rand *rand.Rand, byteCount int) []byte {
+	bs := make([]byte, byteCount)
+	n, err := rand.Read(bs)
+	require.NoError(tb, err)
+	require.Equal(tb, byteCount, n)
+	return bs
+}
+
+func testMulSlice(t *testing.T, byteCount int, mulFn func(T, []T, []T)) {
+	rand := rand.New(rand.NewSource(1))
+
+	in := byteToTLEArray(makeBytes(t, rand, byteCount))
+	out := make([]T, len(in))
 	c := T(0x3)
 
-	expectedOutU16 := make([]uint16, 2)
+	expectedOutU16 := make([]uint16, len(in))
 	mulAndAddUint16Slice(c, tToUint16Array(in), expectedOutU16)
 	expectedOut := uint16ToTArray(expectedOutU16)
 
-	mulSlice(c, in, out)
+	mulFn(c, in, out)
 
 	require.Equal(t, expectedOut, out)
 }
 
-func TestMulAndAddSlice(t *testing.T) {
-	in := []T{0xfeff, 0xabaa}
-	out := []T{0x0403, 0x0605}
+func TestMulSlice(t *testing.T) {
+	for _, byteCount := range []int{10, 100, 1000} {
+		t.Run(fmt.Sprintf("generic-%d", byteCount), func(t *testing.T) {
+			testMulSlice(t, byteCount, mulSliceGeneric)
+		})
+		t.Run(fmt.Sprintf("nongeneric-%d", byteCount), func(t *testing.T) {
+			testMulSlice(t, byteCount, mulSlice)
+		})
+	}
+}
+
+func testMulAndAddSlice(t *testing.T, byteCount int, mulAndAddFn func(T, []T, []T)) {
+	rand := rand.New(rand.NewSource(1))
+
+	in := byteToTLEArray(makeBytes(t, rand, byteCount))
+	out := byteToTLEArray(makeBytes(t, rand, byteCount))
 	c := T(0x3)
 
 	expectedOutU16 := tToUint16Array(out)
 	mulAndAddUint16Slice(c, tToUint16Array(in), expectedOutU16)
 	expectedOut := uint16ToTArray(expectedOutU16)
 
-	mulAndAddSlice(c, in, out)
+	mulAndAddFn(c, in, out)
 
 	require.Equal(t, expectedOut, out)
+}
+
+func TestMulAndAddSlice(t *testing.T) {
+	for _, byteCount := range []int{10, 100, 1000} {
+		t.Run(fmt.Sprintf("generic-%d", byteCount), func(t *testing.T) {
+			testMulAndAddSlice(t, byteCount, mulAndAddSliceGeneric)
+		})
+		t.Run(fmt.Sprintf("nongeneric-%d", byteCount), func(t *testing.T) {
+			testMulAndAddSlice(t, byteCount, mulAndAddSlice)
+		})
+	}
 }
 
 func runMulBenchmark(b *testing.B, fn func(*testing.B, int)) {
@@ -146,14 +180,6 @@ func runMulBenchmark(b *testing.B, fn func(*testing.B, int)) {
 			fn(b, byteCount)
 		})
 	}
-}
-
-func makeBytes(b *testing.B, rand *rand.Rand, byteCount int) []byte {
-	bs := make([]byte, byteCount)
-	n, err := rand.Read(bs)
-	require.NoError(b, err)
-	require.Equal(b, byteCount, n)
-	return bs
 }
 
 func benchMulByteSliceLE(b *testing.B, byteCount int) {

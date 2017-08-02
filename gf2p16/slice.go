@@ -39,16 +39,16 @@ func MulAndAddByteSliceLE(c T, in, out []byte) {
 	}
 }
 
-// mulSlice sets each out[i] to c.Times(in[i]).
-func mulSlice(c T, in, out []T) {
+// mulSliceGeneric sets each out[i] to c.Times(in[i]).
+func mulSliceGeneric(c T, in, out []T) {
 	cEntry := &mulTable[c]
 	for i := 0; i < len(in); i++ {
 		out[i] = cEntry.low[in[i]&0xff] ^ cEntry.high[in[i]>>8]
 	}
 }
 
-// mulAndAddSlice adds c.Times(in[i]) to out[i], for each i.
-func mulAndAddSlice(c T, in, out []T) {
+// mulAndAddSliceGeneric adds c.Times(in[i]) to out[i], for each i.
+func mulAndAddSliceGeneric(c T, in, out []T) {
 	cEntry := &mulTable[c]
 	for i := 0; i < len(in); i++ {
 		out[i] ^= cEntry.low[in[i]&0xff] ^ cEntry.high[in[i]>>8]
