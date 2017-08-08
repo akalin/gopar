@@ -153,3 +153,38 @@ loop:
 
 done:
 	RET
+
+// func altToStandardMapSSSE3Unsafe(inLow, inHigh, out0, out1 *[16]byte)
+TEXT ·altToStandardMapSSSE3Unsafe(SB), NOSPLIT, $0
+	// X0 = *inLow
+	MOVQ  inLow+0(FP), AX
+	MOVOU (AX), X0
+
+	// X1 = *inHigh
+	MOVQ  inHigh+8(FP), AX
+	MOVOU (AX), X1
+
+	// Letting each digit represent a single byte, if
+	//
+	//   X0 = *inLow  = ikmo:qsuw:2468:aceg
+	//   X1 = *inHigh = hjln:prtv:1357:9bdf,
+	//
+	// set X2 to be the alternating bytes of the high halves of
+	// of X2 = X0 and X1, and X0 to be the alternating bytes of
+	// the low halves of X0 and X1, i.e.
+	//
+	//   X2 = hijk:lmno:pqrs:tuvw
+	//   X0 = 1234:5678:9abc:defg.
+	MOVO      X0, X2
+	PUNPCKHBW X1, X2
+	PUNPCKLBW X1, X0
+
+	// *out0 = X0
+	MOVQ  out0+16(FP), AX
+	MOVOU X0, (AX)
+
+	// *out1 = X2
+	MOVQ  out1+24(FP), AX
+	MOVOU X2, (AX)
+
+	RET

@@ -47,3 +47,14 @@ func standardToAltMapSSSE3Unsafe(in0, in1, outLow, outHigh *[16]byte)
 //
 //go:noescape
 func standardToAltMapSliceSSSE3Unsafe(in, out []byte)
+
+// altToStandardMapSSSE3Unsafe is the inverse of
+// standardToAltMapSSSE3Unsafe. That is, it sets
+//
+//   *out0 = inLow[0]  . inHigh[0]  . inLow[1]  . inHigh[1] . ...
+//         . inLow[6]  . inHigh[6]  . inLow[7]  . inHigh[7],
+//   *out1 = inLow[8]  . inHigh[8]  . inLow[9]  . inHigh[9] . ...
+//         . inLow[14] . inHigh[14] . inLow[15] . inHigh[15].
+//
+//go:noescape
+func altToStandardMapSSSE3Unsafe(inLow, inHigh, out0, out1 *[16]byte)
