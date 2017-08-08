@@ -154,6 +154,26 @@ loop:
 done:
 	RET
 
+// All arguments should be 128-bit registers, i.e. beginning with X.
+//
+// Sets inLow to out0.
+//
+// Letting each digit represent a single byte, if
+//
+//   inLow  = ikmo:qsuw:2468:aceg
+//   inHigh = hjln:prtv:1357:9bdf,
+//
+// set out1 to be the alternating bytes of the high halves of
+// out1 = inLow and inHigh, and inLow to be the alternating bytes of
+// the low halves of inLow and inHigh, i.e.
+//
+//           out1 = hijk:lmno:pqrs:tuvw
+//   inLow = out0 = 1234:5678:9abc:defg.
+#define ALT_TO_STANDARD_MAP_SSSE3(inLow, inHigh, out1) \
+	MOVO      inLow, out1   \
+	PUNPCKHBW inHigh, out1  \
+	PUNPCKLBW inHigh, inLow
+
 // func altToStandardMapSSSE3Unsafe(inLow, inHigh, out0, out1 *[16]byte)
 TEXT ·altToStandardMapSSSE3Unsafe(SB), NOSPLIT, $0
 	// X0 = *inLow
@@ -164,20 +184,7 @@ TEXT ·altToStandardMapSSSE3Unsafe(SB), NOSPLIT, $0
 	MOVQ  inHigh+8(FP), AX
 	MOVOU (AX), X1
 
-	// Letting each digit represent a single byte, if
-	//
-	//   X0 = *inLow  = ikmo:qsuw:2468:aceg
-	//   X1 = *inHigh = hjln:prtv:1357:9bdf,
-	//
-	// set X2 to be the alternating bytes of the high halves of
-	// of X2 = X0 and X1, and X0 to be the alternating bytes of
-	// the low halves of X0 and X1, i.e.
-	//
-	//   X2 = hijk:lmno:pqrs:tuvw
-	//   X0 = 1234:5678:9abc:defg.
-	MOVO      X0, X2
-	PUNPCKHBW X1, X2
-	PUNPCKLBW X1, X0
+	ALT_TO_STANDARD_MAP_SSSE3(X0, X1, X2)
 
 	// *out0 = X0
 	MOVQ  out0+16(FP), AX
