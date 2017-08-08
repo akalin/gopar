@@ -1,16 +1,33 @@
 package gf2p16
 
 import (
+	"math/rand"
 	"testing"
 
 	"github.com/klauspost/cpuid"
 	"github.com/stretchr/testify/require"
 )
 
-func TestStandardToAltMapSSSE3Unsafe(t *testing.T) {
+func skipNonSSSE3(t *testing.T) {
 	if !cpuid.CPU.SSSE3() {
 		t.Skip("SSSE3 not supported; skipping")
 	}
+}
+
+func fill(bs []byte, b byte) {
+	for i := range bs {
+		bs[i] = b
+	}
+}
+
+func fill16(b byte) [16]byte {
+	var bs [16]byte
+	fill(bs[:], b)
+	return bs
+}
+
+func TestStandardToAltMapSSSE3Unsafe(t *testing.T) {
+	skipNonSSSE3(t)
 
 	in0 := [16]byte{
 		0x20, 0x21, 0x30, 0x31,
@@ -26,12 +43,7 @@ func TestStandardToAltMapSSSE3Unsafe(t *testing.T) {
 		0x00, 0x01, 0x10, 0x11,
 	}
 
-	filler := [16]byte{
-		0xff, 0xff, 0xff, 0xff,
-		0xff, 0xff, 0xff, 0xff,
-		0xff, 0xff, 0xff, 0xff,
-		0xff, 0xff, 0xff, 0xff,
-	}
+	filler := fill16(0xfe)
 	outLow := [2][16]byte{filler, filler}
 	outHigh := [2][16]byte{filler, filler}
 
@@ -53,4 +65,29 @@ func TestStandardToAltMapSSSE3Unsafe(t *testing.T) {
 
 	require.Equal(t, expectedOutLow, outLow)
 	require.Equal(t, expectedOutHigh, outHigh)
+}
+
+func TestStandardToAltMapSliceSSSE3Unsafe(t *testing.T) {
+	skipNonSSSE3(t)
+
+	rand := rand.New(rand.NewSource(1))
+
+	in := makeBytes(t, rand, 32*10)
+	out := make([]byte, len(in)+31)
+	expectedOut := make([]byte, len(in)+31)
+	fill(out, 0xfd)
+	fill(expectedOut, 0xfd)
+
+	for i := 0; i < 10; i++ {
+		var in0, in1, outLow, outHigh [16]byte
+		copy(in0[:], in[i*32+16:(i+1)*32])
+		copy(in1[:], in[i*32:i*32+16])
+		standardToAltMapSSSE3Unsafe(&in0, &in1, &outLow, &outHigh)
+		copy(expectedOut[i*32+16:(i+1)*32], outLow[:])
+		copy(expectedOut[i*32:i*32+16], outHigh[:])
+	}
+
+	standardToAltMapSliceSSSE3Unsafe(in, out)
+
+	require.Equal(t, expectedOut, out)
 }
