@@ -195,3 +195,36 @@ TEXT ·altToStandardMapSSSE3Unsafe(SB), NOSPLIT, $0
 	MOVOU X2, (AX)
 
 	RET
+
+// func altToStandardMapSliceSSSE3Unsafe(in, out []byte)
+TEXT ·altToStandardMapSliceSSSE3Unsafe(SB), NOSPLIT, $0
+	// Set AX = len(in)/32
+	MOVQ in_len+8(FP), AX
+	SHRQ $5, AX
+	CMPQ AX, $0
+	JEQ  done
+
+	// Set BX, CX = inChunk, outChunk = in, out
+	MOVQ in+0(FP), BX
+	MOVQ out+24(FP), CX
+
+loop:
+	// Set X0, X1 = inLow, inHigh = inChunk[16:32], inChunk[0:16]
+	MOVOU (BX), X1
+	MOVOU 16(BX), X0
+
+	ALT_TO_STANDARD_MAP_SSSE3(X0, X1, X2)
+
+	// Set outChunk[16:32], outChunk[0:16] = out0, out1 = X0, X2
+	MOVOU X2, (CX)
+	MOVOU X0, 16(CX)
+
+	// inChunk += 32, outChunk += 32
+	ADDQ $32, BX
+	ADDQ $32, CX
+
+	SUBQ $1, AX
+	JNZ  loop
+
+done:
+	RET

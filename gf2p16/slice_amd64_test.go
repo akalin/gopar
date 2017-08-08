@@ -132,3 +132,21 @@ func TestAltToStandardMapSSSE3Unsafe(t *testing.T) {
 	require.Equal(t, expectedOut0, out0)
 	require.Equal(t, expectedOut1, out1)
 }
+
+func TestAltToMapSliceSSSE3Unsafe(t *testing.T) {
+	skipNonSSSE3(t)
+
+	rand := rand.New(rand.NewSource(1))
+
+	expectedOut := makeBytes(t, rand, 32*10+31)
+	out := make([]byte, len(expectedOut))
+	in := make([]byte, len(out)-31)
+	fill(out, 0xdd)
+	fill(expectedOut, 0xdd)
+
+	standardToAltMapSliceSSSE3Unsafe(expectedOut[:len(in)], in)
+
+	altToStandardMapSliceSSSE3Unsafe(in, out)
+
+	require.Equal(t, expectedOut, out)
+}

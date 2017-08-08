@@ -58,3 +58,15 @@ func standardToAltMapSliceSSSE3Unsafe(in, out []byte)
 //
 //go:noescape
 func altToStandardMapSSSE3Unsafe(inLow, inHigh, out0, out1 *[16]byte)
+
+// altToStandardMapSliceSSSE3Unsafe behaves like calling
+//
+//   altToStandardMapSSSE3Unsafe(
+//     inChunk[16:32],  inChunk[0:16],
+//     outChunk[16:32], outChunk[0:16],
+//   )
+//
+// on each subsequent pair of 32-byte chunks of in and out.
+//
+//go:noescape
+func altToStandardMapSliceSSSE3Unsafe(in, out []byte)
