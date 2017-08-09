@@ -229,6 +229,64 @@ loop:
 done:
 	RET
 
+// Sets out = 0f0f0f0f:0f0f0f0f:0f0f0f0f:0f0f0f0f, clobbering tmp and
+// tmpx. out and tmpx should be 128-bit registers, i.e. beginning with X,
+// and tmp should be a general purpose register, e.g. AX, BX.
+#define SET_MUL_MASK_SSSE3(out, tmp, tmpx) \
+	MOVQ   $0xf, tmp  \
+	MOVQ   tmp, out   \
+	PXOR   tmpx, tmpx \
+	PSHUFB tmpx, out
+
+// All arguments should be 128-bit registers, i.e. beginning with X.
+// mulMask should be set to 0f0f0f0f:0f0f0f0f:0f0f0f0f:0f0f0f0f.
+//
+// Letting a[i] mean the ith byte of a, for each i, sets
+//
+//   out[i] = s0[inLow[i] & 0f] ^ s4[(inLow[i] >> 4) & 0f] ^
+//     s8[inHigh[i] & 0f] ^ s12[(inHigh[i] >> 4) & 0f],
+//
+// and clobbers tmp0 and tmp1.
+#define MUL_ALT_MAP_SSSE3_BYTE(s0, s4, s8, s12, inLow, inHigh, mulMask, out, tmp0, tmp1) \
+	MOVO   inLow, tmp0   \
+	PAND   mulMask, tmp0 \
+	MOVO   s0, out       \
+	PSHUFB tmp0, out     \
+	                     \
+	MOVO   inLow, tmp0   \
+	PSRLW  $4, tmp0      \
+	PAND   mulMask, tmp0 \
+	MOVO   s4, tmp1      \
+	PSHUFB tmp0, tmp1    \
+	PXOR   tmp1, out     \
+	                     \
+	MOVO   inHigh, tmp0  \
+	PAND   mulMask, tmp0 \
+	MOVO   s8, tmp1      \
+	PSHUFB tmp0, tmp1    \
+	PXOR   tmp1, out     \
+	                     \
+	MOVO   inHigh, tmp0  \
+	PSRLW  $4, tmp0      \
+	PAND   mulMask, tmp0 \
+	MOVO   s12, tmp1     \
+	PSHUFB tmp0, tmp1    \
+	PXOR   tmp1, out
+
+// All arguments should be 128-bit registers, i.e. beginning with X.
+// mulMask should be set to 0f0f0f0f:0f0f0f0f:0f0f0f0f:0f0f0f0f.
+//
+// Letting a[i] mean the ith byte of a, sets outLow, outHigh such
+// that the following equation holds for each i:
+//
+//   (outHigh[i] << 8) | outLow[i] == c.Times((inHigh[i] << 8) | inLow[i]),
+//
+// where s{0,4,8,12}{Low,High} are the fields of &mulTable64[c],
+// and clobbers tmp0 and tmp1.
+#define MUL_ALT_MAP_SSSE3(s0Low, s4Low, s8Low, s12Low, s0High, s4High, s8High, s12High, inLow, inHigh, mulMask, outLow, outHigh, tmp0, tmp1) \
+	MUL_ALT_MAP_SSSE3_BYTE(s0Low, s4Low, s8Low, s12Low, inLow, inHigh, mulMask, outLow, tmp0, tmp1)      \
+	MUL_ALT_MAP_SSSE3_BYTE(s0High, s4High, s8High, s12High, inLow, inHigh, mulMask, outHigh, tmp0, tmp1)
+
 // func mulAltMapSSSE3Unsafe(cEntry *mulTable64Entry, inLow, inHigh, outLow, outHigh *[16]byte)
 TEXT ·mulAltMapSSSE3Unsafe(SB), NOSPLIT, $0
 	// Set X8 - X15 to input tables.
@@ -250,74 +308,15 @@ TEXT ·mulAltMapSSSE3Unsafe(SB), NOSPLIT, $0
 	MOVQ  inHigh+16(FP), AX
 	MOVOU (AX), X1
 
-	// Set X7 = 0f0f0f0f:0f0f0f0f:0f0f0f0f:0f0f0f0f, clobbering X2.
-	MOVQ   $0xf, AX
-	MOVQ   AX, X7
-	PXOR   X2, X2
-	PSHUFB X2, X7
+	SET_MUL_MASK_SSSE3(X7, AX, X2)
+	MUL_ALT_MAP_SSSE3(X8, X9, X10, X11, X12, X13, X14, X15, X0, X1, X7, X2, X3, X4, X5)
 
-	// Below, Xn[i] means each byte of Xn.
-
-	// X8[i] = cEntry.s0Low[inLow[i] & 0f]
-	MOVO   X0, X2
-	PAND   X7, X2
-	PSHUFB X2, X8
-
-	// X9[i] = cEntry.s4Low[(inLow[i] >> 4) & 0f]
-	MOVO   X0, X2
-	PSRLW  $4, X2
-	PAND   X7, X2
-	PSHUFB X2, X9
-
-	// X10[i] = cEntry.s8Low[inHigh[i] & 0f]
-	MOVO   X1, X2
-	PAND   X7, X2
-	PSHUFB X2, X10
-
-	// X11[i] = cEntry.s12Low[(inHigh[i] >> 4) & 0f]
-	MOVO   X1, X2
-	PSRLW  $4, X2
-	PAND   X7, X2
-	PSHUFB X2, X11
-
-	// X8 = X8 ^ X9 ^ X10 ^ X11
-	PXOR X9, X8
-	PXOR X10, X8
-	PXOR X11, X8
-
-	// X12[i] = cEntry.s0High[inLow[i] & 0f]
-	MOVO   X0, X2
-	PAND   X7, X2
-	PSHUFB X2, X12
-
-	// X13[i] = cEntry.s4High[(inLow[i] >> 4) & 0f]
-	MOVO   X0, X2
-	PSRLW  $4, X2
-	PAND   X7, X2
-	PSHUFB X2, X13
-
-	// X14[i] = cEntry.s8High[inHigh[i] & 0f]
-	MOVO   X1, X2
-	PAND   X7, X2
-	PSHUFB X2, X14
-
-	// X15[i] = cEntry.s12High[(inHigh[i] >> 4) & 0f]
-	MOVO   X1, X2
-	PSRLW  $4, X2
-	PAND   X7, X2
-	PSHUFB X2, X15
-
-	// X12 = X12 ^ X13 ^ X14 ^ X15
-	PXOR X13, X12
-	PXOR X14, X12
-	PXOR X15, X12
-
-	// *outLow = X8
+	// *outLow = X2
 	MOVQ  outLow+24(FP), AX
-	MOVOU X8, (AX)
+	MOVOU X2, (AX)
 
-	// *outHigh = X12
+	// *outHigh = X3
 	MOVQ  outHigh+32(FP), AX
-	MOVOU X12, (AX)
+	MOVOU X3, (AX)
 
 	RET
