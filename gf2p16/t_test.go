@@ -1,6 +1,7 @@
 package gf2p16
 
 import (
+	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -84,4 +85,17 @@ func TestPowLarge(t *testing.T) {
 			expectedY = expectedY.Times(x)
 		}
 	}
+}
+
+func TestMulTable(t *testing.T) {
+	rand := rand.New(rand.NewSource(1))
+
+	x := T(rand.Int())
+	c := T(rand.Int())
+	expectedCX := c.Times(x)
+
+	cEntry := &mulTable[c]
+	cx := cEntry.s0[x&0xff] ^ cEntry.s8[(x>>8)&0xff]
+
+	require.Equal(t, expectedCX, cx)
 }

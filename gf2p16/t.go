@@ -23,7 +23,7 @@ var logTable [order - 1]uint16
 var expTable [order - 1]T
 
 type mulTableEntry struct {
-	low, high [1 << 8]T
+	s0, s8 [1 << 8]T
 }
 
 var mulTable [1 << 16]mulTableEntry
@@ -58,11 +58,13 @@ func init() {
 	// Since we've filled in logTable and expTable, we can use
 	// T.Times below.
 	for i := 0; i < len(mulTable); i++ {
-		for j := 0; j < len(mulTable[i].low); j++ {
-			mulTable[i].low[j] = T(i).Times(T(j))
-			mulTable[i].high[j] = T(i).Times(T(j << 8))
+		for j := 0; j < len(mulTable[i].s0); j++ {
+			mulTable[i].s0[j] = T(i).Times(T(j))
+			mulTable[i].s8[j] = T(i).Times(T(j << 8))
 		}
 	}
+
+	platformInit()
 }
 
 // Times returns the product of t and u as elements of GF(2^16).

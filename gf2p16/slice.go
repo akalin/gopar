@@ -3,7 +3,7 @@ package gf2p16
 func mulByteSliceLEGeneric(c T, in, out []byte) {
 	cEntry := &mulTable[c]
 	for i := 0; i < len(in); i += 2 {
-		cx := cEntry.low[in[i]] ^ cEntry.high[in[i+1]]
+		cx := cEntry.s0[in[i]] ^ cEntry.s8[in[i+1]]
 		out[i] = byte(cx)
 		out[i+1] = byte(cx >> 8)
 	}
@@ -12,7 +12,7 @@ func mulByteSliceLEGeneric(c T, in, out []byte) {
 func mulAndAddByteSliceLEGeneric(c T, in, out []byte) {
 	cEntry := &mulTable[c]
 	for i := 0; i < len(in); i += 2 {
-		cx := cEntry.low[in[i]] ^ cEntry.high[in[i+1]]
+		cx := cEntry.s0[in[i]] ^ cEntry.s8[in[i+1]]
 		out[i] ^= byte(cx)
 		out[i+1] ^= byte(cx >> 8)
 	}
@@ -43,7 +43,7 @@ func MulAndAddByteSliceLE(c T, in, out []byte) {
 func mulSliceGeneric(c T, in, out []T) {
 	cEntry := &mulTable[c]
 	for i := 0; i < len(in); i++ {
-		out[i] = cEntry.low[in[i]&0xff] ^ cEntry.high[in[i]>>8]
+		out[i] = cEntry.s0[in[i]&0xff] ^ cEntry.s8[in[i]>>8]
 	}
 }
 
@@ -51,6 +51,6 @@ func mulSliceGeneric(c T, in, out []T) {
 func mulAndAddSliceGeneric(c T, in, out []T) {
 	cEntry := &mulTable[c]
 	for i := 0; i < len(in); i++ {
-		out[i] ^= cEntry.low[in[i]&0xff] ^ cEntry.high[in[i]>>8]
+		out[i] ^= cEntry.s0[in[i]&0xff] ^ cEntry.s8[in[i]>>8]
 	}
 }
