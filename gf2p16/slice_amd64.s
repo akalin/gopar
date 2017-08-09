@@ -11,9 +11,9 @@ TEXT ·mulSliceUnsafe(SB), NOSPLIT, $0
 loop:
 	MOVWLZX (SI)(R8*2), R10     // R10 = in[i]
 	MOVBLZX R10B, R11
-	MOVWLZX (AX)(R11*2), R11    // R11 = cEntry.low[in[i]&0xff]
+	MOVWLZX (AX)(R11*2), R11    // R11 = cEntry.s0[in[i]&0xff]
 	SHRW    $8, R10
-	MOVWLZX 512(AX)(R10*2), R10 // R10 = cEntry.high[in[i]>>8]
+	MOVWLZX 512(AX)(R10*2), R10 // R10 = cEntry.s8[in[i]>>8]
 	XORL    R10, R11
 	MOVW    R11, (BX)(R8*2)     // out[i] = R10 ^ R11
 	INCQ    R8
@@ -198,24 +198,24 @@ TEXT ·altToStandardMapSSSE3Unsafe(SB), NOSPLIT, $0
 
 // func altToStandardMapSliceSSSE3Unsafe(in, out []byte)
 TEXT ·altToStandardMapSliceSSSE3Unsafe(SB), NOSPLIT, $0
-	// Set AX = len(in)/32
+	// AX = len(in)/32
 	MOVQ in_len+8(FP), AX
 	SHRQ $5, AX
 	CMPQ AX, $0
 	JEQ  done
 
-	// Set BX, CX = inChunk, outChunk = in, out
+	// BX, CX = inChunk, outChunk = in, out
 	MOVQ in+0(FP), BX
 	MOVQ out+24(FP), CX
 
 loop:
-	// Set X0, X1 = inLow, inHigh = inChunk[16:32], inChunk[0:16]
+	// X0, X1 = inLow, inHigh = inChunk[16:32], inChunk[0:16]
 	MOVOU (BX), X1
 	MOVOU 16(BX), X0
 
 	ALT_TO_STANDARD_MAP_SSSE3(X0, X1, X2)
 
-	// Set outChunk[16:32], outChunk[0:16] = out0, out1 = X0, X2
+	// outChunk[16:32], outChunk[0:16] = out0, out1 = X0, X2
 	MOVOU X2, (CX)
 	MOVOU X0, 16(CX)
 
@@ -227,4 +227,97 @@ loop:
 	JNZ  loop
 
 done:
+	RET
+
+// func mulAltMapSSSE3Unsafe(cEntry *mulTable64Entry, inLow, inHigh, outLow, outHigh *[16]byte)
+TEXT ·mulAltMapSSSE3Unsafe(SB), NOSPLIT, $0
+	// Set X8 - X15 to input tables.
+	MOVQ  cEntry+0(FP), AX
+	MOVOU (AX), X8         // X8  = cEntry.s0Low
+	MOVOU 16(AX), X9       // X9  = cEntry.s4Low
+	MOVOU 32(AX), X10      // X10 = cEntry.s8Low
+	MOVOU 48(AX), X11      // X11 = cEntry.s12Low
+	MOVOU 64(AX), X12      // X12 = cEntry.s0High
+	MOVOU 80(AX), X13      // X13 = cEntry.s4High
+	MOVOU 96(AX), X14      // X14 = cEntry.s8High
+	MOVOU 112(AX), X15     // X15 = cEntry.s12High
+
+	// X0 = *inLow
+	MOVQ  inLow+8(FP), AX
+	MOVOU (AX), X0
+
+	// X1 = *inHigh
+	MOVQ  inHigh+16(FP), AX
+	MOVOU (AX), X1
+
+	// Set X7 = 0f0f0f0f:0f0f0f0f:0f0f0f0f:0f0f0f0f, clobbering X2.
+	MOVQ   $0xf, AX
+	MOVQ   AX, X7
+	PXOR   X2, X2
+	PSHUFB X2, X7
+
+	// Below, Xn[i] means each byte of Xn.
+
+	// X8[i] = cEntry.s0Low[inLow[i] & 0f]
+	MOVO   X0, X2
+	PAND   X7, X2
+	PSHUFB X2, X8
+
+	// X9[i] = cEntry.s4Low[(inLow[i] >> 4) & 0f]
+	MOVO   X0, X2
+	PSRLW  $4, X2
+	PAND   X7, X2
+	PSHUFB X2, X9
+
+	// X10[i] = cEntry.s8Low[inHigh[i] & 0f]
+	MOVO   X1, X2
+	PAND   X7, X2
+	PSHUFB X2, X10
+
+	// X11[i] = cEntry.s12Low[(inHigh[i] >> 4) & 0f]
+	MOVO   X1, X2
+	PSRLW  $4, X2
+	PAND   X7, X2
+	PSHUFB X2, X11
+
+	// X8 = X8 ^ X9 ^ X10 ^ X11
+	PXOR X9, X8
+	PXOR X10, X8
+	PXOR X11, X8
+
+	// X12[i] = cEntry.s0High[inLow[i] & 0f]
+	MOVO   X0, X2
+	PAND   X7, X2
+	PSHUFB X2, X12
+
+	// X13[i] = cEntry.s4High[(inLow[i] >> 4) & 0f]
+	MOVO   X0, X2
+	PSRLW  $4, X2
+	PAND   X7, X2
+	PSHUFB X2, X13
+
+	// X14[i] = cEntry.s8High[inHigh[i] & 0f]
+	MOVO   X1, X2
+	PAND   X7, X2
+	PSHUFB X2, X14
+
+	// X15[i] = cEntry.s12High[(inHigh[i] >> 4) & 0f]
+	MOVO   X1, X2
+	PSRLW  $4, X2
+	PAND   X7, X2
+	PSHUFB X2, X15
+
+	// X12 = X12 ^ X13 ^ X14 ^ X15
+	PXOR X13, X12
+	PXOR X14, X12
+	PXOR X15, X12
+
+	// *outLow = X8
+	MOVQ  outLow+24(FP), AX
+	MOVOU X8, (AX)
+
+	// *outHigh = X12
+	MOVQ  outHigh+32(FP), AX
+	MOVOU X12, (AX)
+
 	RET

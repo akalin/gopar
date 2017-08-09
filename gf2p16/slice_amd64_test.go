@@ -150,3 +150,39 @@ func TestAltToMapSliceSSSE3Unsafe(t *testing.T) {
 
 	require.Equal(t, expectedOut, out)
 }
+
+func mulAltMap(c T, inLow, inHigh, outLow, outHigh *[16]byte) {
+	var in0, in1 [16]byte
+	altToStandardMapSSSE3Unsafe(inLow, inHigh, &in0, &in1)
+	var out [32]byte
+	mulByteSliceLEGeneric(c, append(in0[:], in1[:]...), out[:])
+	var out0, out1 [16]byte
+	copy(out0[:], out[:16])
+	copy(out1[:], out[16:])
+	standardToAltMapSSSE3Unsafe(&out0, &out1, outLow, outHigh)
+}
+
+func TestMulAltMapSSSE3Unsafe(t *testing.T) {
+	skipNonSSSE3(t)
+
+	rand := rand.New(rand.NewSource(1))
+
+	in := makeBytes(t, rand, 32)
+	var inLow, inHigh [16]byte
+	copy(inLow[:], in[:16])
+	copy(inHigh[:], in[16:])
+
+	c := T(rand.Int())
+
+	filler := fill16(0xfb)
+	expectedOutLow := [2][16]byte{filler, filler}
+	expectedOutHigh := [2][16]byte{filler, filler}
+	mulAltMap(c, &inLow, &inHigh, &expectedOutLow[0], &expectedOutHigh[0])
+
+	outLow := [2][16]byte{filler, filler}
+	outHigh := [2][16]byte{filler, filler}
+	mulAltMapSSSE3Unsafe(&mulTable64[c], &inLow, &inHigh, &outLow[0], &outHigh[0])
+
+	require.Equal(t, expectedOutLow, outLow)
+	require.Equal(t, expectedOutHigh, outHigh)
+}

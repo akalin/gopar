@@ -70,3 +70,13 @@ func altToStandardMapSSSE3Unsafe(inLow, inHigh, out0, out1 *[16]byte)
 //
 //go:noescape
 func altToStandardMapSliceSSSE3Unsafe(in, out []byte)
+
+// mulAltMapSSSE3Unsafe sets outLow and outHigh such that the
+// following equation holds for each i:
+//
+//   (outHigh[i] << 8) | outLow[i] == c.Times((inHigh[i] << 8) | inLow[i]),
+//
+// where cEntry is &mulTable64[c].
+//
+//go:noescape
+func mulAltMapSSSE3Unsafe(cEntry *mulTable64Entry, inLow, inHigh, outLow, outHigh *[16]byte)
