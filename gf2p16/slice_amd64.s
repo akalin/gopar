@@ -505,3 +505,55 @@ TEXT ·mulAndAddSSSE3Unsafe(SB), NOSPLIT, $0
 	MOVOU X0, (AX)
 
 	RET
+
+// func mulAndAddSliceSSSE3Unsafe(cEntry *mulTable64Entry, in, out []byte)
+TEXT ·mulAndAddSliceSSSE3Unsafe(SB), NOSPLIT, $0
+	// Set X8 - X15 to input tables.
+	MOVQ  cEntry+0(FP), AX
+	MOVOU (AX), X8         // X8  = cEntry.s0Low
+	MOVOU 16(AX), X9       // X9  = cEntry.s4Low
+	MOVOU 32(AX), X10      // X10 = cEntry.s8Low
+	MOVOU 48(AX), X11      // X11 = cEntry.s12Low
+	MOVOU 64(AX), X12      // X12 = cEntry.s0High
+	MOVOU 80(AX), X13      // X13 = cEntry.s4High
+	MOVOU 96(AX), X14      // X14 = cEntry.s8High
+	MOVOU 112(AX), X15     // X15 = cEntry.s12High
+
+	SET_MUL_MASK_SSSE3(X7, AX, X2)
+	SET_CONV_MASK_SSSE3(X6, AX, X2)
+
+	// AX = len(in)/32
+	MOVQ in_len+16(FP), AX
+	SHRQ $5, AX
+	CMPQ AX, $0
+	JEQ  done
+
+	// BX, CX = inChunk, outChunk = in, out
+	MOVQ in+8(FP), BX
+	MOVQ out+32(FP), CX
+
+loop:
+	// X0, X1 = in0, in1 = inChunk[16:32], inChunk[0:16]
+	MOVOU (BX), X1
+	MOVOU 16(BX), X0
+
+	MUL_STANDARD_MAP_SSSE3(X8, X9, X10, X11, X12, X13, X14, X15, X0, X1, X6, X7, X2, X3, X4, X5)
+
+	// outChunk[16:32], outChunk[0:16] ^= out0, out1 = X1, X0
+	MOVOU (CX), X2
+	PXOR  X2, X0
+	MOVOU X0, (CX)
+
+	MOVOU 16(CX), X2
+	PXOR  X2, X1
+	MOVOU X1, 16(CX)
+
+	// inChunk += 32, outChunk += 32
+	ADDQ $32, BX
+	ADDQ $32, CX
+
+	SUBQ $1, AX
+	JNZ  loop
+
+done:
+	RET
