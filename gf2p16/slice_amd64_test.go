@@ -4,14 +4,30 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/klauspost/cpuid"
 	"github.com/stretchr/testify/require"
 )
 
 func skipNonSSSE3(t *testing.T) {
-	if !cpuid.CPU.SSSE3() {
+	if !hasSSSE3 {
 		t.Skip("SSSE3 not supported; skipping")
+
 	}
+}
+
+func TestMulByteSliceLENoSSSE3(t *testing.T) {
+	skipNonSSSE3(t)
+
+	testMulByteSliceLE(t, func(c T, in, out []byte) {
+		mulByteSliceLE(c, in, out, false)
+	})
+}
+
+func TestMulAndAddByteSliceLENoSSSE3(t *testing.T) {
+	skipNonSSSE3(t)
+
+	testMulAndAddByteSliceLE(t, func(c T, in, out []byte) {
+		mulAndAddByteSliceLE(c, in, out, false)
+	})
 }
 
 func fill(bs []byte, b byte) {

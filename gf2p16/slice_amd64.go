@@ -1,30 +1,87 @@
 package gf2p16
 
-func mulSlice(c T, in, out []T) {
+import (
+	"reflect"
+	"unsafe"
+
+	"github.com/klauspost/cpuid"
+)
+
+var hasSSSE3 bool
+
+func init() {
+	hasSSSE3 = cpuid.CPU.SSSE3()
+}
+
+// MulByteSliceLE treats in and out as arrays of Ts stored in
+// little-endian format, and sets each out<T>[i] to c.Times(in<T>[i]).
+func MulByteSliceLE(c T, in, out []byte) {
+	mulByteSliceLE(c, in, out, hasSSSE3)
+}
+
+func mulByteSliceLE(c T, in, out []byte, useSSSE3 bool) {
 	if len(out) != len(in) {
 		panic("size mismatch")
 	}
 	if len(in) == 0 {
 		return
 	}
-	mulSliceUnsafe(&mulTable[c], in, out)
+	start := 0
+	if useSSSE3 && len(in) >= 32 {
+		mulSliceSSSE3Unsafe(&mulTable64[c], in, out)
+		start = len(in) - (len(in) % 32)
+		if start == len(in) {
+			return
+		}
+	}
+	mulByteSliceLEUnsafe(&mulTable[c], in[start:], out[start:])
+}
+
+// MulAndAddByteSliceLE treats in and out as arrays of Ts stored in
+// little-endian format, and adds c.Times(in<T>[i]) to out<T>[i], for
+// each i.
+func MulAndAddByteSliceLE(c T, in, out []byte) {
+	mulAndAddByteSliceLE(c, in, out, hasSSSE3)
+}
+
+func mulAndAddByteSliceLE(c T, in, out []byte, useSSSE3 bool) {
+	if len(out) != len(in) {
+		panic("size mismatch")
+	}
+	if len(in) == 0 {
+		return
+	}
+	start := 0
+	if useSSSE3 && len(in) >= 32 {
+		mulAndAddSliceSSSE3Unsafe(&mulTable64[c], in, out)
+		start = len(in) - (len(in) % 32)
+		if start == len(in) {
+			return
+		}
+	}
+	mulAndAddByteSliceLEUnsafe(&mulTable[c], in[start:], out[start:])
+}
+
+func castTToByteSlice(ts []T) []byte {
+	h := *(*reflect.SliceHeader)(unsafe.Pointer(&ts))
+	h.Len *= 2
+	h.Cap *= 2
+	return *(*[]byte)(unsafe.Pointer(&h))
+}
+
+func mulSlice(c T, in, out []T) {
+	MulByteSliceLE(c, castTToByteSlice(in), castTToByteSlice(out))
 }
 
 func mulAndAddSlice(c T, in, out []T) {
-	if len(out) != len(in) {
-		panic("size mismatch")
-	}
-	if len(in) == 0 {
-		return
-	}
-	mulAndAddSliceUnsafe(&mulTable[c], in, out)
+	MulAndAddByteSliceLE(c, castTToByteSlice(in), castTToByteSlice(out))
 }
 
 //go:noescape
-func mulSliceUnsafe(cEntry *mulTableEntry, in, out []T)
+func mulByteSliceLEUnsafe(cEntry *mulTableEntry, in, out []byte)
 
 //go:noescape
-func mulAndAddSliceUnsafe(cEntry *mulTableEntry, in, out []T)
+func mulAndAddByteSliceLEUnsafe(cEntry *mulTableEntry, in, out []byte)
 
 // standardToAltMapSSSE3Unsafe sets
 //
@@ -115,6 +172,8 @@ func mulSSSE3Unsafe(cEntry *mulTable64Entry, in0, in1, out0, out1 *[16]byte)
 //
 // on each subsequent pair of 32-byte chunks of in and out.
 //
+// in and out must have the same length, which must be at least 32.
+//
 // go:noescape
 func mulSliceSSSE3Unsafe(cEntry *mulTable64Entry, in, out []byte)
 
@@ -133,6 +192,8 @@ func mulAndAddSSSE3Unsafe(cEntry *mulTable64Entry, in0, in1, out0, out1 *[16]byt
 //   )
 //
 // on each subsequent pair of 32-byte chunks of in and out.
+//
+// in and out must have the same length, which must be at least 32.
 //
 // go:noescape
 func mulAndAddSliceSSSE3Unsafe(cEntry *mulTable64Entry, in, out []byte)
