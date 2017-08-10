@@ -235,3 +235,23 @@ func TestMulSSSE3Unsafe(t *testing.T) {
 	require.Equal(t, expectedOut0, out0)
 	require.Equal(t, expectedOut1, out1)
 }
+
+func TestMulSliceSSSE3Unsafe(t *testing.T) {
+	skipNonSSSE3(t)
+
+	rand := rand.New(rand.NewSource(1))
+
+	c := T(rand.Int())
+
+	in := makeBytes(t, rand, 32*10)
+	out := make([]byte, len(in)+31)
+	expectedOut := make([]byte, len(in)+31)
+	fill(out, 0xdb)
+	fill(expectedOut, 0xdb)
+
+	mulByteSliceLEGeneric(c, in, expectedOut[:len(in)])
+
+	mulSliceSSSE3Unsafe(&mulTable64[c], in, out)
+
+	require.Equal(t, expectedOut, out)
+}

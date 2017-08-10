@@ -104,3 +104,16 @@ func mulSliceAltMapSSSE3Unsafe(cEntry *mulTable64Entry, in, out []byte)
 //
 //go:noescape
 func mulSSSE3Unsafe(cEntry *mulTable64Entry, in0, in1, out0, out1 *[16]byte)
+
+// mulSliceAltMapSSSE3Unsafe behaves like calling
+//
+//   mulSliceSSSE3Unsafe(
+//     cEntry,
+//     inChunk[16:32],  inChunk[0:16],
+//     outChunk[16:32], outChunk[0:16],
+//   )
+//
+// on each subsequent pair of 32-byte chunks of in and out.
+//
+// go:noescape
+func mulSliceSSSE3Unsafe(cEntry *mulTable64Entry, in, out []byte)
