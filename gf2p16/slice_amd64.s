@@ -367,6 +367,22 @@ loop:
 done:
 	RET
 
+// All arguments should be 128-bit registers, i.e. beginning with X.
+// convMask should be set to 00ff00ff:00ff00ff:00ff00ff:00ff00ff, and
+// mulMask should be set to 0f0f0f0f:0f0f0f0f:0f0f0f0f:0f0f0f0f.
+//
+// Letting a[i] mean the ith byte of a, sets in1, in0 to out0, out1 such
+// that the following equations hold for each i:
+//
+//   out0[2*i] | (out0[2*i+1] << 8) == c.Times(in0[2*i] | in0[2*i+1] << 8)
+//   out1[2*i] | (out1[2*i+1] << 8) == c.Times(in1[2*i] | in1[2*i+1] << 8),
+//
+// and clobbers tmp0, tmp1, tmp2, tmp3.
+#define MUL_STANDARD_MAP_SSSE3(s0Low, s4Low, s8Low, s12Low, s0High, s4High, s8High, s12High, in0, in1, convMask, mulMask, tmp0, tmp1, tmp2, tmp3) \
+	STANDARD_TO_ALT_MAP_SSSE3(in0, in1, convMask, tmp0, tmp1)                                                                  \
+	MUL_ALT_MAP_SSSE3(s0Low, s4Low, s8Low, s12Low, s0High, s4High, s8High, s12High, tmp0, in0, mulMask, in1, tmp1, tmp2, tmp3) \
+	ALT_TO_STANDARD_MAP_SSSE3(in1, tmp1, in0)
+
 // func mulSSSE3Unsafe(cEntry *mulTable64Entry, in0, in1, out0, out1 *[16]byte)
 TEXT ·mulSSSE3Unsafe(SB), NOSPLIT, $0
 	// Set X8 - X15 to input tables.
@@ -391,14 +407,7 @@ TEXT ·mulSSSE3Unsafe(SB), NOSPLIT, $0
 	SET_MUL_MASK_SSSE3(X7, AX, X2)
 	SET_CONV_MASK_SSSE3(X6, AX, X2)
 
-	// Set X2, X0 = inLow, inHigh, clobbering X3.
-	STANDARD_TO_ALT_MAP_SSSE3(X0, X1, X6, X2, X3)
-
-	// Set X1, X3 = outLow, outHigh, clobbering X4 and X5.
-	MUL_ALT_MAP_SSSE3(X8, X9, X10, X11, X12, X13, X14, X15, X2, X0, X7, X1, X3, X4, X5)
-
-	// X1, X0 = out0, out1
-	ALT_TO_STANDARD_MAP_SSSE3(X1, X3, X0)
+	MUL_STANDARD_MAP_SSSE3(X8, X9, X10, X11, X12, X13, X14, X15, X0, X1, X6, X7, X2, X3, X4, X5)
 
 	// *out0 = X1
 	MOVQ  out0+24(FP), AX
