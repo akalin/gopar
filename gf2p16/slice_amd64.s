@@ -127,6 +127,59 @@ TEXT ·standardToAltMapSSSE3Unsafe(SB), NOSPLIT, $0
 
 	RET
 
+// func standardToAltMapAVX2Unsafe(in0, in1, outLow, outHigh *[32]byte)
+TEXT ·standardToAltMapAVX2Unsafe(SB), NOSPLIT, $0
+	// Y0 = *in0
+	MOVQ    in0+0(FP), AX
+	VMOVDQU (AX), Y0
+
+	// Y1 = *in1
+	MOVQ    in1+8(FP), AX
+	VMOVDQU (AX), Y1
+
+#define out Y4
+#define tmp BX
+#define tmpx X5
+	MOVQ $0x00ff, tmp
+	MOVQ tmp, tmpx
+	LONG $0x797de2c4; BYTE $0xe5 // VPBROADCASTW YMM4, XMM5
+
+#undef out
+#undef tmp
+#undef tmpx
+
+#define in0 Y0
+#define in1 Y1
+#define convMask Y4
+#define outLow Y2
+#define tmp Y3
+	VMOVDQA in0, outLow
+	LONG    $0xd071fdc5; BYTE $0x08 // VPSRLW  YMM0, YMM0, 8
+	VPAND   convMask, outLow, outLow
+
+	VMOVDQA in1, tmp
+	LONG    $0xd171f5c5; BYTE $0x08 // VPSRLW  YMM1, YMM1, 8
+	VPAND   convMask, tmp, tmp
+
+    LONG $0xc167fdc5                         // VPACKUSWB YMM0, YMM0, YMM1
+    LONG $0xd367edc5                         // VPACKUSWB YMM2, YMM2, YMM3
+
+#undef in0
+#undef in1
+#undef convMask
+#undef outLow
+#undef tmp
+
+	// *outLow = Y2
+	MOVQ    outLow+16(FP), AX
+	VMOVDQU Y2, (AX)
+
+	// *outHigh = Y0
+	MOVQ    outHigh+24(FP), AX
+	VMOVDQU Y0, (AX)
+
+	RET
+
 // func standardToAltMapSliceSSSE3Unsafe(in, out []byte)
 TEXT ·standardToAltMapSliceSSSE3Unsafe(SB), NOSPLIT, $0
 	SET_CONV_MASK_SSSE3(X4, AX, X5)

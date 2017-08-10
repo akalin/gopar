@@ -93,6 +93,9 @@ func mulAndAddByteSliceLEUnsafe(cEntry *mulTableEntry, in, out []byte)
 //go:noescape
 func standardToAltMapSSSE3Unsafe(in0, in1, outLow, outHigh *[16]byte)
 
+//go:noescape
+func standardToAltMapAVX2Unsafe(in0, in1, outLow, outHigh *[32]byte)
+
 // standardToAltMapSliceSSSE3Unsafe behaves like calling
 //
 //   standardToAltMapSSSE3Unsafe(
