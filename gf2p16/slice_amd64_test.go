@@ -255,3 +255,29 @@ func TestMulSliceSSSE3Unsafe(t *testing.T) {
 
 	require.Equal(t, expectedOut, out)
 }
+
+func TestMulAndAddSSSE3Unsafe(t *testing.T) {
+	skipNonSSSE3(t)
+
+	rand := rand.New(rand.NewSource(1))
+
+	in := makeBytes(t, rand, 32)
+	var in0, in1 [16]byte
+	copy(in0[:], in[:16])
+	copy(in1[:], in[16:])
+
+	c := T(rand.Int())
+
+	filler := fill16(0xee)
+	expectedOut0 := [2][16]byte{filler, filler}
+	expectedOut1 := [2][16]byte{filler, filler}
+	mulAndAddByteSliceLEGeneric(c, in0[:], expectedOut0[0][:])
+	mulAndAddByteSliceLEGeneric(c, in1[:], expectedOut1[0][:])
+
+	out0 := [2][16]byte{filler, filler}
+	out1 := out0
+	mulAndAddSSSE3Unsafe(&mulTable64[c], &in0, &in1, &out0[0], &out1[0])
+
+	require.Equal(t, expectedOut0, out0)
+	require.Equal(t, expectedOut1, out1)
+}

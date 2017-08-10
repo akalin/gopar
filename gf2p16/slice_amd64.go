@@ -117,3 +117,9 @@ func mulSSSE3Unsafe(cEntry *mulTable64Entry, in0, in1, out0, out1 *[16]byte)
 //
 // go:noescape
 func mulSliceSSSE3Unsafe(cEntry *mulTable64Entry, in, out []byte)
+
+// mulAndAddSSSE3Unsafe is like mulSliceSSSE3Unsafe, except it adds
+// (i.e., xors) to out0 and out1 instead of setting out0 and out1.
+//
+//go:noescape
+func mulAndAddSSSE3Unsafe(cEntry *mulTable64Entry, in0, in1, out0, out1 *[16]byte)
