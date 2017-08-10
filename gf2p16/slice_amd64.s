@@ -366,3 +366,46 @@ loop:
 
 done:
 	RET
+
+// func mulSSSE3Unsafe(cEntry *mulTable64Entry, in0, in1, out0, out1 *[16]byte)
+TEXT ·mulSSSE3Unsafe(SB), NOSPLIT, $0
+	// Set X8 - X15 to input tables.
+	MOVQ  cEntry+0(FP), AX
+	MOVOU (AX), X8         // X8  = cEntry.s0Low
+	MOVOU 16(AX), X9       // X9  = cEntry.s4Low
+	MOVOU 32(AX), X10      // X10 = cEntry.s8Low
+	MOVOU 48(AX), X11      // X11 = cEntry.s12Low
+	MOVOU 64(AX), X12      // X12 = cEntry.s0High
+	MOVOU 80(AX), X13      // X13 = cEntry.s4High
+	MOVOU 96(AX), X14      // X14 = cEntry.s8High
+	MOVOU 112(AX), X15     // X15 = cEntry.s12High
+
+	// X0 = *in0
+	MOVQ  in0+8(FP), AX
+	MOVOU (AX), X0
+
+	// X1 = *in1
+	MOVQ  in1+16(FP), AX
+	MOVOU (AX), X1
+
+	SET_MUL_MASK_SSSE3(X7, AX, X2)
+	SET_CONV_MASK_SSSE3(X6, AX, X2)
+
+	// Set X2, X0 = inLow, inHigh, clobbering X3.
+	STANDARD_TO_ALT_MAP_SSSE3(X0, X1, X6, X2, X3)
+
+	// Set X1, X3 = outLow, outHigh, clobbering X4 and X5.
+	MUL_ALT_MAP_SSSE3(X8, X9, X10, X11, X12, X13, X14, X15, X2, X0, X7, X1, X3, X4, X5)
+
+	// X1, X0 = out0, out1
+	ALT_TO_STANDARD_MAP_SSSE3(X1, X3, X0)
+
+	// *out0 = X1
+	MOVQ  out0+24(FP), AX
+	MOVOU X1, (AX)
+
+	// *out1 = X0
+	MOVQ  out1+32(FP), AX
+	MOVOU X0, (AX)
+
+	RET

@@ -93,3 +93,14 @@ func mulAltMapSSSE3Unsafe(cEntry *mulTable64Entry, inLow, inHigh, outLow, outHig
 //
 // go:noescape
 func mulSliceAltMapSSSE3Unsafe(cEntry *mulTable64Entry, in, out []byte)
+
+// mulSSSE3Unsafe sets out0 and out1 such that the following equations
+// hold for each i:
+//
+//   out0[2*i] | (out0[2*i+1] << 8) == c.Times(in0[2*i] | in0[2*i+1] << 8)
+//   out1[2*i] | (out1[2*i+1] << 8) == c.Times(in1[2*i] | in1[2*i+1] << 8),
+//
+// where cEntry is &mulTable64[c].
+//
+//go:noescape
+func mulSSSE3Unsafe(cEntry *mulTable64Entry, in0, in1, out0, out1 *[16]byte)
