@@ -1,9 +1,13 @@
 #include "textflag.h"
 
-// func mulSliceUnsafe(cEntry *mulTableEntry, in, out []T)
-TEXT ·mulSliceUnsafe(SB), NOSPLIT, $0
+// func mulByteSliceLEUnsafe(cEntry *mulTableEntry, in, out []byte)
+TEXT ·mulByteSliceLEUnsafe(SB), NOSPLIT, $0
 	MOVQ cEntry+0(FP), AX
+
+	// CX = len(in)/2
 	MOVQ in_len+16(FP), CX
+	SHRW $1, CX
+
 	MOVQ out+32(FP), BX
 	MOVQ in+8(FP), SI
 	MOVQ $0, R8
@@ -22,10 +26,14 @@ loop:
 
 	RET
 
-// func mulAndAddSliceUnsafe(cEntry *mulTableEntry, in, out []T)
-TEXT ·mulAndAddSliceUnsafe(SB), NOSPLIT, $0
+// func mulAndAddByteSliceLEUnsafe(cEntry *mulTableEntry, in, out []byte)
+TEXT ·mulAndAddByteSliceLEUnsafe(SB), NOSPLIT, $0
 	MOVQ cEntry+0(FP), AX
+
+	// CX = len(in)/2
 	MOVQ in_len+16(FP), CX
+	SHRW $1, CX
+
 	MOVQ out+32(FP), BX
 	MOVQ in+8(FP), SI
 	MOVQ $0, R8
@@ -438,8 +446,6 @@ TEXT ·mulSliceSSSE3Unsafe(SB), NOSPLIT, $0
 	// AX = len(in)/32
 	MOVQ in_len+16(FP), AX
 	SHRQ $5, AX
-	CMPQ AX, $0
-	JEQ  done
 
 	// BX, CX = inChunk, outChunk = in, out
 	MOVQ in+8(FP), BX
@@ -463,7 +469,6 @@ loop:
 	SUBQ $1, AX
 	JNZ  loop
 
-done:
 	RET
 
 // func mulAndAddSSSE3Unsafe(cEntry *mulTable64Entry, in0, in1, out0, out1 *[16]byte)
@@ -525,8 +530,6 @@ TEXT ·mulAndAddSliceSSSE3Unsafe(SB), NOSPLIT, $0
 	// AX = len(in)/32
 	MOVQ in_len+16(FP), AX
 	SHRQ $5, AX
-	CMPQ AX, $0
-	JEQ  done
 
 	// BX, CX = inChunk, outChunk = in, out
 	MOVQ in+8(FP), BX
@@ -555,5 +558,4 @@ loop:
 	SUBQ $1, AX
 	JNZ  loop
 
-done:
 	RET
