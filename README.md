@@ -1,9 +1,9 @@
-This repository contains an implementation of the
-[PAR1 file format](http://parchive.sourceforge.net/docs/specifications/parity-volume-spec-1.0/article-spec.html)
-in Go, as well as a command-line application for manipulating PAR1
-files. Support for the
-[PAR2 file format](http://parchive.sourceforge.net/docs/specifications/parity-volume-spec/article-spec.html)
-is also planned.
+This repository contains an implementation of the [PAR1 file
+format](http://parchive.sourceforge.net/docs/specifications/parity-volume-spec-1.0/article-spec.html)
+and the [PAR2 file
+format](http://parchive.sourceforge.net/docs/specifications/parity-volume-spec/article-spec.html)
+in Go, as well as a command-line application for manipulating PAR1 and
+PAR2 files.
 
 ### Installation
 
