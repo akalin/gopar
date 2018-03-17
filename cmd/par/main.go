@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/signal"
 	"path"
@@ -172,17 +174,125 @@ func (par2LogDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount i
 	}
 }
 
-func printUsageAndExit(name string, flagSet *flag.FlagSet) {
-	name = filepath.Base(name)
-	fmt.Printf(`
-Usage:
-  %s [options] c(reate) <PAR file> [files]
-  %s [options] v(erify) <PAR file>
-  %s [options] r(epair) <PAR file>
+func newFlagSet(name string) *flag.FlagSet {
+	flagSet := flag.NewFlagSet(name, flag.ContinueOnError)
+	flagSet.SetOutput(ioutil.Discard)
+	return flagSet
+}
 
-Options:
-`, name, name, name)
-	flagSet.PrintDefaults()
+type commonFlags struct {
+	usage         bool
+	cpuProfile    string
+	numGoroutines int
+}
+
+func getCommonFlags(name string) (*flag.FlagSet, *commonFlags) {
+	flagSet := newFlagSet(name)
+
+	var flags commonFlags
+	flagSet.BoolVar(&flags.usage, "h", false, "print usage info")
+	flagSet.StringVar(&flags.cpuProfile, "cpuprofile", "", "if non-empty, where to write the CPU profile")
+	// TODO: Detect hyperthreading and use only number of physical cores.
+	flagSet.IntVar(&flags.numGoroutines, "g", rsec16.DefaultNumGoroutines(), "number of goroutines to use for encoding/decoding PAR2")
+
+	return flagSet, &flags
+}
+
+type createFlags struct {
+	sliceByteCount  int
+	numParityShards int
+}
+
+func getCreateFlags(name string) (*flag.FlagSet, *createFlags) {
+	flagSet := newFlagSet(name + " create")
+
+	var flags createFlags
+	flagSet.IntVar(&flags.sliceByteCount, "s", 2000, "block size in bytes (must be a multiple of 4)")
+	flagSet.IntVar(&flags.numParityShards, "c", 3, "number of recovery blocks to create (or files, for PAR1)")
+
+	return flagSet, &flags
+}
+
+type verifyFlags struct {
+	checkParity bool
+}
+
+func getVerifyFlags(name string) (*flag.FlagSet, *verifyFlags) {
+	flagSet := newFlagSet(name + " verify")
+
+	var flags verifyFlags
+	flagSet.BoolVar(&flags.checkParity, "checkparity", false, "also check parity files")
+
+	return flagSet, &flags
+}
+
+type repairFlags struct {
+	checkParity bool
+}
+
+func getRepairFlags(name string) (*flag.FlagSet, *repairFlags) {
+	flagSet := newFlagSet(name + " repair")
+
+	var flags repairFlags
+	flagSet.BoolVar(&flags.checkParity, "checkparity", false, "check parity files before repairing")
+
+	return flagSet, &flags
+}
+
+type commandMask int
+
+const (
+	createCommand commandMask = 1 << iota
+	verifyCommand
+	repairCommand
+	allCommands = createCommand | verifyCommand | repairCommand
+)
+
+func printUsageAndExit(name string, mask commandMask, err error) {
+	if err != nil {
+		fmt.Printf("Error: %s\n", err.Error())
+	}
+
+	fmt.Printf("\nUsage:\n")
+
+	if mask&createCommand != 0 {
+		fmt.Printf("  %s [common options] c(reate) [create options] <PAR file> <data files...>\n", name)
+	}
+
+	if mask&verifyCommand != 0 {
+		fmt.Printf("  %s [common options] v(erify) [verify options] <PAR file>\n", name)
+	}
+
+	if mask&repairCommand != 0 {
+		fmt.Printf("  %s [common options] f(epair) [repair options] <PAR file>\n", name)
+	}
+
+	fmt.Printf("\nCommon options\n")
+	commonFlagSet, _ := getCommonFlags(name)
+	commonFlagSet.SetOutput(os.Stdout)
+	commonFlagSet.PrintDefaults()
+
+	if mask&createCommand != 0 {
+		fmt.Printf("\nCreate options\n")
+		createFlagSet, _ := getCreateFlags(name)
+		createFlagSet.SetOutput(os.Stdout)
+		createFlagSet.PrintDefaults()
+	}
+
+	if mask&verifyCommand != 0 {
+		fmt.Printf("\nVerify options\n")
+		verifyFlagSet, _ := getVerifyFlags(name)
+		verifyFlagSet.SetOutput(os.Stdout)
+		verifyFlagSet.PrintDefaults()
+	}
+
+	if mask&repairCommand != 0 {
+		fmt.Printf("\nRepair options\n")
+		repairFlagSet, _ := getRepairFlags(name)
+		repairFlagSet.SetOutput(os.Stdout)
+		repairFlagSet.PrintDefaults()
+	}
+
 	fmt.Printf("\n")
 	os.Exit(2)
 }
@@ -219,20 +329,19 @@ func newDecoder(parFile string, numGoroutines int) (decoder, error) {
 }
 
 func main() {
-	name := os.Args[0]
-	flagSet := flag.NewFlagSet(name, flag.ExitOnError)
-	flagSet.SetOutput(os.Stdout)
-	usage := flagSet.Bool("h", false, "print usage info")
-	cpuprofile := flagSet.String("cpuprofile", "", "if non-empty, where to write the CPU profile")
-	checkParity := flagSet.Bool("checkparity", false, "check parity when verifying or repairing")
-	sliceByteCount := flagSet.Int("s", 2000, "block size in bytes (must be a multiple of 4)")
-	numParityShards := flagSet.Int("c", 3, "number of recovery blocks to create (or files, for PAR1)")
-	// TODO: Detect hyperthreading and use only number of physical cores.
-	numGoroutines := flagSet.Int("g", rsec16.DefaultNumGoroutines(), "number of goroutines to use for encoding/decoding PAR2")
-	flagSet.Parse(os.Args[1:])
+	name := filepath.Base(os.Args[0])
 
-	if *cpuprofile != "" {
-		f, err := os.Create(*cpuprofile)
+	commonFlagSet, commonFlags := getCommonFlags(name)
+	err := commonFlagSet.Parse(os.Args[1:])
+	if err == nil && commonFlagSet.NArg() == 0 {
+		err = errors.New("no command specified")
+	}
+	if err != nil || commonFlags.usage {
+		printUsageAndExit(name, allCommands, err)
+	}
+
+	if commonFlags.cpuProfile != "" {
+		f, err := os.Create(commonFlags.cpuProfile)
 		if err != nil {
 			panic(err)
 		}
@@ -254,22 +363,30 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	if flagSet.NArg() < 2 || *usage {
-		printUsageAndExit(name, flagSet)
-	}
-
-	cmd := flagSet.Arg(0)
-	parFile := flagSet.Arg(1)
+	cmd := commonFlagSet.Arg(0)
+	args := commonFlagSet.Args()[1:]
 
 	switch strings.ToLower(cmd) {
 	case "c":
 		fallthrough
 	case "create":
-		if flagSet.NArg() == 2 {
-			printUsageAndExit(name, flagSet)
+		createFlagSet, createFlags := getCreateFlags(name)
+		err := createFlagSet.Parse(args)
+		if err == nil {
+			if createFlagSet.NArg() == 0 {
+				err = errors.New("no PAR file specified")
+			} else if createFlagSet.NArg() == 1 {
+				err = errors.New("no data files specified")
+			}
+		}
+		if err != nil {
+			printUsageAndExit(name, createCommand, err)
 		}
 
-		encoder, err := newEncoder(parFile, flagSet.Args()[2:], *sliceByteCount, *numParityShards, *numGoroutines)
+		parFile := createFlagSet.Arg(0)
+		files := createFlagSet.Args()[1:]
+
+		encoder, err := newEncoder(parFile, files, createFlags.sliceByteCount, createFlags.numParityShards, commonFlags.numGoroutines)
 		if err != nil {
 			panic(err)
 		}
@@ -293,7 +410,18 @@ func main() {
 	case "v":
 		fallthrough
 	case "verify":
-		decoder, err := newDecoder(parFile, *numGoroutines)
+		verifyFlagSet, verifyFlags := getVerifyFlags(name)
+		err := verifyFlagSet.Parse(args)
+		if err == nil && verifyFlagSet.NArg() == 0 {
+			err = errors.New("no PAR file specified")
+		}
+		if err != nil {
+			printUsageAndExit(name, verifyCommand, err)
+		}
+
+		parFile := verifyFlagSet.Arg(0)
+
+		decoder, err := newDecoder(parFile, commonFlags.numGoroutines)
 		if err != nil {
 			panic(err)
 		}
@@ -308,7 +436,7 @@ func main() {
 			panic(err)
 		}
 
-		ok, err := decoder.Verify(*checkParity)
+		ok, err := decoder.Verify(verifyFlags.checkParity)
 		if err != nil {
 			panic(err)
 		}
@@ -321,7 +449,18 @@ func main() {
 	case "r":
 		fallthrough
 	case "repair":
-		decoder, err := newDecoder(parFile, *numGoroutines)
+		repairFlagSet, repairFlags := getRepairFlags(name)
+		err := repairFlagSet.Parse(args)
+		if err == nil && repairFlagSet.NArg() == 0 {
+			err = errors.New("no PAR file specified")
+		}
+		if err != nil {
+			printUsageAndExit(name, repairCommand, err)
+		}
+
+		parFile := repairFlagSet.Arg(0)
+
+		decoder, err := newDecoder(parFile, commonFlags.numGoroutines)
 		if err != nil {
 			panic(err)
 		}
@@ -336,7 +475,7 @@ func main() {
 			panic(err)
 		}
 
-		repairedFiles, err := decoder.Repair(*checkParity)
+		repairedFiles, err := decoder.Repair(repairFlags.checkParity)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Repair error: %s\n", err)
 			os.Exit(-1)
@@ -348,6 +487,7 @@ func main() {
 		}
 
 	default:
-		printUsageAndExit(name, flagSet)
+		err := fmt.Errorf("unknown command '%s'", cmd)
+		printUsageAndExit(name, allCommands, err)
 	}
 }
