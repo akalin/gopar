@@ -176,9 +176,9 @@ func printUsageAndExit(name string, flagSet *flag.FlagSet) {
 	name = filepath.Base(name)
 	fmt.Printf(`
 Usage:
-  %s c(reate) [options] <PAR file> [files]
-  %s v(erify) [options] <PAR file>
-  %s r(epair) [options] <PAR file>
+  %s [options] c(reate) <PAR file> [files]
+  %s [options] v(erify) <PAR file>
+  %s [options] r(epair) <PAR file>
 
 Options:
 `, name, name, name)
