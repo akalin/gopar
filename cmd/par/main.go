@@ -336,7 +336,7 @@ func main() {
 			panic(err)
 		}
 
-		repairedFiles, err := decoder.Repair(false)
+		repairedFiles, err := decoder.Repair(*checkParity)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Repair error: %s\n", err)
 			os.Exit(-1)
