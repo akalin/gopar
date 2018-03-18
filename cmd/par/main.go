@@ -180,16 +180,16 @@ func newFlagSet(name string) *flag.FlagSet {
 	return flagSet
 }
 
-type commonFlags struct {
+type globalFlags struct {
 	usage         bool
 	cpuProfile    string
 	numGoroutines int
 }
 
-func getCommonFlags(name string) (*flag.FlagSet, *commonFlags) {
+func getGlobalFlags(name string) (*flag.FlagSet, *globalFlags) {
 	flagSet := newFlagSet(name)
 
-	var flags commonFlags
+	var flags globalFlags
 	flagSet.BoolVar(&flags.usage, "h", false, "print usage info")
 	flagSet.StringVar(&flags.cpuProfile, "cpuprofile", "", "if non-empty, where to write the CPU profile")
 	// TODO: Detect hyperthreading and use only number of physical cores.
@@ -256,21 +256,21 @@ func printUsageAndExit(name string, mask commandMask, err error) {
 	fmt.Printf("\nUsage:\n")
 
 	if mask&createCommand != 0 {
-		fmt.Printf("  %s [common options] c(reate) [create options] <PAR file> <data files...>\n", name)
+		fmt.Printf("  %s [global options] c(reate) [create options] <PAR file> <data files...>\n", name)
 	}
 
 	if mask&verifyCommand != 0 {
-		fmt.Printf("  %s [common options] v(erify) [verify options] <PAR file>\n", name)
+		fmt.Printf("  %s [global options] v(erify) [verify options] <PAR file>\n", name)
 	}
 
 	if mask&repairCommand != 0 {
-		fmt.Printf("  %s [common options] f(epair) [repair options] <PAR file>\n", name)
+		fmt.Printf("  %s [global options] f(epair) [repair options] <PAR file>\n", name)
 	}
 
-	fmt.Printf("\nCommon options\n")
-	commonFlagSet, _ := getCommonFlags(name)
-	commonFlagSet.SetOutput(os.Stdout)
-	commonFlagSet.PrintDefaults()
+	fmt.Printf("\nGlobal options\n")
+	globalFlagSet, _ := getGlobalFlags(name)
+	globalFlagSet.SetOutput(os.Stdout)
+	globalFlagSet.PrintDefaults()
 
 	if mask&createCommand != 0 {
 		fmt.Printf("\nCreate options\n")
@@ -331,17 +331,17 @@ func newDecoder(parFile string, numGoroutines int) (decoder, error) {
 func main() {
 	name := filepath.Base(os.Args[0])
 
-	commonFlagSet, commonFlags := getCommonFlags(name)
-	err := commonFlagSet.Parse(os.Args[1:])
-	if err == nil && commonFlagSet.NArg() == 0 {
+	globalFlagSet, globalFlags := getGlobalFlags(name)
+	err := globalFlagSet.Parse(os.Args[1:])
+	if err == nil && globalFlagSet.NArg() == 0 {
 		err = errors.New("no command specified")
 	}
-	if err != nil || commonFlags.usage {
+	if err != nil || globalFlags.usage {
 		printUsageAndExit(name, allCommands, err)
 	}
 
-	if commonFlags.cpuProfile != "" {
-		f, err := os.Create(commonFlags.cpuProfile)
+	if globalFlags.cpuProfile != "" {
+		f, err := os.Create(globalFlags.cpuProfile)
 		if err != nil {
 			panic(err)
 		}
@@ -363,8 +363,8 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	cmd := commonFlagSet.Arg(0)
-	args := commonFlagSet.Args()[1:]
+	cmd := globalFlagSet.Arg(0)
+	args := globalFlagSet.Args()[1:]
 
 	switch strings.ToLower(cmd) {
 	case "c":
@@ -386,7 +386,7 @@ func main() {
 		parFile := createFlagSet.Arg(0)
 		files := createFlagSet.Args()[1:]
 
-		encoder, err := newEncoder(parFile, files, createFlags.sliceByteCount, createFlags.numParityShards, commonFlags.numGoroutines)
+		encoder, err := newEncoder(parFile, files, createFlags.sliceByteCount, createFlags.numParityShards, globalFlags.numGoroutines)
 		if err != nil {
 			panic(err)
 		}
@@ -421,7 +421,7 @@ func main() {
 
 		parFile := verifyFlagSet.Arg(0)
 
-		decoder, err := newDecoder(parFile, commonFlags.numGoroutines)
+		decoder, err := newDecoder(parFile, globalFlags.numGoroutines)
 		if err != nil {
 			panic(err)
 		}
@@ -460,7 +460,7 @@ func main() {
 
 		parFile := repairFlagSet.Arg(0)
 
-		decoder, err := newDecoder(parFile, commonFlags.numGoroutines)
+		decoder, err := newDecoder(parFile, globalFlags.numGoroutines)
 		if err != nil {
 			panic(err)
 		}
