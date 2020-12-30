@@ -520,39 +520,49 @@ func (d *Decoder) newCoderAndShards() (rsec16.Coder, [][]byte, error) {
 // Verify checks that all file (and maybe parity) data are consistent
 // with each other, and returns the result. If any data (or maybe
 // parity) files are missing, Verify returns false.
-func (d *Decoder) Verify(checkParity bool) (bool, error) {
+func (d *Decoder) Verify(checkParity bool) (int, bool, error) {
+	retval := 7
+
 	if len(d.fileIntegrityInfos) == 0 {
-		return false, errors.New("no file integrity info")
+		return 4, false, errors.New("no file integrity info")
 	}
 
 	if len(d.parityShards) == 0 {
-		return false, errors.New("no parity data")
+		return 4, false, errors.New("no parity data")
 	}
 
 	for _, info := range d.fileIntegrityInfos {
 		if !info.ok(d.sliceByteCount) {
-			return false, nil
+			return retval, false, nil
 		}
 	}
 
 	for _, shard := range d.parityShards {
 		if shard == nil {
-			return false, nil
+			return retval, false, nil
 		}
 	}
 
 	if !checkParity {
-		return true, nil
+		return 0, true, nil
 	}
 
 	coder, dataShards, err := d.newCoderAndShards()
 	if err != nil {
-		return false, err
+		return retval, false, err
+	}
+
+	retval, err = coder.TestReconstructData(dataShards, d.parityShards)
+	if retval == 2 {
+		return 2, false, err
 	}
 
 	computedParityShards := coder.GenerateParity(dataShards)
 	eq := reflect.DeepEqual(computedParityShards, d.parityShards)
-	return eq, nil
+	if eq {
+		retval = 0
+	}
+	return retval, eq, nil
 }
 
 // Repair tries to repair any missing or corrupted data, using the

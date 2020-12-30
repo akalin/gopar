@@ -223,3 +223,35 @@ func (c Coder) ReconstructData(data, parity [][]byte) error {
 	}
 	return nil
 }
+
+func (c Coder) TestReconstructData(data, parity [][]byte) (int, error) {
+	var availableRows, missingRows []int
+	var input [][]byte
+	for i, dataShard := range data {
+		if dataShard != nil {
+			availableRows = append(availableRows, i)
+			input = append(input, dataShard)
+		} else {
+			missingRows = append(missingRows, i)
+		}
+	}
+
+	if len(missingRows) == 0 {
+		// Nothing to reconstruct.
+		return 4, nil
+	}
+
+	var usedParityRows []int
+	for i := 0; i < len(parity) && len(input) < c.dataShards; i++ {
+		if parity[i] != nil {
+			usedParityRows = append(usedParityRows, i)
+			input = append(input, parity[i])
+		}
+	}
+
+	if len(input) < c.dataShards {
+		return 2, errors.New("not enough parity shards")
+	}
+
+	return 1, nil
+}

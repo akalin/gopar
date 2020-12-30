@@ -306,7 +306,7 @@ type encoder interface {
 type decoder interface {
 	LoadFileData() error
 	LoadParityData() error
-	Verify(checkParity bool) (bool, error)
+	Verify(checkParity bool) (int, bool, error)
 	Repair(checkParity bool) ([]string, error)
 }
 
@@ -436,15 +436,18 @@ func main() {
 			panic(err)
 		}
 
-		ok, err := decoder.Verify(verifyFlags.checkParity)
+		retval, ok, err := decoder.Verify(verifyFlags.checkParity)
 		if err != nil {
 			panic(err)
 		}
 
-		fmt.Printf("Verify result: %t\n", ok)
-		if !ok {
-			os.Exit(-1)
-		}
+		fmt.Printf("Verify result: %t\n", ok) //bool
+		// if !ok {
+		// 	os.Exit(-1)
+		// }
+		fmt.Printf("Verify result: %i\n", retval)
+		fmt.Printf("Verify result: %s\n", err)
+		os.Exit(retval)
 
 	case "r":
 		fallthrough
