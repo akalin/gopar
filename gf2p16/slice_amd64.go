@@ -10,7 +10,7 @@ import (
 var hasSSSE3 bool
 
 func init() {
-	hasSSSE3 = cpuid.CPU.SSSE3()
+	hasSSSE3 = cpuid.CPU.Supports(cpuid.SSSE3)
 }
 
 // MulByteSliceLE treats in and out as arrays of Ts stored in
