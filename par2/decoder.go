@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"fmt"
 
 	"github.com/akalin/gopar/rsec16"
 )
@@ -521,7 +522,7 @@ func (d *Decoder) newCoderAndShards() (rsec16.Coder, [][]byte, error) {
 // with each other, and returns the result. If any data (or maybe
 // parity) files are missing, Verify returns false.
 func (d *Decoder) Verify(checkParity bool) (int, bool, error) {
-	retval := 7
+	retval := 7 // a default.
 
 	if len(d.fileIntegrityInfos) == 0 {
 		return 4, false, errors.New("no file integrity info")
@@ -531,28 +532,32 @@ func (d *Decoder) Verify(checkParity bool) (int, bool, error) {
 		return 4, false, errors.New("no parity data")
 	}
 
-	for _, info := range d.fileIntegrityInfos {
-		if !info.ok(d.sliceByteCount) {
-			return retval, false, nil
-		}
-	}
+	// for _, info := range d.fileIntegrityInfos {
+	// 	if !info.ok(d.sliceByteCount) {
+	// 		fmt.Printf("on an irrepariable test file, gopar exists here already, so comment out")
+	// 		return retval, false, nil
+	// 	}
+	// }
 
-	for _, shard := range d.parityShards {
-		if shard == nil {
-			return retval, false, nil
-		}
-	}
+	// for _, shard := range d.parityShards {
+	// 	if shard == nil {
+	// 		fmt.Printf("idem")
+	// 		return retval, false, nil
+	// 	}
+	// }
 
-	if !checkParity {
-		return 0, true, nil
-	}
+	// if !checkParity {
+	// 	fmt.Printf("idem")
+	// 	return 0, true, nil
+	// }
 
 	coder, dataShards, err := d.newCoderAndShards()
 	if err != nil {
 		return retval, false, err
 	}
 
-	retval, err = coder.TestReconstructData(dataShards, d.parityShards)
+	fmt.Printf("wololo9999999999")
+	retval, err = coder.CanReconstructData(dataShards, d.parityShards)
 	if retval == 2 {
 		return 2, false, err
 	}

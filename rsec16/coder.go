@@ -224,7 +224,10 @@ func (c Coder) ReconstructData(data, parity [][]byte) error {
 	return nil
 }
 
-func (c Coder) TestReconstructData(data, parity [][]byte) (int, error) {
+// CanReconstructData tests wether or not enough information is present
+// to repair or not. It returns an enum that
+// It starts the same as ReconstructData.
+func (c Coder) CanReconstructData(data, parity [][]byte) (int, error) {
 	var availableRows, missingRows []int
 	var input [][]byte
 	for i, dataShard := range data {
