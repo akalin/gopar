@@ -252,9 +252,6 @@ func (d *Decoder) newReedSolomon() (reedsolomon.Encoder, error) {
 // Verify checks that all file (and maybe parity) data are consistent
 // with each other, and returns the result. If any files (or maybe
 // parity volumes) are missing, Verify returns false.
-// Verify checks that all file (and maybe parity) data are consistent
-// with each other, and returns the result. If any files (or maybe
-// parity volumes) are missing, Verify returns false.
 func (d *Decoder) Verify(checkParity bool) (bool, error) {
 	for _, data := range d.fileData {
 		if data == nil {
