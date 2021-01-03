@@ -12,6 +12,7 @@ import (
 	"runtime/pprof"
 	"strings"
 
+	"github.com/akalin/gopar/errorcode"
 	"github.com/akalin/gopar/par1"
 	"github.com/akalin/gopar/par2"
 	"github.com/akalin/gopar/rsec16"
@@ -306,7 +307,7 @@ type encoder interface {
 type decoder interface {
 	LoadFileData() error
 	LoadParityData() error
-	Verify(checkParity bool) (int, bool, error)
+	Verify(checkParity bool) (errorcode.Errorcode, error)
 	Repair(checkParity bool) ([]string, error)
 }
 
@@ -436,18 +437,17 @@ func main() {
 			panic(err)
 		}
 
-		retval, ok, err := decoder.Verify(verifyFlags.checkParity)
-		if err != nil {
-			panic(err)
+		retval, err := decoder.Verify(verifyFlags.checkParity)
+		if retval == errorcode.Success {
+			fmt.Printf("Verify result: File(s) OK!\n")
+		} else if retval == errorcode.RepairPossible {
+			fmt.Printf("Verify result: Repair necessary and possible.\n")
+		} else if retval == errorcode.RepairNotPossible {
+			fmt.Printf("Verify result: Repair necessary but not possible.\n")
+		} else {
+			fmt.Printf("Verify result: Error.\n")
 		}
-
-		fmt.Printf("Verify result: %t\n", ok) //bool
-		// if !ok {
-		// 	os.Exit(-1)
-		// }
-		fmt.Printf("Verify result: %i\n", retval)
-		fmt.Printf("Verify result: %s\n", err)
-		os.Exit(retval)
+		os.Exit(int(retval))
 
 	case "r":
 		fallthrough

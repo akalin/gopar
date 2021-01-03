@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/akalin/gopar/errorcode"
 	"github.com/klauspost/reedsolomon"
 )
 
@@ -252,37 +253,35 @@ func (d *Decoder) newReedSolomon() (reedsolomon.Encoder, error) {
 // Verify checks that all file (and maybe parity) data are consistent
 // with each other, and returns the result. If any files (or maybe
 // parity volumes) are missing, Verify returns false.
-func (d *Decoder) Verify(checkParity bool) (int, bool, error) {
-	var retval int = 7
-
+func (d *Decoder) Verify(checkParity bool) (errorcode.Errorcode, error) {
 	for _, data := range d.fileData {
 		if data == nil {
-			return 4, false, nil
+			return errorcode.InsufficientCriticalData, nil
 		}
 	}
 
 	for _, data := range d.parityData {
 		if data == nil {
-			return 4, false, nil
+			return errorcode.InsufficientCriticalData, nil
 		}
 	}
 
 	if !checkParity {
-		return 0, true, nil
+		return errorcode.Success, nil
 	}
 
 	shards := d.buildShards()
 
 	rs, err := d.newReedSolomon()
 	if err != nil {
-		return retval, false, err
+		return errorcode.LogicError, err
 	}
 
 	ok, err := rs.Verify(shards)
 	if ok {
-		retval = 0
+		return errorcode.Success, err
 	}
-	return retval, ok, err
+	return errorcode.LogicError, err
 }
 
 // Repair tries to repair any missing or corrupted data, using the

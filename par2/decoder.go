@@ -11,8 +11,8 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
-	"fmt"
 
+	"github.com/akalin/gopar/errorcode"
 	"github.com/akalin/gopar/rsec16"
 )
 
@@ -521,53 +521,49 @@ func (d *Decoder) newCoderAndShards() (rsec16.Coder, [][]byte, error) {
 // Verify checks that all file (and maybe parity) data are consistent
 // with each other, and returns the result. If any data (or maybe
 // parity) files are missing, Verify returns false.
-func (d *Decoder) Verify(checkParity bool) (int, bool, error) {
-	retval := 7 // a default.
+func (d *Decoder) Verify(checkParity bool) (errorcode.Errorcode, error) {
 
 	if len(d.fileIntegrityInfos) == 0 {
-		return 4, false, errors.New("no file integrity info")
+		return errorcode.InsufficientCriticalData, errors.New("no file integrity info")
 	}
 
 	if len(d.parityShards) == 0 {
-		return 4, false, errors.New("no parity data")
+		return errorcode.InsufficientCriticalData, errors.New("no parity data")
+	}
+
+	coder, dataShards, err := d.newCoderAndShards()
+	if err != nil {
+		return errorcode.LogicError, err
+	}
+
+	retval, err := coder.CanReconstructData(dataShards, d.parityShards)
+	if err == nil {
+		// if no error, then not in irrepairable state
+		return retval, nil
 	}
 
 	// for _, info := range d.fileIntegrityInfos {
 	// 	if !info.ok(d.sliceByteCount) {
-	// 		fmt.Printf("on an irrepariable test file, gopar exists here already, so comment out")
-	// 		return retval, false, nil
+	// 		return retval, nil
 	// 	}
 	// }
 
 	// for _, shard := range d.parityShards {
 	// 	if shard == nil {
-	// 		fmt.Printf("idem")
-	// 		return retval, false, nil
+	// 		return retval, nil
 	// 	}
 	// }
 
 	// if !checkParity {
-	// 	fmt.Printf("idem")
 	// 	return 0, true, nil
 	// }
 
-	coder, dataShards, err := d.newCoderAndShards()
-	if err != nil {
-		return retval, false, err
-	}
-
-	fmt.Printf("wololo9999999999")
-	retval, err = coder.CanReconstructData(dataShards, d.parityShards)
-	if retval == 2 {
-		return 2, false, err
-	}
-
-	computedParityShards := coder.GenerateParity(dataShards)
-	eq := reflect.DeepEqual(computedParityShards, d.parityShards)
-	if eq {
-		retval = 0
-	}
-	return retval, eq, nil
+	// computedParityShards := coder.GenerateParity(dataShards)
+	// eq := reflect.DeepEqual(computedParityShards, d.parityShards)
+	// if eq {
+	// 	return errorcode.Success, nil
+	// }
+	return retval, err
 }
 
 // Repair tries to repair any missing or corrupted data, using the

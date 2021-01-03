@@ -5,6 +5,7 @@ import (
 	"math"
 	"runtime"
 
+	"github.com/akalin/gopar/errorcode"
 	"github.com/akalin/gopar/gf2p16"
 	"github.com/klauspost/cpuid"
 )
@@ -225,9 +226,8 @@ func (c Coder) ReconstructData(data, parity [][]byte) error {
 }
 
 // CanReconstructData tests wether or not enough information is present
-// to repair or not. It returns an enum that
-// It starts the same as ReconstructData.
-func (c Coder) CanReconstructData(data, parity [][]byte) (int, error) {
+// to repair or not. It returns an errorcode enum.
+func (c Coder) CanReconstructData(data, parity [][]byte) (errorcode.Errorcode, error) {
 	var availableRows, missingRows []int
 	var input [][]byte
 	for i, dataShard := range data {
@@ -241,7 +241,7 @@ func (c Coder) CanReconstructData(data, parity [][]byte) (int, error) {
 
 	if len(missingRows) == 0 {
 		// Nothing to reconstruct.
-		return 4, nil
+		return errorcode.Success, nil
 	}
 
 	var usedParityRows []int
@@ -253,8 +253,8 @@ func (c Coder) CanReconstructData(data, parity [][]byte) (int, error) {
 	}
 
 	if len(input) < c.dataShards {
-		return 2, errors.New("not enough parity shards")
+		return errorcode.RepairNotPossible, errors.New("not enough parity shards")
 	}
 
-	return 1, nil
+	return errorcode.RepairPossible, nil
 }
