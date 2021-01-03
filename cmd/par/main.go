@@ -438,8 +438,8 @@ func main() {
 
 		// Match return values to par2cmline
 		// https://github.com/brenthuisman/libpar2/blob/master/src/libpar2.h#L109
-		ok, err := decoder.Verify(verifyFlags.checkParity)
-		if ok {
+		_, err = decoder.Verify(verifyFlags.checkParity)
+		if err == nil {
 			fmt.Printf("Verify result: File(s) OK!\n")
 			os.Exit(0)
 		} else if err == errorcode.RepairPossible {

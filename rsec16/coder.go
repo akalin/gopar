@@ -225,7 +225,7 @@ func (c Coder) ReconstructData(data, parity [][]byte) error {
 }
 
 // CanReconstructData tests wether or not enough information is present
-// to repair or not.
+// to repair or not. err == nil means file is not corrupt
 func (c Coder) CanReconstructData(data, parity [][]byte) (bool, error) {
 	var availableRows, missingRows []int
 	var input [][]byte
@@ -239,7 +239,7 @@ func (c Coder) CanReconstructData(data, parity [][]byte) (bool, error) {
 	}
 
 	if len(missingRows) == 0 {
-		// Nothing to reconstruct. TODO: what error is this?
+		// Nothing to reconstruct because file not corrupt.
 		return true, nil
 	}
 
@@ -256,5 +256,5 @@ func (c Coder) CanReconstructData(data, parity [][]byte) (bool, error) {
 		return false, errorcode.RepairNotPossible
 	}
 
-	return false, errorcode.RepairPossible
+	return true, errorcode.RepairPossible
 }
