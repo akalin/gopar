@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/binary"
-	"errors"
 	"hash/crc32"
 	"io/ioutil"
 	"os"
@@ -58,11 +57,11 @@ func makeDecoderInputFileInfos(fileIDs []fileID, fileDescriptionPackets map[file
 	for _, fileID := range fileIDs {
 		descriptionPacket, ok := fileDescriptionPackets[fileID]
 		if !ok {
-			return nil, errors.New("file description packet not found")
+			return nil, errorcode.NoFileDescriptionPacket
 		}
 		ifscPacket, ok := ifscPackets[fileID]
 		if !ok {
-			return nil, errors.New("input file slice checksum packet not found")
+			return nil, errorcode.NoInputFileSliceChecksumPacket
 		}
 		decoderInputFileInfos = append(decoderInputFileInfos, decoderInputFileInfo{
 			fileID,
@@ -211,12 +210,12 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string, numGo
 
 	if indexFile.mainPacket == nil {
 		// TODO: Relax this check.
-		return nil, errors.New("no main packet found")
+		return nil, errorcode.NoMainPacket
 	}
 
 	if len(indexFile.recoveryPackets) > 0 {
 		// TODO: Relax this check.
-		return nil, errors.New("recovery packets found in index file")
+		return nil, errorcode.RecoveryPacketsFoundInIndexFile
 	}
 
 	recoverySet, err := makeDecoderInputFileInfos(indexFile.mainPacket.recoverySet, indexFile.fileDescriptionPackets, indexFile.ifscPackets)
@@ -457,7 +456,8 @@ func (d *Decoder) LoadParityData() error {
 			// Ignore all the other packet types other
 			// than recovery packets.
 			_, parityFile, err := readFile(recoveryDelegate{d.delegate}, &d.setID, volumeBytes)
-			if _, ok := err.(noPacketsFoundError); ok {
+			//if _, ok := err.(noPacketsFoundError); ok {
+			if err == errorcode.NoPacketsFound {
 				return nil, nil
 			} else if err != nil {
 				// TODO: Relax this check.
@@ -465,15 +465,15 @@ func (d *Decoder) LoadParityData() error {
 			}
 
 			if d.sliceByteCount != parityFile.mainPacket.sliceByteCount {
-				return nil, errors.New("slice byte count mismatch")
+				return nil, errorcode.SliceByteCountMismatch
 			}
 
 			if !reflect.DeepEqual(decoderInputFileInfoIDs(d.recoverySet), parityFile.mainPacket.recoverySet) {
-				return nil, errors.New("recovery set mismatch")
+				return nil, errorcode.RecoverySetMismatch
 			}
 
 			if !reflect.DeepEqual(decoderInputFileInfoIDs(d.nonRecoverySet), parityFile.mainPacket.nonRecoverySet) {
-				return nil, errors.New("non-recovery set mismatch")
+				return nil, errorcode.NonRecoverySetMismatch
 			}
 
 			return &parityFile, nil
@@ -524,11 +524,11 @@ func (d *Decoder) newCoderAndShards() (rsec16.Coder, [][]byte, error) {
 func (d *Decoder) Verify(checkParity bool) (errorcode.Errorcode, error) {
 
 	if len(d.fileIntegrityInfos) == 0 {
-		return errorcode.InsufficientCriticalData, errors.New("no file integrity info")
+		return errorcode.InsufficientCriticalData, errorcode.NoFileIntegrityInfo
 	}
 
 	if len(d.parityShards) == 0 {
-		return errorcode.InsufficientCriticalData, errors.New("no parity data")
+		return errorcode.InsufficientCriticalData, errorcode.NoParityData
 	}
 
 	coder, dataShards, err := d.newCoderAndShards()
@@ -573,11 +573,11 @@ func (d *Decoder) Verify(checkParity bool) (errorcode.Errorcode, error) {
 // parity data.
 func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 	if len(d.fileIntegrityInfos) == 0 {
-		return nil, errors.New("no file integrity info")
+		return nil, errorcode.NoFileIntegrityInfo
 	}
 
 	if len(d.parityShards) == 0 {
-		return nil, errors.New("no parity shards")
+		return nil, errorcode.NoParityShards
 	}
 
 	coder, dataShards, err := d.newCoderAndShards()
@@ -599,7 +599,7 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 
 			eq := reflect.DeepEqual(computedParityShards[i], shard)
 			if !eq {
-				return nil, errors.New("repair failed")
+				return nil, errorcode.RepairFailed
 			}
 		}
 	}
@@ -640,9 +640,9 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 
 		data := buf.Bytes()[:decoderInputFileInfo.byteCount]
 		if sixteenKHash(data) != decoderInputFileInfo.sixteenKHash {
-			return repairedFiles, errors.New("hash mismatch (16k) in reconstructed data")
+			return repairedFiles, errorcode.HashMismatch16kInReconstructedData
 		} else if md5.Sum(data) != decoderInputFileInfo.hash {
-			return repairedFiles, errors.New("hash mismatch in reconstructed data")
+			return repairedFiles, errorcode.HashMismatchInReconstructedData
 		}
 
 		path := filepath.Join(dir, decoderInputFileInfo.filename)

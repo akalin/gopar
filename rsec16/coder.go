@@ -1,7 +1,6 @@
 package rsec16
 
 import (
-	"errors"
 	"math"
 	"runtime"
 
@@ -56,7 +55,7 @@ func NewCoderCauchy(dataShards, parityShards, numGoroutines int) (Coder, error) 
 	}
 
 	if dataShards+parityShards > math.MaxUint16 {
-		return Coder{}, errors.New("too many shards")
+		return Coder{}, errorcode.TooManyShards
 	}
 
 	parityMatrix := newCauchyParityMatrix(dataShards, parityShards)
@@ -128,11 +127,11 @@ func NewCoderPAR2Vandermonde(dataShards, parityShards, numGoroutines int) (Coder
 	}
 
 	if dataShards > len(generators) {
-		return Coder{}, errors.New("too many data shards")
+		return Coder{}, errorcode.TooManyDataShards
 	}
 
 	if parityShards > (1<<16)-1 {
-		return Coder{}, errors.New("too many parity shards")
+		return Coder{}, errorcode.TooManyParityShards
 	}
 
 	parityMatrix := newVandermondeParityMatrix(dataShards, parityShards)
@@ -206,7 +205,7 @@ func (c Coder) ReconstructData(data, parity [][]byte) error {
 	}
 
 	if len(input) < c.dataShards {
-		return errors.New("not enough parity shards")
+		return errorcode.NotEnoughParityShards
 	}
 
 	reconstructionMatrix, err := makeReconstructionMatrix(c.dataShards, availableRows, missingRows, usedParityRows, c.parityMatrix)
@@ -253,7 +252,7 @@ func (c Coder) CanReconstructData(data, parity [][]byte) (errorcode.Errorcode, e
 	}
 
 	if len(input) < c.dataShards {
-		return errorcode.RepairNotPossible, errors.New("not enough parity shards")
+		return errorcode.RepairNotPossible, errorcode.NotEnoughParityShards
 	}
 
 	return errorcode.RepairPossible, nil

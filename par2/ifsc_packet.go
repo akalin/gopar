@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/binary"
-	"errors"
 	"reflect"
+
+	"github.com/akalin/gopar/errorcode"
 )
 
 var ifscPacketType = packetType{'P', 'A', 'R', ' ', '2', '.', '0', '\x00', 'I', 'F', 'S', 'C'}
@@ -30,7 +31,7 @@ func readIFSCPacket(body []byte) (fileID, ifscPacket, error) {
 
 	checksumPairSize := int(reflect.TypeOf(checksumPair{}).Size())
 	if buf.Len() == 0 || buf.Len()%checksumPairSize != 0 {
-		return fileID{}, ifscPacket{}, errors.New("invalid size")
+		return fileID{}, ifscPacket{}, errorcode.InvalidSize
 	}
 	checksumPairs := make([]checksumPair, buf.Len()/checksumPairSize)
 	err = binary.Read(buf, binary.LittleEndian, checksumPairs)
@@ -43,7 +44,7 @@ func readIFSCPacket(body []byte) (fileID, ifscPacket, error) {
 
 func writeIFSCPacket(id fileID, packet ifscPacket) ([]byte, error) {
 	if len(packet.checksumPairs) == 0 {
-		return nil, errors.New("no checksum pairs to write")
+		return nil, errorcode.NoChecksumPairsToWrite
 	}
 
 	buf := bytes.NewBuffer(nil)

@@ -2,8 +2,9 @@ package par2
 
 import (
 	"encoding/binary"
-	"errors"
 	"math"
+
+	"github.com/akalin/gopar/errorcode"
 )
 
 var recoveryPacketType = packetType{'P', 'A', 'R', ' ', '2', '.', '0', '\x00', 'R', 'e', 'c', 'v', 'S', 'l', 'i', 'c'}
@@ -16,12 +17,12 @@ type recoveryPacket struct {
 
 func readRecoveryPacket(body []byte) (exponent, recoveryPacket, error) {
 	if len(body) == 0 || len(body)%4 != 0 {
-		return 0, recoveryPacket{}, errors.New("invalid recovery data byte count")
+		return 0, recoveryPacket{}, errorcode.InvalidRecoveryDataByteCount
 	}
 
 	exp := binary.LittleEndian.Uint32(body)
 	if exp > math.MaxUint16 {
-		return 0, recoveryPacket{}, errors.New("exponent out of range")
+		return 0, recoveryPacket{}, errorcode.ExponentOutOfRange
 	}
 
 	return exponent(exp), recoveryPacket{body[4:]}, nil
@@ -29,7 +30,7 @@ func readRecoveryPacket(body []byte) (exponent, recoveryPacket, error) {
 
 func writeRecoveryPacket(exp exponent, packet recoveryPacket) ([]byte, error) {
 	if len(packet.data) == 0 || len(packet.data)%4 != 0 {
-		return nil, errors.New("invalid recovery data byte count")
+		return nil, errorcode.InvalidRecoveryDataByteCount
 	}
 
 	var expBytes [4]byte

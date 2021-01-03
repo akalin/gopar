@@ -3,10 +3,11 @@ package par2
 import (
 	"bytes"
 	"crypto/md5"
-	"errors"
 	"io"
 	"reflect"
 	"sort"
+
+	"github.com/akalin/gopar/errorcode"
 )
 
 type file struct {
@@ -16,12 +17,6 @@ type file struct {
 	ifscPackets            map[fileID]ifscPacket
 	recoveryPackets        map[exponent]recoveryPacket
 	unknownPackets         map[packetType][][]byte
-}
-
-type noPacketsFoundError struct{}
-
-func (noPacketsFoundError) Error() string {
-	return "no packets found"
 }
 
 func readFile(delegate DecoderDelegate, expectedSetID *recoverySetID, fileBytes []byte) (recoverySetID, file, error) {
@@ -110,7 +105,7 @@ func readFile(delegate DecoderDelegate, expectedSetID *recoverySetID, fileBytes 
 			delegate.OnRecoveryPacketLoad(uint16(exponent), len(recoveryPacket.data))
 			if existingPacket, ok := recoveryPackets[exponent]; ok {
 				if !reflect.DeepEqual(existingPacket, recoveryPacket) {
-					return recoverySetID{}, file{}, errors.New("recovery packet with duplicate exponent but differing contents")
+					return recoverySetID{}, file{}, errorcode.RecoveryPacketDuplicateExpDiffContent
 				}
 			}
 			recoveryPackets[exponent] = recoveryPacket
@@ -122,11 +117,11 @@ func readFile(delegate DecoderDelegate, expectedSetID *recoverySetID, fileBytes 
 	}
 
 	if !foundPacket {
-		return recoverySetID{}, file{}, noPacketsFoundError{}
+		return recoverySetID{}, file{}, errorcode.NoPacketsFound
 	}
 
 	if !foundClientID {
-		return recoverySetID{}, file{}, errors.New("no creator packet found")
+		return recoverySetID{}, file{}, errorcode.NoCreatorPacketFound
 	}
 
 	return setID, file{clientID, mainPacket, fileDescriptionPackets, ifscPackets, recoveryPackets, unknownPackets}, nil
@@ -141,11 +136,11 @@ func padPacketBytes(packetBytes []byte) []byte {
 
 func writeFile(file file) (recoverySetID, []byte, error) {
 	if len(file.clientID) == 0 {
-		return recoverySetID{}, nil, errors.New("empty client ID")
+		return recoverySetID{}, nil, errorcode.EmptyClientID
 	}
 
 	if file.mainPacket == nil {
-		return recoverySetID{}, nil, errors.New("no main packet")
+		return recoverySetID{}, nil, errorcode.NoMainPacket
 	}
 
 	buf := bytes.NewBuffer(nil)
@@ -176,7 +171,7 @@ func writeFile(file file) (recoverySetID, []byte, error) {
 	for _, fileID := range append(file.mainPacket.recoverySet, file.mainPacket.nonRecoverySet...) {
 		fileDescriptionPacket, ok := file.fileDescriptionPackets[fileID]
 		if !ok {
-			return recoverySetID{}, nil, errors.New("could not find file description packet")
+			return recoverySetID{}, nil, errorcode.NoFileDescriptionPacket
 		}
 
 		fileDescriptionPacketBytes, err := writeFileDescriptionPacket(fileID, fileDescriptionPacket)
@@ -190,7 +185,7 @@ func writeFile(file file) (recoverySetID, []byte, error) {
 
 		ifscPacket, ok := file.ifscPackets[fileID]
 		if !ok {
-			return recoverySetID{}, nil, errors.New("could not find input file slice checksum packet")
+			return recoverySetID{}, nil, errorcode.NoInputFileSliceChecksumPacket
 		}
 
 		ifscPacketBytes, err := writeIFSCPacket(fileID, ifscPacket)

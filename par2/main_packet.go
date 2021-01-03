@@ -3,10 +3,11 @@ package par2
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"math"
 	"reflect"
 	"sort"
+
+	"github.com/akalin/gopar/errorcode"
 )
 
 var mainPacketType = packetType{'P', 'A', 'R', ' ', '2', '.', '0', '\x00', 'M', 'a', 'i', 'n'}
@@ -40,13 +41,13 @@ func checkFileIDSetsSorted(recoverySet, nonRecoverySet []fileID) error {
 	if !sort.SliceIsSorted(recoverySet, func(i, j int) bool {
 		return fileIDLess(recoverySet[i], recoverySet[j])
 	}) {
-		return errors.New("recovery set IDs not sorted")
+		return errorcode.RecoverySetIDsNotSorted
 	}
 
 	if !sort.SliceIsSorted(nonRecoverySet, func(i, j int) bool {
 		return fileIDLess(nonRecoverySet[i], nonRecoverySet[j])
 	}) {
-		return errors.New("non-recovery set IDs not sorted")
+		return errorcode.NonRecoverySetIDsNotSorted
 	}
 
 	return nil
@@ -63,18 +64,18 @@ func readMainPacket(body []byte) (mainPacket, error) {
 
 	maxInt := uint64(^uint(0) >> 1)
 	if h.SliceSize == 0 || h.SliceSize%4 != 0 || h.SliceSize > maxInt {
-		return mainPacket{}, errors.New("invalid slice size")
+		return mainPacket{}, errorcode.InvalidSliceSize
 	}
 
 	sliceByteCount := int(h.SliceSize)
 
 	if h.RecoverySetCount == 0 {
-		return mainPacket{}, errors.New("empty recovery set")
+		return mainPacket{}, errorcode.EmptyRecoverySet
 	}
 
 	fileIDSize := int(reflect.TypeOf(fileID{}).Size())
 	if buf.Len()%fileIDSize != 0 {
-		return mainPacket{}, errors.New("invalid size")
+		return mainPacket{}, errorcode.InvalidSize
 	}
 	fileIDs := make([]fileID, buf.Len()/fileIDSize)
 	err = binary.Read(buf, binary.LittleEndian, fileIDs)
@@ -83,7 +84,7 @@ func readMainPacket(body []byte) (mainPacket, error) {
 	}
 
 	if uint64(len(fileIDs)) < uint64(h.RecoverySetCount) {
-		return mainPacket{}, errors.New("not enough file IDs")
+		return mainPacket{}, errorcode.NotEnoughFileIDs
 	}
 
 	recoverySet := fileIDs[:int(h.RecoverySetCount)]
@@ -99,15 +100,15 @@ func readMainPacket(body []byte) (mainPacket, error) {
 
 func writeMainPacket(packet mainPacket) ([]byte, error) {
 	if packet.sliceByteCount == 0 || packet.sliceByteCount%4 != 0 {
-		return nil, errors.New("invalid slice byte count")
+		return nil, errorcode.InvalidSliceByteCount
 	}
 
 	if len(packet.recoverySet) == 0 {
-		return nil, errors.New("empty recovery set")
+		return nil, errorcode.EmptyRecoverySet
 	}
 
 	if int64(len(packet.recoverySet)) > int64(math.MaxUint32) {
-		return nil, errors.New("recovery set too big")
+		return nil, errorcode.RecoverySetTooBig
 	}
 
 	err := checkFileIDSetsSorted(packet.recoverySet, packet.nonRecoverySet)

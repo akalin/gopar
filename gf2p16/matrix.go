@@ -1,6 +1,8 @@
 package gf2p16
 
-import "errors"
+import (
+	"github.com/akalin/gopar/errorcode"
+)
 
 // Matrix is an immutable rectangular array of elements of
 // GF(2^16). It has just enough methods to support Reed-Solomon
@@ -156,7 +158,7 @@ func (m Matrix) rowReduceForInverse(n Matrix) error {
 			}
 		}
 		if pivot == 0 {
-			return errors.New("singular matrix")
+			return errorcode.SingularMatrix
 		}
 
 		// Scale the ith row to have 1 as the pivot.

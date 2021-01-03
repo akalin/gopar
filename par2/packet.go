@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/binary"
-	"errors"
 	"reflect"
+
+	"github.com/akalin/gopar/errorcode"
 )
 
 type packetHeader struct {
@@ -24,11 +25,11 @@ func sizeOfPacketHeader() uint64 {
 
 func checkPacketHeader(h packetHeader) error {
 	if h.Magic != expectedMagic {
-		return errors.New("unexpected magic string")
+		return errorcode.UnexpectedMagicString
 	}
 
 	if h.Length < sizeOfPacketHeader() || h.Length%4 != 0 {
-		return errors.New("invalid length")
+		return errorcode.InvalidLength
 	}
 
 	return nil
@@ -79,11 +80,11 @@ func readNextPacket(buf *bytes.Buffer) (recoverySetID, packetType, []byte, error
 	bodyLength := int(h.Length - sizeOfPacketHeader())
 	body := buf.Next(bodyLength)
 	if len(body) != bodyLength {
-		return [16]byte{}, packetType{}, nil, errors.New("could not read body")
+		return [16]byte{}, packetType{}, nil, errorcode.CouldNotReadBody
 	}
 
 	if computePacketHash(h.RecoverySetID, h.Type, body) != h.Hash {
-		return [16]byte{}, packetType{}, nil, errors.New("hash mismatch")
+		return [16]byte{}, packetType{}, nil, errorcode.HashMismatch
 	}
 
 	bodyCopy := make([]byte, len(body))

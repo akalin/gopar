@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/akalin/gopar/errorcode"
 	"github.com/stretchr/testify/require"
 )
 
@@ -46,5 +47,5 @@ func TestEncodeASCIIString(t *testing.T) {
 func TestEncodeNonASCIIString(t *testing.T) {
 	s := "hello\x80world"
 	_, err := encodeASCIIString(s)
-	require.Equal(t, errors.New("invalid ASCII character"), err)
+	require.Equal(t, errorcode.InvalidASCII, err)
 }

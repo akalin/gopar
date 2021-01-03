@@ -3,8 +3,9 @@ package par1
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
+
+	"github.com/akalin/gopar/errorcode"
 )
 
 type versionNumber uint64
@@ -58,15 +59,15 @@ func readHeader(buf *bytes.Buffer) (header, error) {
 	}
 
 	if h.ID != expectedID {
-		return header{}, errors.New("unexpected ID string")
+		return header{}, errorcode.UnexpectedIDString
 	}
 
 	if h.VersionNumber.version() != expectedVersion {
-		return header{}, errors.New("unexpected version")
+		return header{}, errorcode.UnexpectedVersion
 	}
 
 	if h.FileListOffset != expectedFileListOffset {
-		return header{}, errors.New("unexpected file list offset")
+		return header{}, errorcode.UnexpectedFileListOffset
 	}
 
 	return h, nil

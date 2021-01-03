@@ -1,9 +1,10 @@
 package par2
 
 import (
-	"errors"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/akalin/gopar/errorcode"
 )
 
 func nullTerminate(bs []byte) []byte {
@@ -42,7 +43,7 @@ func encodeASCIIString(s string) ([]byte, error) {
 	var bs []byte
 	for _, c := range s {
 		if c > unicode.MaxASCII {
-			return nil, errors.New("invalid ASCII character")
+			return nil, errorcode.InvalidASCII
 		}
 		bs = append(bs, byte(c))
 	}

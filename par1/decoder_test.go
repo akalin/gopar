@@ -9,6 +9,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/akalin/gopar/errorcode"
 	"github.com/klauspost/reedsolomon"
 	"github.com/stretchr/testify/require"
 )
@@ -228,7 +229,7 @@ func TestSetHashMismatch(t *testing.T) {
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
 	err = decoder.LoadParityData()
-	require.Equal(t, errors.New("unexpected set hash for parity volume"), err)
+	require.Equal(t, errorcode.UnexpectedSetHash, err)
 }
 
 func TestRepair(t *testing.T) {

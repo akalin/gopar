@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -335,7 +334,7 @@ func main() {
 	globalFlagSet, globalFlags := getGlobalFlags(name)
 	err := globalFlagSet.Parse(os.Args[1:])
 	if err == nil && globalFlagSet.NArg() == 0 {
-		err = errors.New("no command specified")
+		err = errorcode.NoCommandSpecified
 	}
 	if err != nil || globalFlags.usage {
 		printUsageAndExit(name, allCommands, err)
@@ -375,9 +374,9 @@ func main() {
 		err := createFlagSet.Parse(args)
 		if err == nil {
 			if createFlagSet.NArg() == 0 {
-				err = errors.New("no PAR file specified")
+				err = errorcode.NoParFileSpecified
 			} else if createFlagSet.NArg() == 1 {
-				err = errors.New("no data files specified")
+				err = errorcode.NoDataFilesSpecified
 			}
 		}
 		if err != nil {
@@ -414,7 +413,7 @@ func main() {
 		verifyFlagSet, verifyFlags := getVerifyFlags(name)
 		err := verifyFlagSet.Parse(args)
 		if err == nil && verifyFlagSet.NArg() == 0 {
-			err = errors.New("no PAR file specified")
+			err = errorcode.NoParFileSpecified
 		}
 		if err != nil {
 			printUsageAndExit(name, verifyCommand, err)
@@ -455,7 +454,7 @@ func main() {
 		repairFlagSet, repairFlags := getRepairFlags(name)
 		err := repairFlagSet.Parse(args)
 		if err == nil && repairFlagSet.NArg() == 0 {
-			err = errors.New("no PAR file specified")
+			err = errorcode.NoParFileSpecified
 		}
 		if err != nil {
 			printUsageAndExit(name, repairCommand, err)
