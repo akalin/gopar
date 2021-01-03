@@ -252,35 +252,34 @@ func (d *Decoder) newReedSolomon() (reedsolomon.Encoder, error) {
 // Verify checks that all file (and maybe parity) data are consistent
 // with each other, and returns the result. If any files (or maybe
 // parity volumes) are missing, Verify returns false.
-func (d *Decoder) Verify(checkParity bool) (errorcode.Errorcode, error) {
+// Verify checks that all file (and maybe parity) data are consistent
+// with each other, and returns the result. If any files (or maybe
+// parity volumes) are missing, Verify returns false.
+func (d *Decoder) Verify(checkParity bool) (bool, error) {
 	for _, data := range d.fileData {
 		if data == nil {
-			return errorcode.InsufficientCriticalData, nil
+			return false, nil
 		}
 	}
 
 	for _, data := range d.parityData {
 		if data == nil {
-			return errorcode.InsufficientCriticalData, nil
+			return false, nil
 		}
 	}
 
 	if !checkParity {
-		return errorcode.Success, nil
+		return true, nil
 	}
 
 	shards := d.buildShards()
 
 	rs, err := d.newReedSolomon()
 	if err != nil {
-		return errorcode.LogicError, err
+		return false, err
 	}
 
-	ok, err := rs.Verify(shards)
-	if ok {
-		return errorcode.Success, err
-	}
-	return errorcode.LogicError, err
+	return rs.Verify(shards)
 }
 
 // Repair tries to repair any missing or corrupted data, using the

@@ -519,38 +519,34 @@ func (d *Decoder) newCoderAndShards() (rsec16.Coder, [][]byte, error) {
 }
 
 // Verify checks that all file (and maybe parity) data are consistent
-// with each other, and returns the result. If any data (or maybe
-// parity) files are missing, Verify returns false.
-func (d *Decoder) Verify(checkParity bool) (errorcode.Errorcode, error) {
+// with each other, and returns the result. The returned bool is true
+// if the data are uncorrupted, in all other cases false.
+func (d *Decoder) Verify(checkParity bool) (bool, error) {
 
 	if len(d.fileIntegrityInfos) == 0 {
-		return errorcode.InsufficientCriticalData, errorcode.NoFileIntegrityInfo
+		return false, errorcode.NoFileIntegrityInfo
 	}
 
 	if len(d.parityShards) == 0 {
-		return errorcode.InsufficientCriticalData, errorcode.NoParityData
+		return false, errorcode.NoParityData
 	}
 
 	coder, dataShards, err := d.newCoderAndShards()
 	if err != nil {
-		return errorcode.LogicError, err
+		return false, err
 	}
 
-	retval, err := coder.CanReconstructData(dataShards, d.parityShards)
-	if err == nil {
-		// if no error, then not in irrepairable state
-		return retval, nil
-	}
+	ok, err := coder.CanReconstructData(dataShards, d.parityShards)
 
 	// for _, info := range d.fileIntegrityInfos {
 	// 	if !info.ok(d.sliceByteCount) {
-	// 		return retval, nil
+	// 		return false, nil //what error is this?
 	// 	}
 	// }
 
 	// for _, shard := range d.parityShards {
 	// 	if shard == nil {
-	// 		return retval, nil
+	// 		return false, nil //what error is this?
 	// 	}
 	// }
 
@@ -563,7 +559,7 @@ func (d *Decoder) Verify(checkParity bool) (errorcode.Errorcode, error) {
 	// if eq {
 	// 	return errorcode.Success, nil
 	// }
-	return retval, err
+	return ok, err
 }
 
 // Repair tries to repair any missing or corrupted data, using the

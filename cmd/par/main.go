@@ -306,7 +306,7 @@ type encoder interface {
 type decoder interface {
 	LoadFileData() error
 	LoadParityData() error
-	Verify(checkParity bool) (errorcode.Errorcode, error)
+	Verify(checkParity bool) (bool, error)
 	Repair(checkParity bool) ([]string, error)
 }
 
@@ -436,17 +436,22 @@ func main() {
 			panic(err)
 		}
 
-		retval, err := decoder.Verify(verifyFlags.checkParity)
-		if retval == errorcode.Success {
+		// Match return values to par2cmline
+		// https://github.com/brenthuisman/libpar2/blob/master/src/libpar2.h#L109
+		ok, err := decoder.Verify(verifyFlags.checkParity)
+		if ok {
 			fmt.Printf("Verify result: File(s) OK!\n")
-		} else if retval == errorcode.RepairPossible {
+			os.Exit(0)
+		} else if err == errorcode.RepairPossible {
 			fmt.Printf("Verify result: Repair necessary and possible.\n")
-		} else if retval == errorcode.RepairNotPossible {
+			os.Exit(1)
+		} else if err == errorcode.RepairNotPossible {
 			fmt.Printf("Verify result: Repair necessary but not possible.\n")
+			os.Exit(2)
 		} else {
-			fmt.Printf("Verify result: Error.\n")
+			fmt.Printf("Verify result: Internal Error.\n")
+			os.Exit(7)
 		}
-		os.Exit(int(retval))
 
 	case "r":
 		fallthrough

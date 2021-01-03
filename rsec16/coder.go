@@ -225,8 +225,8 @@ func (c Coder) ReconstructData(data, parity [][]byte) error {
 }
 
 // CanReconstructData tests wether or not enough information is present
-// to repair or not. It returns an errorcode enum.
-func (c Coder) CanReconstructData(data, parity [][]byte) (errorcode.Errorcode, error) {
+// to repair or not.
+func (c Coder) CanReconstructData(data, parity [][]byte) (bool, error) {
 	var availableRows, missingRows []int
 	var input [][]byte
 	for i, dataShard := range data {
@@ -239,8 +239,8 @@ func (c Coder) CanReconstructData(data, parity [][]byte) (errorcode.Errorcode, e
 	}
 
 	if len(missingRows) == 0 {
-		// Nothing to reconstruct.
-		return errorcode.Success, nil
+		// Nothing to reconstruct. TODO: what error is this?
+		return true, nil
 	}
 
 	var usedParityRows []int
@@ -252,8 +252,9 @@ func (c Coder) CanReconstructData(data, parity [][]byte) (errorcode.Errorcode, e
 	}
 
 	if len(input) < c.dataShards {
-		return errorcode.RepairNotPossible, errorcode.NotEnoughParityShards
+		// return false, errorcode.NotEnoughParityShards
+		return false, errorcode.RepairNotPossible
 	}
 
-	return errorcode.RepairPossible, nil
+	return false, errorcode.RepairPossible
 }

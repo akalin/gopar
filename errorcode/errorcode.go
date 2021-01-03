@@ -4,19 +4,8 @@ import (
 	"errors"
 )
 
-type Errorcode int
-const (
-	Success						Errorcode = 0
-	RepairPossible				Errorcode = 1
-	RepairNotPossible			Errorcode = 2
-	InvalidCommandLineArguments	Errorcode = 3
-	InsufficientCriticalData	Errorcode = 4
-//	RepairFailedCode			Errorcode = 5
-	FileIOError					Errorcode = 6
-	LogicError					Errorcode = 7
-	MemoryError					Errorcode = 8
-)
-
+var RepairPossible							error = errors.New("Repair necessary and possible.")
+var RepairNotPossible						error = errors.New("Repair necessary but not possible.")
 var NoCommandSpecified						error = errors.New("no command specified")
 var NoParFileSpecified						error = errors.New("no PAR file specified")
 var NoDataFilesSpecified					error = errors.New("no data files specified")
