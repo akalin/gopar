@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -11,7 +12,6 @@ import (
 	"runtime/pprof"
 	"strings"
 
-	"github.com/akalin/gopar/errorcode"
 	"github.com/akalin/gopar/par1"
 	"github.com/akalin/gopar/par2"
 	"github.com/akalin/gopar/rsec16"
@@ -334,7 +334,7 @@ func main() {
 	globalFlagSet, globalFlags := getGlobalFlags(name)
 	err := globalFlagSet.Parse(os.Args[1:])
 	if err == nil && globalFlagSet.NArg() == 0 {
-		err = errorcode.NoCommandSpecified
+		err = errors.New("no command specified")
 	}
 	if err != nil || globalFlags.usage {
 		printUsageAndExit(name, allCommands, err)
@@ -374,9 +374,9 @@ func main() {
 		err := createFlagSet.Parse(args)
 		if err == nil {
 			if createFlagSet.NArg() == 0 {
-				err = errorcode.NoParFileSpecified
+				err = errors.New("no PAR file specified")
 			} else if createFlagSet.NArg() == 1 {
-				err = errorcode.NoDataFilesSpecified
+				err = errors.New("no data files specified")
 			}
 		}
 		if err != nil {
@@ -413,7 +413,7 @@ func main() {
 		verifyFlagSet, verifyFlags := getVerifyFlags(name)
 		err := verifyFlagSet.Parse(args)
 		if err == nil && verifyFlagSet.NArg() == 0 {
-			err = errorcode.NoParFileSpecified
+			err = errors.New("no PAR file specified")
 		}
 		if err != nil {
 			printUsageAndExit(name, verifyCommand, err)
@@ -438,14 +438,14 @@ func main() {
 
 		// Match return values to par2cmline
 		// https://github.com/brenthuisman/libpar2/blob/master/src/libpar2.h#L109
-		_, err = decoder.Verify(verifyFlags.checkParity)
-		if err == nil {
-			fmt.Printf("Verify result: File(s) OK!\n")
+		ok, err := decoder.Verify(verifyFlags.checkParity)
+		if ok && err == nil {
+			fmt.Printf("Verify result: File(s) OK and does not need repair.\n")
 			os.Exit(0)
-		} else if err == errorcode.RepairPossible {
+		} else if ok {
 			fmt.Printf("Verify result: Repair necessary and possible.\n")
 			os.Exit(1)
-		} else if err == errorcode.RepairNotPossible {
+		} else if err == err.(*rsec16.IrrepairableError) {
 			fmt.Printf("Verify result: Repair necessary but not possible.\n")
 			os.Exit(2)
 		} else {
@@ -459,7 +459,7 @@ func main() {
 		repairFlagSet, repairFlags := getRepairFlags(name)
 		err := repairFlagSet.Parse(args)
 		if err == nil && repairFlagSet.NArg() == 0 {
-			err = errorcode.NoParFileSpecified
+			err = errors.New("no PAR file specified")
 		}
 		if err != nil {
 			printUsageAndExit(name, repairCommand, err)

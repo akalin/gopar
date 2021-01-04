@@ -3,12 +3,11 @@ package par1
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"reflect"
 	"unicode/utf16"
 	"unicode/utf8"
-
-	"github.com/akalin/gopar/errorcode"
 )
 
 type fileEntryStatus uint64
@@ -108,10 +107,10 @@ func readFileEntry(buf *bytes.Buffer) (fileEntry, error) {
 
 	filenameByteCount := header.EntryBytes - sizeOfFileEntryHeader()
 	if filenameByteCount <= 0 || filenameByteCount%2 != 0 {
-		return fileEntry{}, errorcode.InvalidEntryByteCount
+		return fileEntry{}, errors.New("invalid entry byte count")
 	}
 	if filenameByteCount > uint64(buf.Len()) {
-		return fileEntry{}, errorcode.ByteCountMismatch
+		return fileEntry{}, errors.New("byte count mismatch")
 	}
 
 	filename := decodeUTF16LEString(buf.Next(int(filenameByteCount)))

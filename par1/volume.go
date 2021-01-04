@@ -3,9 +3,8 @@ package par1
 import (
 	"bytes"
 	"crypto/md5"
+	"errors"
 	"io/ioutil"
-
-	"github.com/akalin/gopar/errorcode"
 )
 
 // A volume contains information about the volume set, and a data
@@ -35,7 +34,7 @@ func readVolume(volumeBytes []byte) (volume, error) {
 
 	controlHash := md5.Sum(volumeBytes[controlHashOffset:])
 	if controlHash != header.ControlHash {
-		return volume{}, errorcode.InvalidControlHash
+		return volume{}, errors.New("invalid control hash")
 	}
 
 	// TODO: Check count of files saved in volume set, and other

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/akalin/gopar/errorcode"
 	"github.com/akalin/gopar/gf2p16"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +21,7 @@ func TestCoderCauchyNewCoderError(t *testing.T) {
 	// Ideally, we'd test that NewCoder(32768, 32767) succeeds,
 	// but doing so takes 15 seconds!
 	_, err := newCoderCauchy(32768, 32768)
-	require.Equal(t, errorcode.TooManyShards, err)
+	require.Equal(t, errors.New("too many shards"), err)
 }
 
 func TestGenerators(t *testing.T) {
@@ -41,10 +40,10 @@ func TestCoderPAR2VandermondeNewCoderError(t *testing.T) {
 	// but doing so would probably take even longer than 15
 	// seconds.
 	_, err := newCoderPAR2Vandermonde(32769, 65535)
-	require.Equal(t, errorcode.TooManyDataShards, err)
+	require.Equal(t, errors.New("too many data shards"), err)
 
 	_, err = newCoderPAR2Vandermonde(32768, 65536)
-	require.Equal(t, errorcode.TooManyParityShards, err)
+	require.Equal(t, errors.New("too many parity shards"), err)
 }
 
 func makeReconstructionMatrixNaive(dataShards int, availableRows, missingRows, usedParityRows []int, parityMatrix gf2p16.Matrix) (gf2p16.Matrix, error) {
@@ -240,7 +239,7 @@ func testCoderReconstructDataNotEnough(t *testing.T, newCoder func(int, int) (Co
 		nil,
 		nil,
 	}
-	expectedErr := errorcode.NotEnoughParityShards
+	expectedErr := errors.New("not enough parity shards")
 	err = c.ReconstructData(corruptedData, parity)
 	require.Equal(t, expectedErr, err)
 

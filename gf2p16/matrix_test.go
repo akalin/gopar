@@ -4,7 +4,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/akalin/gopar/errorcode"
 	"github.com/stretchr/testify/require"
 )
 
@@ -138,7 +137,7 @@ func TestMatrixInverseSingular(t *testing.T) {
 		5, 7, 5,
 	})
 	_, err := m.Inverse()
-	require.Equal(t, errorcode.SingularMatrix, err)
+	require.Equal(t, errors.New("singular matrix"), err)
 }
 
 func benchmarkMatrixInverse(b *testing.B, count int) {

@@ -1,10 +1,10 @@
 package rsec16
 
 import (
+	"errors"
 	"math"
 	"runtime"
 
-	"github.com/akalin/gopar/errorcode"
 	"github.com/akalin/gopar/gf2p16"
 	"github.com/klauspost/cpuid"
 )
@@ -55,7 +55,7 @@ func NewCoderCauchy(dataShards, parityShards, numGoroutines int) (Coder, error) 
 	}
 
 	if dataShards+parityShards > math.MaxUint16 {
-		return Coder{}, errorcode.TooManyShards
+		return Coder{}, errors.New("too many shards")
 	}
 
 	parityMatrix := newCauchyParityMatrix(dataShards, parityShards)
@@ -127,11 +127,11 @@ func NewCoderPAR2Vandermonde(dataShards, parityShards, numGoroutines int) (Coder
 	}
 
 	if dataShards > len(generators) {
-		return Coder{}, errorcode.TooManyDataShards
+		return Coder{}, errors.New("too many data shards")
 	}
 
 	if parityShards > (1<<16)-1 {
-		return Coder{}, errorcode.TooManyParityShards
+		return Coder{}, errors.New("too many parity shards")
 	}
 
 	parityMatrix := newVandermondeParityMatrix(dataShards, parityShards)
@@ -175,6 +175,12 @@ func makeReconstructionMatrix(dataShards int, availableRows, missingRows, usedPa
 	return m.RowReduceForInverse(n)
 }
 
+type IrrepairableError struct{}
+
+func (IrrepairableError) Error() string {
+	return "repair necessary but not possible"
+}
+
 // ReconstructData takes a list of data shards and parity shards, some
 // of which may be nil, and tries to reconstruct the missing data
 // shards. If successful, the nil rows of data are filled in and a nil
@@ -205,7 +211,8 @@ func (c Coder) ReconstructData(data, parity [][]byte) error {
 	}
 
 	if len(input) < c.dataShards {
-		return errorcode.NotEnoughParityShards
+		//not enough parity shards for repair
+		return IrrepairableError{}
 	}
 
 	reconstructionMatrix, err := makeReconstructionMatrix(c.dataShards, availableRows, missingRows, usedParityRows, c.parityMatrix)
@@ -252,9 +259,9 @@ func (c Coder) CanReconstructData(data, parity [][]byte) (bool, error) {
 	}
 
 	if len(input) < c.dataShards {
-		// return false, errorcode.NotEnoughParityShards
-		return false, errorcode.RepairNotPossible
+		//not enough parity shards for repair
+		return false, IrrepairableError{}
 	}
 
-	return true, errorcode.RepairPossible
+	return true, errors.New("repair necessary and possible")
 }

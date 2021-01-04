@@ -2,12 +2,12 @@ package par1
 
 import (
 	"crypto/md5"
+	"errors"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
 
-	"github.com/akalin/gopar/errorcode"
 	"github.com/klauspost/reedsolomon"
 )
 
@@ -53,7 +53,7 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexFile string) (*Dec
 
 		if indexVolume.header.VolumeNumber != 0 {
 			// TODO: Relax this check.
-			return volume{}, errorcode.ExpectedVolumeNumberIndex
+			return volume{}, errors.New("expected volume number 0 for index volume")
 		}
 		return indexVolume, nil
 	}()
@@ -109,9 +109,9 @@ func (d *Decoder) LoadFileData() error {
 			} else if err != nil {
 				return nil, false, err
 			} else if sixteenKHash(data) != entry.header.SixteenKHash {
-				return nil, true, errorcode.HashMismatch16k
+				return nil, true, errors.New("hash mismatch (16k)")
 			} else if md5.Sum(data) != entry.header.Hash {
-				return nil, true, errorcode.HashMismatch
+				return nil, true, errors.New("hash mismatch")
 			}
 			return data, false, nil
 		}()
@@ -133,7 +133,7 @@ func (d *Decoder) LoadFileData() error {
 	}
 
 	if len(fileData) == 0 {
-		return errorcode.NoFileDataFound
+		return errors.New("no file data found")
 	}
 
 	d.fileData = fileData
@@ -189,23 +189,23 @@ func (d *Decoder) LoadParityData() error {
 
 			if parityVolume.header.SetHash != d.indexVolume.header.SetHash {
 				// TODO: Relax this check.
-				return volume{}, byteCount, errorcode.UnexpectedSetHash
+				return volume{}, byteCount, errors.New("unexpected set hash for parity volume")
 			}
 
 			if parityVolume.header.VolumeNumber != uint64(i+1) {
 				// TODO: Relax this check.
-				return volume{}, byteCount, errorcode.ExpectedVolumeNumberIndex
+				return volume{}, byteCount, errors.New("unexpected volume number for parity volume")
 			}
 
 			if byteCount == 0 {
 				// TODO: Relax this check.
-				return volume{}, byteCount, errorcode.NoParityDataInVolume
+				return volume{}, byteCount, errors.New("no parity data in volume")
 			}
 			if shardByteCount == 0 {
 				shardByteCount = byteCount
 			} else if byteCount != shardByteCount {
 				// TODO: Relax this check.
-				return volume{}, byteCount, errorcode.MismatchedParityDataByteCounts
+				return volume{}, byteCount, errors.New("mismatched parity data byte counts")
 			}
 			return parityVolume, byteCount, nil
 		}()
@@ -304,7 +304,7 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 		}
 
 		if !ok {
-			return nil, errorcode.RepairFailed
+			return nil, errors.New("repair failed")
 		}
 	}
 
@@ -320,9 +320,9 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 		entry := d.indexVolume.entries[i]
 		data = shards[i][:entry.header.FileBytes]
 		if sixteenKHash(data) != entry.header.SixteenKHash {
-			return repairedFiles, errorcode.HashMismatch16kInReconstructedData
+			return repairedFiles, errors.New("hash mismatch (16k) in reconstructed data")
 		} else if md5.Sum(data) != entry.header.Hash {
-			return repairedFiles, errorcode.HashMismatchInReconstructedData
+			return repairedFiles, errors.New("hash mismatch in reconstructed data")
 		}
 
 		filename := d.indexVolume.entries[i].filename

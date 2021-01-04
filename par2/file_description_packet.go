@@ -4,9 +4,8 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/binary"
+	"errors"
 	"path"
-
-	"github.com/akalin/gopar/errorcode"
 )
 
 var fileDescriptionPacketType = packetType{'P', 'A', 'R', ' ', '2', '.', '0', '\x00', 'F', 'i', 'l', 'e', 'D', 'e', 's', 'c'}
@@ -38,11 +37,11 @@ func computeFileID(sixteenKHash [md5.Size]byte, byteCount uint64, filenameBytes 
 func checkFilename(filename string) error {
 	if path.IsAbs(filename) {
 		// TODO: Allow this via an option.
-		return errorcode.AbsPathNotAllowed
+		return errors.New("absolute paths not allowed")
 	}
 	filename = path.Clean(filename)
 	if filename[0] == '.' {
-		return errorcode.OutsideCurDirNotAllowed
+		return errors.New("traversing outside of the current directory is not allowed")
 	}
 	return nil
 }
@@ -59,7 +58,7 @@ func readFileDescriptionPacket(body []byte) (fileID, fileDescriptionPacket, erro
 	filenameBytes := buf.Bytes()
 	computedFileID := computeFileID(h.SixteenKHash, h.Length, nullTerminate(filenameBytes))
 	if computedFileID != h.FileID {
-		return fileID{}, fileDescriptionPacket{}, errorcode.FileIDMismatch
+		return fileID{}, fileDescriptionPacket{}, errors.New("file ID mismatch")
 	}
 
 	if h.Length == 0 {
@@ -68,7 +67,7 @@ func readFileDescriptionPacket(body []byte) (fileID, fileDescriptionPacket, erro
 		//
 		// TODO: Figure out if other programs create empty
 		// files.
-		return fileID{}, fileDescriptionPacket{}, errorcode.EmptyFilesNotAllowed
+		return fileID{}, fileDescriptionPacket{}, errors.New("empty files not allowed")
 	}
 
 	filename := decodeNullPaddedASCIIString(filenameBytes)
@@ -83,7 +82,7 @@ func readFileDescriptionPacket(body []byte) (fileID, fileDescriptionPacket, erro
 	// could work on 32-bit systems.
 	maxInt := int(^uint(0) >> 1)
 	if h.Length > uint64(maxInt) {
-		return fileID{}, fileDescriptionPacket{}, errorcode.FileLengthTooBig
+		return fileID{}, fileDescriptionPacket{}, errors.New("file length too big")
 	}
 
 	byteCount := int(h.Length)
@@ -92,7 +91,7 @@ func readFileDescriptionPacket(body []byte) (fileID, fileDescriptionPacket, erro
 
 func writeFileDescriptionPacket(fileID fileID, packet fileDescriptionPacket) ([]byte, error) {
 	if packet.byteCount <= 0 {
-		return nil, errorcode.InvalidByteCount
+		return nil, errors.New("invalid byte count")
 	}
 
 	err := checkFilename(packet.filename)
@@ -108,7 +107,7 @@ func writeFileDescriptionPacket(fileID fileID, packet fileDescriptionPacket) ([]
 	byteCount := uint64(packet.byteCount)
 	computedFileID := computeFileID(packet.sixteenKHash, byteCount, filenameBytes)
 	if computedFileID != fileID {
-		return nil, errorcode.FileIDMismatch
+		return nil, errors.New("file ID mismatch")
 	}
 
 	buf := bytes.NewBuffer(nil)
