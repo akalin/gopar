@@ -445,7 +445,7 @@ func main() {
 		} else if ok {
 			fmt.Printf("Verify result: Repair necessary and possible.\n")
 			os.Exit(1)
-		} else if err == err.(*rsec16.IrrepairableError) {
+		} else if err == err.(rsec16.IrrepairableError) {
 			fmt.Printf("Verify result: Repair necessary but not possible.\n")
 			os.Exit(2)
 		} else {
