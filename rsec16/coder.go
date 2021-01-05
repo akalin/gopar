@@ -175,16 +175,24 @@ func makeReconstructionMatrix(dataShards int, availableRows, missingRows, usedPa
 	return m.RowReduceForInverse(n)
 }
 
-type IrrepairableError struct{}
+type NotEnoughParityShardsError struct{}
 
-func (IrrepairableError) Error() string {
-	return "repair necessary but not possible"
+func (NotEnoughParityShardsError) Error() string {
+	return "not enough parity shards"
+}
+
+type RepairableError struct{}
+
+func (RepairableError) Error() string {
+	return "repair necessary and possible."
 }
 
 // ReconstructData takes a list of data shards and parity shards, some
 // of which may be nil, and tries to reconstruct the missing data
 // shards. If successful, the nil rows of data are filled in and a nil
-// error is returned. Otherwise, an error is returned.
+// error is returned. Otherwise, an error is returned. In particular, if
+// there are missing data shards but there aren't enough parity shards to
+// reconstruct them, NotEnoughParityShardsError is returned.
 func (c Coder) ReconstructData(data, parity [][]byte) error {
 	var availableRows, missingRows []int
 	var input [][]byte
@@ -211,8 +219,7 @@ func (c Coder) ReconstructData(data, parity [][]byte) error {
 	}
 
 	if len(input) < c.dataShards {
-		//not enough parity shards for repair
-		return IrrepairableError{}
+		return NotEnoughParityShardsError{}
 	}
 
 	reconstructionMatrix, err := makeReconstructionMatrix(c.dataShards, availableRows, missingRows, usedParityRows, c.parityMatrix)
@@ -233,7 +240,7 @@ func (c Coder) ReconstructData(data, parity [][]byte) error {
 
 // CanReconstructData tests wether or not enough information is present
 // to repair or not. err == nil means file is not corrupt
-func (c Coder) CanReconstructData(data, parity [][]byte) (bool, error) {
+func (c Coder) CanReconstructData(data, parity [][]byte) error {
 	var availableRows, missingRows []int
 	var input [][]byte
 	for i, dataShard := range data {
@@ -247,7 +254,7 @@ func (c Coder) CanReconstructData(data, parity [][]byte) (bool, error) {
 
 	if len(missingRows) == 0 {
 		// Nothing to reconstruct because file not corrupt.
-		return true, nil
+		return nil
 	}
 
 	var usedParityRows []int
@@ -259,9 +266,8 @@ func (c Coder) CanReconstructData(data, parity [][]byte) (bool, error) {
 	}
 
 	if len(input) < c.dataShards {
-		//not enough parity shards for repair
-		return false, IrrepairableError{}
+		return NotEnoughParityShardsError{}
 	}
 
-	return true, errors.New("repair necessary and possible")
+	return RepairableError{}
 }

@@ -442,10 +442,10 @@ func main() {
 		if ok && err == nil {
 			fmt.Printf("Verify result: File(s) OK and does not need repair.\n")
 			os.Exit(0)
-		} else if ok {
+		} else if err == err.(rsec16.RepairableError) {
 			fmt.Printf("Verify result: Repair necessary and possible.\n")
 			os.Exit(1)
-		} else if err == err.(rsec16.IrrepairableError) {
+		} else if err == err.(rsec16.NotEnoughParityShardsError) {
 			fmt.Printf("Verify result: Repair necessary but not possible.\n")
 			os.Exit(2)
 		} else {

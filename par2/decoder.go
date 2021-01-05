@@ -534,30 +534,13 @@ func (d *Decoder) Verify(checkParity bool) (bool, error) {
 		return false, err
 	}
 
-	ok, err := coder.CanReconstructData(dataShards, d.parityShards)
-
-	// for _, info := range d.fileIntegrityInfos {
-	// 	if !info.ok(d.sliceByteCount) {
-	// 		return false, nil //what error is this?
-	// 	}
-	// }
-
-	// for _, shard := range d.parityShards {
-	// 	if shard == nil {
-	// 		return false, nil //what error is this?
-	// 	}
-	// }
-
-	// if !checkParity {
-	// 	return 0, true, nil
-	// }
-
-	// computedParityShards := coder.GenerateParity(dataShards)
-	// eq := reflect.DeepEqual(computedParityShards, d.parityShards)
-	// if eq {
-	// 	return errorcode.Success, nil
-	// }
-	return ok, err
+	err := coder.CanReconstructData(dataShards, d.parityShards)
+	if err == nil {
+		return true, nil
+	}
+	else {
+		return false, err
+	}
 }
 
 // Repair tries to repair any missing or corrupted data, using the
