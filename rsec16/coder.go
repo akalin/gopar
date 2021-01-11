@@ -175,25 +175,19 @@ func makeReconstructionMatrix(dataShards int, availableRows, missingRows, usedPa
 	return m.RowReduceForInverse(n)
 }
 
+// NotEnoughParityShardsError is returned by ReconstructData or
+// CanReconstructData if there isn't enough parity shards to
+// reconstruct some missing data.
 type NotEnoughParityShardsError struct{}
 
 func (NotEnoughParityShardsError) Error() string {
 	return "not enough parity shards"
 }
 
-type RepairableError struct{}
-
-func (RepairableError) Error() string {
-	return "repair necessary and possible."
-}
-
-// ReconstructData takes a list of data shards and parity shards, some
-// of which may be nil, and tries to reconstruct the missing data
-// shards. If successful, the nil rows of data are filled in and a nil
-// error is returned. Otherwise, an error is returned. In particular, if
-// there are missing data shards but there aren't enough parity shards to
-// reconstruct them, NotEnoughParityShardsError is returned.
-func (c Coder) ReconstructData(data, parity [][]byte) error {
+// reconstructDataHelper implements the logic of both ReconstructData
+// and CanReconstructData.
+func (c Coder) reconstructDataHelper(
+	data, parity [][]byte, doReconstruct bool) error {
 	var availableRows, missingRows []int
 	var input [][]byte
 	for i, dataShard := range data {
@@ -222,11 +216,14 @@ func (c Coder) ReconstructData(data, parity [][]byte) error {
 		return NotEnoughParityShardsError{}
 	}
 
+	if !doReconstruct {
+		return nil
+	}
+
 	reconstructionMatrix, err := makeReconstructionMatrix(c.dataShards, availableRows, missingRows, usedParityRows, c.parityMatrix)
 	if err != nil {
 		return err
 	}
-
 	reconstructedData := make([][]byte, len(missingRows))
 	for i := range reconstructedData {
 		reconstructedData[i] = make([]byte, len(input[0]))
@@ -238,36 +235,24 @@ func (c Coder) ReconstructData(data, parity [][]byte) error {
 	return nil
 }
 
-// CanReconstructData tests wether or not enough information is present
-// to repair or not. err == nil means file is not corrupt
+// ReconstructData takes a list of data shards and parity shards, some
+// of which may be nil, and tries to reconstruct the missing data
+// shards. If successful, the nil rows of data are filled in and a nil
+// error is returned. Otherwise, an error is returned. In particular,
+// if there are missing data shards but there aren't enough parity
+// shards to reconstruct them, NotEnoughParityShardsError is returned.
+func (c Coder) ReconstructData(data, parity [][]byte) error {
+	doReconstruct := true
+	return c.reconstructDataHelper(data, parity, doReconstruct)
+}
+
+// CanReconstructData takes a list of data shards and parity shards,
+// some of which may be nil, and returns nil if either there's no
+// missing data or if the missing data can be reconstructed.
+// Otherwise, an error is returned. In particular, if there are
+// missing data shards but there aren't enough parity shards to
+// reconstruct them, NotEnoughParityShardsError is returned.
 func (c Coder) CanReconstructData(data, parity [][]byte) error {
-	var availableRows, missingRows []int
-	var input [][]byte
-	for i, dataShard := range data {
-		if dataShard != nil {
-			availableRows = append(availableRows, i)
-			input = append(input, dataShard)
-		} else {
-			missingRows = append(missingRows, i)
-		}
-	}
-
-	if len(missingRows) == 0 {
-		// Nothing to reconstruct because file not corrupt.
-		return nil
-	}
-
-	var usedParityRows []int
-	for i := 0; i < len(parity) && len(input) < c.dataShards; i++ {
-		if parity[i] != nil {
-			usedParityRows = append(usedParityRows, i)
-			input = append(input, parity[i])
-		}
-	}
-
-	if len(input) < c.dataShards {
-		return NotEnoughParityShardsError{}
-	}
-
-	return RepairableError{}
+	doReconstruct := false
+	return c.reconstructDataHelper(data, parity, doReconstruct)
 }

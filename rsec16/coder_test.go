@@ -239,7 +239,7 @@ func testCoderReconstructDataNotEnough(t *testing.T, newCoder func(int, int) (Co
 		nil,
 		nil,
 	}
-	expectedErr := err.(rsec16.NotEnoughParityShardsError)
+	expectedErr := NotEnoughParityShardsError{}
 	err = c.ReconstructData(corruptedData, parity)
 	require.Equal(t, expectedErr, err)
 
