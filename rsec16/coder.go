@@ -224,6 +224,7 @@ func (c Coder) reconstructDataHelper(
 	if err != nil {
 		return err
 	}
+
 	reconstructedData := make([][]byte, len(missingRows))
 	for i := range reconstructedData {
 		reconstructedData[i] = make([]byte, len(input[0]))
