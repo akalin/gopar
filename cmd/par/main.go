@@ -440,18 +440,18 @@ func main() {
 		if err != nil {
 			switch err.(type) {
 			case rsec16.NotEnoughParityShardsError:
-				fmt.Printf("Verify result: Repair necessary but not possible.\n")
+				fmt.Printf("Repair necessary but not possible.\n")
 				os.Exit(2)
 			default:
-				fmt.Printf("Verify result: Internal Error.\n")
+				fmt.Printf("Error encountered while verifying: %s\n", err)
 				os.Exit(7)
 			}
 		}
 		if needsRepair {
-			fmt.Printf("Verify result: Repair necessary and possible.\n")
+			fmt.Printf("Repair necessary and possible.\n")
 			os.Exit(1)
 		}
-		fmt.Printf("Verify result: File(s) OK and does not need repair.\n")
+		fmt.Printf("Given files do not need repair.\n")
 		os.Exit(0)
 
 	case "r":
