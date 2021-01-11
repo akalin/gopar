@@ -434,22 +434,25 @@ func main() {
 			panic(err)
 		}
 
+		needsRepair, err := decoder.Verify()
 		// Match return values to par2cmdline
 		// https://github.com/brenthuisman/libpar2/blob/master/src/libpar2.h#L109
-		ok, err := decoder.Verify()
-		if ok && err == nil {
-			fmt.Printf("Verify result: File(s) OK and does not need repair.\n")
-			os.Exit(0)
-			/*		} else if err == err.(rsec16.RepairableError) {
-					fmt.Printf("Verify result: Repair necessary and possible.\n")
-					os.Exit(1) */
-		} else if err == err.(rsec16.NotEnoughParityShardsError) {
-			fmt.Printf("Verify result: Repair necessary but not possible.\n")
-			os.Exit(2)
-		} else {
-			fmt.Printf("Verify result: Internal Error.\n")
-			os.Exit(7)
+		if err != nil {
+			switch err.(type) {
+			case rsec16.NotEnoughParityShardsError:
+				fmt.Printf("Verify result: Repair necessary but not possible.\n")
+				os.Exit(2)
+			default:
+				fmt.Printf("Verify result: Internal Error.\n")
+				os.Exit(7)
+			}
 		}
+		if needsRepair {
+			fmt.Printf("Verify result: Repair necessary and possible.\n")
+			os.Exit(1)
+		}
+		fmt.Printf("Verify result: File(s) OK and does not need repair.\n")
+		os.Exit(0)
 
 	case "r":
 		fallthrough
