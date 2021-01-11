@@ -113,7 +113,7 @@ func TestWriteParity(t *testing.T) {
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
 
-	ok, err := decoder.Verify(true)
+	needsRepair, err := decoder.Verify()
 	require.NoError(t, err)
-	require.True(t, ok)
+	require.False(t, needsRepair)
 }

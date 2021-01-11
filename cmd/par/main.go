@@ -221,8 +221,6 @@ func getVerifyFlags(name string) (*flag.FlagSet, *verifyFlags) {
 	flagSet := newFlagSet(name + " verify")
 
 	var flags verifyFlags
-	flagSet.BoolVar(&flags.checkParity, "checkparity", false, "also check parity files")
-
 	return flagSet, &flags
 }
 
@@ -306,7 +304,7 @@ type encoder interface {
 type decoder interface {
 	LoadFileData() error
 	LoadParityData() error
-	Verify(checkParity bool) (bool, error)
+	Verify() (needsRepair bool, err error)
 	Repair(checkParity bool) ([]string, error)
 }
 
@@ -410,7 +408,7 @@ func main() {
 	case "v":
 		fallthrough
 	case "verify":
-		verifyFlagSet, verifyFlags := getVerifyFlags(name)
+		verifyFlagSet, _ := getVerifyFlags(name)
 		err := verifyFlagSet.Parse(args)
 		if err == nil && verifyFlagSet.NArg() == 0 {
 			err = errors.New("no PAR file specified")
@@ -436,15 +434,15 @@ func main() {
 			panic(err)
 		}
 
-		// Match return values to par2cmline
+		// Match return values to par2cmdline
 		// https://github.com/brenthuisman/libpar2/blob/master/src/libpar2.h#L109
-		ok, err := decoder.Verify(verifyFlags.checkParity)
+		ok, err := decoder.Verify()
 		if ok && err == nil {
 			fmt.Printf("Verify result: File(s) OK and does not need repair.\n")
 			os.Exit(0)
-		} else if err == err.(rsec16.RepairableError) {
-			fmt.Printf("Verify result: Repair necessary and possible.\n")
-			os.Exit(1)
+			/*		} else if err == err.(rsec16.RepairableError) {
+					fmt.Printf("Verify result: Repair necessary and possible.\n")
+					os.Exit(1) */
 		} else if err == err.(rsec16.NotEnoughParityShardsError) {
 			fmt.Printf("Verify result: Repair necessary but not possible.\n")
 			os.Exit(2)
