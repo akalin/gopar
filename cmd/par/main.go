@@ -357,7 +357,7 @@ func processVerifyOrRepairError(needsRepair bool, err error) {
 		fmt.Fprintf(os.Stderr, "Repair necessary and possible.\n")
 		os.Exit(eRepairPossible)
 	}
-	os.Exit(0)
+	os.Exit(eSuccess)
 }
 
 func main() {
