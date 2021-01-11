@@ -249,9 +249,9 @@ func (d *Decoder) newReedSolomon() (reedsolomon.Encoder, error) {
 	return reedsolomon.New(len(d.fileData), len(d.parityData), reedsolomon.WithPAR1Matrix())
 }
 
-// Verify checks that all file (and maybe parity) data are consistent
-// with each other, and returns the result. If any files (or maybe
-// parity volumes) are missing, Verify returns false.
+// Verify checks whether repair is needed. It returns a bool for
+// needsRepair and an error; if error is non-nil, needsRepair may
+// or may not be filled in.
 func (d *Decoder) Verify() (needsRepair bool, err error) {
 	shards := d.buildShards()
 
