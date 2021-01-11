@@ -327,18 +327,16 @@ func newDecoder(parFile string, numGoroutines int) (decoder, error) {
 }
 
 // Taken from https://github.com/brenthuisman/libpar2/blob/master/src/libpar2.h#L109 .
-type par2cmdlineResult int
-
 const (
-	eSuccess                     par2cmdlineResult = 0
-	eRepairPossible                                = 1
-	eRepairNotPossible                             = 2
-	eInvalidCommandLineArguments                   = 3
-	eInsufficientCriticalData                      = 4
-	eRepairFailed                                  = 5
-	eFileIOError                                   = 6
-	eLogicError                                    = 7
-	eMemoryError                                   = 8
+	eSuccess                     = 0
+	eRepairPossible              = 1
+	eRepairNotPossible           = 2
+	eInvalidCommandLineArguments = 3
+	eInsufficientCriticalData    = 4
+	eRepairFailed                = 5
+	eFileIOError                 = 6
+	eLogicError                  = 7
+	eMemoryError                 = 8
 )
 
 func processVerifyOrRepairError(needsRepair bool, err error) {
