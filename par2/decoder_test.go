@@ -210,40 +210,40 @@ func TestVerify(t *testing.T) {
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
 
-	ok, err := decoder.Verify(true)
+	needsRepair, err := decoder.Verify()
 	require.NoError(t, err)
-	require.True(t, ok)
+	require.False(t, needsRepair)
 
 	fileData5 := io.fileData["file.r04"]
 	fileData5[len(fileData5)-1]++
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
-	ok, err = decoder.Verify(true)
+	needsRepair, err = decoder.Verify()
 	require.NoError(t, err)
-	require.False(t, ok)
+	require.True(t, needsRepair)
 
 	fileData5[len(fileData5)-1]--
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
-	ok, err = decoder.Verify(true)
+	needsRepair, err = decoder.Verify()
 	require.NoError(t, err)
-	require.True(t, ok)
+	require.False(t, needsRepair)
 
 	vol2Data := io.fileData["file.vol02+01.par2"]
 	delete(io.fileData, "file.vol02+01.par2")
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
-	ok, err = decoder.Verify(true)
+	needsRepair, err = decoder.Verify()
 	require.NoError(t, err)
-	require.True(t, ok)
+	require.False(t, needsRepair)
 
 	io.fileData["file.vol02+01.par2"] = vol2Data
 	delete(io.fileData, "file.vol01+01.par2")
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
-	ok, err = decoder.Verify(true)
+	needsRepair, err = decoder.Verify()
 	require.NoError(t, err)
-	require.False(t, ok)
+	require.False(t, needsRepair)
 }
 
 func TestSetIDMismatch(t *testing.T) {
@@ -279,9 +279,9 @@ func TestSetIDMismatch(t *testing.T) {
 	require.NoError(t, err)
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
-	ok, err := decoder.Verify(true)
+	needsRepair, err := decoder.Verify()
 	require.NoError(t, err)
-	require.False(t, ok)
+	require.False(t, needsRepair)
 }
 
 func TestRepair(t *testing.T) {

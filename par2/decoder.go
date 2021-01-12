@@ -503,6 +503,14 @@ func (d *Decoder) LoadParityData() error {
 }
 
 func (d *Decoder) newCoderAndShards() (rsec16.Coder, [][]byte, error) {
+	if len(d.fileIntegrityInfos) == 0 {
+		return rsec16.Coder{}, nil, errors.New("no file integrity info")
+	}
+
+	if len(d.parityShards) == 0 {
+		return rsec16.Coder{}, nil, errors.New("no parity shards")
+	}
+
 	var dataShards [][]byte
 	for _, info := range d.fileIntegrityInfos {
 		for _, shardInfo := range info.shardInfos {
@@ -517,42 +525,29 @@ func (d *Decoder) newCoderAndShards() (rsec16.Coder, [][]byte, error) {
 	return coder, dataShards, err
 }
 
-// Verify checks that all file (and maybe parity) data are consistent
-// with each other, and returns the result. If any data (or maybe
-// parity) files are missing, Verify returns false.
-func (d *Decoder) Verify(checkParity bool) (bool, error) {
-	if len(d.fileIntegrityInfos) == 0 {
-		return false, errors.New("no file integrity info")
-	}
-
-	if len(d.parityShards) == 0 {
-		return false, errors.New("no parity data")
-	}
-
-	for _, info := range d.fileIntegrityInfos {
-		if !info.ok(d.sliceByteCount) {
-			return false, nil
-		}
-	}
-
-	for _, shard := range d.parityShards {
-		if shard == nil {
-			return false, nil
-		}
-	}
-
-	if !checkParity {
-		return true, nil
-	}
-
+// Verify checks whether repair is needed. It returns a bool for
+// needsRepair and an error; if error is non-nil, needsRepair may
+// or may not be filled in.
+func (d *Decoder) Verify() (needsRepair bool, err error) {
 	coder, dataShards, err := d.newCoderAndShards()
 	if err != nil {
 		return false, err
 	}
 
-	computedParityShards := coder.GenerateParity(dataShards)
-	eq := reflect.DeepEqual(computedParityShards, d.parityShards)
-	return eq, nil
+	needsRepair = false
+	for _, dataShard := range dataShards {
+		if dataShard == nil {
+			needsRepair = true
+			break
+		}
+	}
+
+	err = coder.CanReconstructData(dataShards, d.parityShards)
+	if err != nil {
+		return false, err
+	}
+
+	return needsRepair, nil
 }
 
 // Repair tries to repair any missing or corrupted data, using the
@@ -561,14 +556,6 @@ func (d *Decoder) Verify(checkParity bool) (bool, error) {
 // checkParity is true, extra checking is done of the reconstructed
 // parity data.
 func (d *Decoder) Repair(checkParity bool) ([]string, error) {
-	if len(d.fileIntegrityInfos) == 0 {
-		return nil, errors.New("no file integrity info")
-	}
-
-	if len(d.parityShards) == 0 {
-		return nil, errors.New("no parity shards")
-	}
-
 	coder, dataShards, err := d.newCoderAndShards()
 	if err != nil {
 		return nil, err

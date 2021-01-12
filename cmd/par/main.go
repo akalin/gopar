@@ -221,8 +221,6 @@ func getVerifyFlags(name string) (*flag.FlagSet, *verifyFlags) {
 	flagSet := newFlagSet(name + " verify")
 
 	var flags verifyFlags
-	flagSet.BoolVar(&flags.checkParity, "checkparity", false, "also check parity files")
-
 	return flagSet, &flags
 }
 
@@ -306,7 +304,7 @@ type encoder interface {
 type decoder interface {
 	LoadFileData() error
 	LoadParityData() error
-	Verify(checkParity bool) (bool, error)
+	Verify() (needsRepair bool, err error)
 	Repair(checkParity bool) ([]string, error)
 }
 
@@ -326,6 +324,38 @@ func newDecoder(parFile string, numGoroutines int) (decoder, error) {
 		return par2.NewDecoder(par2LogDecoderDelegate{}, parFile, numGoroutines)
 	}
 	return par1.NewDecoder(par1LogDecoderDelegate{}, parFile)
+}
+
+// Taken from https://github.com/brenthuisman/libpar2/blob/master/src/libpar2.h#L109 .
+const (
+	eSuccess                     = 0
+	eRepairPossible              = 1
+	eRepairNotPossible           = 2
+	eInvalidCommandLineArguments = 3
+	eInsufficientCriticalData    = 4
+	eRepairFailed                = 5
+	eFileIOError                 = 6
+	eLogicError                  = 7
+	eMemoryError                 = 8
+)
+
+func processVerifyOrRepairError(needsRepair bool, err error) {
+	// Match exit codes to par2cmdline.
+	if err != nil {
+		switch err.(type) {
+		case rsec16.NotEnoughParityShardsError:
+			fmt.Fprintf(os.Stderr, "Repair necessary but not possible.\n")
+			os.Exit(eRepairNotPossible)
+		default:
+			fmt.Fprintf(os.Stderr, "Error encountered: %s\n", err)
+			os.Exit(eLogicError)
+		}
+	}
+	if needsRepair {
+		fmt.Fprintf(os.Stderr, "Repair necessary and possible.\n")
+		os.Exit(eRepairPossible)
+	}
+	os.Exit(eSuccess)
 }
 
 func main() {
@@ -410,7 +440,7 @@ func main() {
 	case "v":
 		fallthrough
 	case "verify":
-		verifyFlagSet, verifyFlags := getVerifyFlags(name)
+		verifyFlagSet, _ := getVerifyFlags(name)
 		err := verifyFlagSet.Parse(args)
 		if err == nil && verifyFlagSet.NArg() == 0 {
 			err = errors.New("no PAR file specified")
@@ -436,15 +466,8 @@ func main() {
 			panic(err)
 		}
 
-		ok, err := decoder.Verify(verifyFlags.checkParity)
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Printf("Verify result: %t\n", ok)
-		if !ok {
-			os.Exit(-1)
-		}
+		needsRepair, err := decoder.Verify()
+		processVerifyOrRepairError(needsRepair, err)
 
 	case "r":
 		fallthrough
@@ -476,15 +499,9 @@ func main() {
 		}
 
 		repairedFiles, err := decoder.Repair(repairFlags.checkParity)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Repair error: %s\n", err)
-			os.Exit(-1)
-		}
-
 		fmt.Printf("Repaired files: %v\n", repairedFiles)
-		if err != nil {
-			os.Exit(-1)
-		}
+		needsRepair := false
+		processVerifyOrRepairError(needsRepair, err)
 
 	default:
 		err := fmt.Errorf("unknown command '%s'", cmd)

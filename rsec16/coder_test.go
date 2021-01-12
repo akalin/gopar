@@ -189,12 +189,17 @@ func testCoderReconstructData(t *testing.T, newCoder func(int, int) (Coder, erro
 		data[3],
 		nil,
 	}
-	err = c.ReconstructData(corruptedData, parity)
+	dataToReconstruct := corruptedData[:]
+	err = c.CanReconstructData(dataToReconstruct, parity)
 	require.NoError(t, err)
-	require.Equal(t, data, corruptedData)
+	require.Equal(t, corruptedData, dataToReconstruct)
+
+	err = c.ReconstructData(dataToReconstruct, parity)
+	require.NoError(t, err)
+	require.Equal(t, data, dataToReconstruct)
 }
 
-func TestCoderReconstructDataNotEnough(t *testing.T) {
+func TestCoderReconstructData(t *testing.T) {
 	testCoder(t, testCoderReconstructData)
 }
 
@@ -217,9 +222,14 @@ func testCoderReconstructDataMissingParity(t *testing.T, newCoder func(int, int)
 		parity[2],
 	}
 
-	err = c.ReconstructData(corruptedData, corruptedParity)
+	dataToReconstruct := corruptedData[:]
+	err = c.CanReconstructData(dataToReconstruct, corruptedParity)
 	require.NoError(t, err)
-	require.Equal(t, data, corruptedData)
+	require.Equal(t, corruptedData, dataToReconstruct)
+
+	err = c.ReconstructData(dataToReconstruct, corruptedParity)
+	require.NoError(t, err)
+	require.Equal(t, data, dataToReconstruct)
 }
 
 func TestCoderReconstructDataMissingParity(t *testing.T) {
@@ -239,7 +249,9 @@ func testCoderReconstructDataNotEnough(t *testing.T, newCoder func(int, int) (Co
 		nil,
 		nil,
 	}
-	expectedErr := errors.New("not enough parity shards")
+	expectedErr := NotEnoughParityShardsError{}
+	err = c.CanReconstructData(corruptedData, parity)
+	require.Equal(t, expectedErr, err)
 	err = c.ReconstructData(corruptedData, parity)
 	require.Equal(t, expectedErr, err)
 
@@ -255,11 +267,13 @@ func testCoderReconstructDataNotEnough(t *testing.T, newCoder func(int, int) (Co
 		parity[1],
 		parity[2],
 	}
+	err = c.CanReconstructData(corruptedData, corruptedParity)
+	require.Equal(t, expectedErr, err)
 	err = c.ReconstructData(corruptedData, corruptedParity)
 	require.Equal(t, expectedErr, err)
 }
 
-func TestCoderReconstructData(t *testing.T) {
+func TestCoderReconstructDataNotEnough(t *testing.T) {
 	testCoder(t, testCoderReconstructDataNotEnough)
 }
 

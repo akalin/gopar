@@ -160,40 +160,40 @@ func TestVerify(t *testing.T) {
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
 
-	ok, err := decoder.Verify(true)
+	needsRepair, err := decoder.Verify()
 	require.NoError(t, err)
-	require.True(t, ok)
+	require.False(t, needsRepair)
 
 	fileData5 := io.fileData["file.r04"]
 	fileData5[len(fileData5)-1]++
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
-	ok, err = decoder.Verify(true)
-	require.NoError(t, err)
-	require.False(t, ok)
+	needsRepair, err = decoder.Verify()
+	expectedErr := errors.New("shard sizes do not match")
+	require.Equal(t, expectedErr, err)
 
 	fileData5[len(fileData5)-1]--
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
-	ok, err = decoder.Verify(true)
+	needsRepair, err = decoder.Verify()
 	require.NoError(t, err)
-	require.True(t, ok)
+	require.False(t, needsRepair)
 
 	p03Data := io.fileData["file.p03"]
 	delete(io.fileData, "file.p03")
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
-	ok, err = decoder.Verify(true)
+	needsRepair, err = decoder.Verify()
 	require.NoError(t, err)
-	require.True(t, ok)
+	require.False(t, needsRepair)
 
 	io.fileData["file.p03"] = p03Data
 	delete(io.fileData, "file.p02")
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
-	ok, err = decoder.Verify(true)
-	require.NoError(t, err)
-	require.False(t, ok)
+	needsRepair, err = decoder.Verify()
+	expectedErr = errors.New("shard sizes do not match")
+	require.Equal(t, expectedErr, err)
 }
 
 func TestSetHashMismatch(t *testing.T) {
