@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"hash/crc32"
 	"io/ioutil"
 	"os"
@@ -130,10 +131,39 @@ func (info shardIntegrityInfo) ok(location shardLocation) bool {
 	return len(info.data) != 0 && info.locations[location]
 }
 
+type HashInfo struct {
+	expectedSixteenKHash [md5.Size]byte
+	expectedHash         [md5.Size]byte
+	actualSixteenKHash   [md5.Size]byte
+	actualHash           [md5.Size]byte
+}
+
+func (info HashInfo) ok() bool {
+	return info.expectedSixteenKHash == info.actualSixteenKHash && info.expectedHash == info.actualHash
+}
+
+func (info HashInfo) ToError() error {
+	if info.expectedSixteenKHash == info.actualSixteenKHash {
+		if info.expectedHash == info.actualHash {
+			return nil
+		}
+		return fmt.Errorf("16k hash matches (%x) but expected hash (%x) doesn't match actual hash (%x)",
+			info.expectedSixteenKHash, info.expectedHash, info.actualHash)
+	}
+
+	if info.expectedHash == info.actualHash {
+		return fmt.Errorf("hash matches (%x) but expected 16k hash (%x) doesn't match actual 16k hash (%x)",
+			info.expectedHash, info.expectedSixteenKHash, info.actualSixteenKHash)
+	}
+
+	return fmt.Errorf("expected 16k hash (%x) doesn't match actual 16k hash (%x), and expected hash (%x) doesn't match actual hash (%x)",
+		info.expectedSixteenKHash, info.actualSixteenKHash, info.expectedHash, info.actualHash)
+}
+
 type fileIntegrityInfo struct {
 	fileID            fileID
 	missing           bool
-	hashMismatch      bool
+	hashInfo          HashInfo
 	hasWrongByteCount bool
 	shardInfos        []shardIntegrityInfo
 }
@@ -150,7 +180,7 @@ func (info fileIntegrityInfo) allShardsOK(sliceByteCount int) bool {
 }
 
 func (info fileIntegrityInfo) ok(sliceByteCount int) bool {
-	return !info.missing && !info.hashMismatch && !info.hasWrongByteCount && info.allShardsOK(sliceByteCount)
+	return !info.missing && info.hashInfo.ok() && !info.hasWrongByteCount && info.allShardsOK(sliceByteCount)
 }
 
 // A Decoder keeps track of all information needed to check the
@@ -192,7 +222,7 @@ type DecoderDelegate interface {
 	OnDataFileLoad(i, n int, path string, byteCount, hits, misses int, err error)
 	OnParityFileLoad(i int, path string, err error)
 	OnDetectCorruptDataChunk(fileID [16]byte, path string, startByteOffset, endByteOffset int)
-	OnDetectDataFileHashMismatch(fileID [16]byte, path string)
+	OnDetectDataFileHashMismatch(fileID [16]byte, path string, hashInfo HashInfo)
 	OnDetectDataFileWrongByteCount(fileID [16]byte, path string)
 	OnDataFileWrite(i, n int, path string, byteCount int, err error)
 }
@@ -237,7 +267,8 @@ func (DoNothingDecoderDelegate) OnDetectCorruptDataChunk(fileID [16]byte, path s
 }
 
 // OnDetectDataFileHashMismatch implements the DecoderDelegate interface.
-func (DoNothingDecoderDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, path string) {}
+func (DoNothingDecoderDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, path string, hashInfo HashInfo) {
+}
 
 // OnDetectDataFileWrongByteCount implements the DecoderDelegate interface.
 func (DoNothingDecoderDelegate) OnDetectDataFileWrongByteCount(fileID [16]byte, path string) {}
@@ -370,10 +401,15 @@ func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocatio
 
 	hits, misses := fillShardInfos(d.sliceByteCount, data, checksumToLocation, info.fileID, fileIntegrityInfos, fileIDIndices)
 
-	hashMismatch := sixteenKHash(data) != info.sixteenKHash || md5.Sum(data) != info.hash
-	fileIntegrityInfos[i].hashMismatch = hashMismatch
-	if hashMismatch {
-		d.delegate.OnDetectDataFileHashMismatch(info.fileID, path)
+	hashInfo := HashInfo{
+		expectedSixteenKHash: info.sixteenKHash,
+		expectedHash:         info.hash,
+		actualSixteenKHash:   sixteenKHash(data),
+		actualHash:           md5.Sum(data),
+	}
+	fileIntegrityInfos[i].hashInfo = hashInfo
+	if !hashInfo.ok() {
+		d.delegate.OnDetectDataFileHashMismatch(info.fileID, path, hashInfo)
 	}
 
 	hasWrongByteCount := len(data) != info.byteCount
@@ -485,7 +521,8 @@ func (recoveryDelegate) OnParityFileLoad(i int, path string, err error) {}
 func (recoveryDelegate) OnDetectCorruptDataChunk(fileID [16]byte, path string, startByteOffset, endByteOffset int) {
 }
 
-func (recoveryDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, path string) {}
+func (recoveryDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, path string, hashInfo HashInfo) {
+}
 
 func (recoveryDelegate) OnDetectDataFileWrongByteCount(fileID [16]byte, path string) {}
 

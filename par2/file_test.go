@@ -61,9 +61,9 @@ func (d testDecoderDelegate) OnDetectCorruptDataChunk(fileID [16]byte, path stri
 	d.t.Logf("OnDetectCorruptDataChunk(%x, %s, startOffset=%d, endOffset=%d)", fileID, path, startOffset, endOffset)
 }
 
-func (d testDecoderDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, path string) {
+func (d testDecoderDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, path string, hashInfo HashInfo) {
 	d.t.Helper()
-	d.t.Logf("OnDetectDataFileHashMismatch(%x, %s)", fileID, path)
+	d.t.Logf("OnDetectDataFileHashMismatch(%x, %s, %x)", fileID, path, hashInfo)
 }
 
 func (d testDecoderDelegate) OnDetectDataFileWrongByteCount(fileID [16]byte, path string) {
