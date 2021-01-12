@@ -746,13 +746,18 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 		}
 
 		data := buf.Bytes()[:decoderInputFileInfo.byteCount]
-		if sixteenKHash(data) != decoderInputFileInfo.sixteenKHash {
-			return repairedPaths, errors.New("hash mismatch (16k) in reconstructed data")
-		} else if md5.Sum(data) != decoderInputFileInfo.hash {
-			return repairedPaths, errors.New("hash mismatch in reconstructed data")
+		hashInfo := HashInfo{
+			expectedSixteenKHash: decoderInputFileInfo.sixteenKHash,
+			expectedHash:         decoderInputFileInfo.hash,
+			actualSixteenKHash:   sixteenKHash(data),
+			actualHash:           md5.Sum(data),
+		}
+		if !hashInfo.ok() {
+			fmt.Printf("DEBUG: hash mismatch error for file %s, %s\n",
+				decoderInputFileInfo.filename, hashInfo.ToError())
 		}
 
-		path := d.getFilePath(decoderInputFileInfo)
+		path := d.getFilePath(decoderInputFileInfo) + ".recovered"
 		err = d.fileIO.WriteFile(path, data)
 		d.delegate.OnDataFileWrite(i+1, len(d.recoverySet), path, len(data), err)
 		if err != nil {
