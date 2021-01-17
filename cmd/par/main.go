@@ -1,6 +1,9 @@
 package main
 
 import (
+	"C"
+	"unsafe"
+
 	"errors"
 	"flag"
 	"fmt"
@@ -246,7 +249,7 @@ const (
 	allCommands = createCommand | verifyCommand | repairCommand
 )
 
-func printUsageAndExit(name string, mask commandMask, err error) {
+func printUsage(name string, mask commandMask, err error) {
 	if err != nil {
 		fmt.Printf("Error: %s\n", err.Error())
 	}
@@ -292,7 +295,6 @@ func printUsageAndExit(name string, mask commandMask, err error) {
 	}
 
 	fmt.Printf("\n")
-	os.Exit(2)
 }
 
 type encoder interface {
@@ -339,35 +341,49 @@ const (
 	eMemoryError                 = 8
 )
 
-func processVerifyOrRepairError(needsRepair bool, err error) {
+func processVerifyOrRepairError(needsRepair bool, err error) int {
 	// Match exit codes to par2cmdline.
 	if err != nil {
 		switch err.(type) {
 		case rsec16.NotEnoughParityShardsError:
 			fmt.Fprintf(os.Stderr, "Repair necessary but not possible.\n")
-			os.Exit(eRepairNotPossible)
+			return eRepairNotPossible
 		default:
 			fmt.Fprintf(os.Stderr, "Error encountered: %s\n", err)
-			os.Exit(eLogicError)
+			return eLogicError
 		}
 	}
 	if needsRepair {
 		fmt.Fprintf(os.Stderr, "Repair necessary and possible.\n")
-		os.Exit(eRepairPossible)
+		return eRepairPossible
 	}
-	os.Exit(eSuccess)
+	return eSuccess
 }
 
-func main() {
-	name := filepath.Base(os.Args[0])
+//export par_C
+func par_C(argc_ C.int, argv_ **C.char) int {
+	length := int(argc_)
+	cStrings := (*[1 << 28]*C.char)(unsafe.Pointer(argv_))[:length:length]
+
+	args_ := make([]string, length+1)
+	args_[0] = "libgopar"
+	for i, cString := range cStrings {
+		args_[i+1] = C.GoString(cString)
+	}
+	return par(args_)
+}
+
+func par(args_ []string) int {
+	name := filepath.Base(args_[0])
 
 	globalFlagSet, globalFlags := getGlobalFlags(name)
-	err := globalFlagSet.Parse(os.Args[1:])
+	err := globalFlagSet.Parse(args_[1:])
 	if err == nil && globalFlagSet.NArg() == 0 {
 		err = errors.New("no command specified")
 	}
 	if err != nil || globalFlags.usage {
-		printUsageAndExit(name, allCommands, err)
+		printUsage(name, allCommands, err)
+		return eSuccess
 	}
 
 	if globalFlags.cpuProfile != "" {
@@ -387,7 +403,8 @@ func main() {
 		go func() {
 			<-c
 			pprof.StopCPUProfile()
-			os.Exit(1)
+			os.Exit(eMemoryError)
+			// return eMemoryError
 		}()
 
 		defer pprof.StopCPUProfile()
@@ -410,7 +427,8 @@ func main() {
 			}
 		}
 		if err != nil {
-			printUsageAndExit(name, createCommand, err)
+			printUsage(name, createCommand, err)
+			return eInvalidCommandLineArguments
 		}
 
 		parFile := createFlagSet.Arg(0)
@@ -434,8 +452,9 @@ func main() {
 		err = encoder.Write(parFile)
 		if err != nil {
 			fmt.Printf("Write parity error: %s", err)
-			os.Exit(-1)
+			return eFileIOError
 		}
+		return eSuccess
 
 	case "v":
 		fallthrough
@@ -446,7 +465,8 @@ func main() {
 			err = errors.New("no PAR file specified")
 		}
 		if err != nil {
-			printUsageAndExit(name, verifyCommand, err)
+			printUsage(name, verifyCommand, err)
+			return eInvalidCommandLineArguments
 		}
 
 		parFile := verifyFlagSet.Arg(0)
@@ -467,7 +487,7 @@ func main() {
 		}
 
 		needsRepair, err := decoder.Verify()
-		processVerifyOrRepairError(needsRepair, err)
+		return processVerifyOrRepairError(needsRepair, err)
 
 	case "r":
 		fallthrough
@@ -478,7 +498,8 @@ func main() {
 			err = errors.New("no PAR file specified")
 		}
 		if err != nil {
-			printUsageAndExit(name, repairCommand, err)
+			printUsage(name, repairCommand, err)
+			return eInvalidCommandLineArguments
 		}
 
 		parFile := repairFlagSet.Arg(0)
@@ -501,10 +522,17 @@ func main() {
 		repairedFiles, err := decoder.Repair(repairFlags.checkParity)
 		fmt.Printf("Repaired files: %v\n", repairedFiles)
 		needsRepair := false
-		processVerifyOrRepairError(needsRepair, err)
+		return processVerifyOrRepairError(needsRepair, err)
 
 	default:
 		err := fmt.Errorf("unknown command '%s'", cmd)
-		printUsageAndExit(name, allCommands, err)
+		printUsage(name, allCommands, err)
+		return eInvalidCommandLineArguments
 	}
+
+	return eInvalidCommandLineArguments
+}
+
+func main() {
+	os.Exit(par(os.Args))
 }
