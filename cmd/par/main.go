@@ -360,20 +360,7 @@ func processVerifyOrRepairError(needsRepair bool, err error) int {
 	return eSuccess
 }
 
-//export par_C
-func par_C(argc_ C.int, argv_ **C.char) int {
-	length := int(argc_)
-	cStrings := (*[1 << 28]*C.char)(unsafe.Pointer(argv_))[:length:length]
-
-	args_ := make([]string, length+1)
-	args_[0] = "libgopar"
-	for i, cString := range cStrings {
-		args_[i+1] = C.GoString(cString)
-	}
-	return par(args_)
-}
-
-func par(args_ []string) int {
+func Par(args_ []string) int {
 	name := filepath.Base(args_[0])
 
 	globalFlagSet, globalFlags := getGlobalFlags(name)
@@ -534,5 +521,5 @@ func par(args_ []string) int {
 }
 
 func main() {
-	os.Exit(par(os.Args))
+	os.Exit(Par(os.Args))
 }
