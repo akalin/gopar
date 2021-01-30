@@ -1,18 +1,20 @@
-package libgopar_C
+package main
 
 import (
 	"C"
 	"unsafe"
-	"github.com/akalin/gopar/cmd/par"
+	"fmt"
+
+	"github.com/akalin/gopar/libgopar"
 )
 
 //export gopar
 func gopar(argc_ C.int, argv_ **C.char) int {
+	retval := 7
 	defer func() {
 		if r := recover(); r != nil {
 			// libgopar only panics with strings currently
 			fmt.Println("libgopar panicked! ", r)
-			return 7
 		}
 	}()
 
@@ -24,5 +26,8 @@ func gopar(argc_ C.int, argv_ **C.char) int {
 	for i, cString := range cStrings {
 		args_[i+1] = C.GoString(cString)
 	}
-	return Par(args_)
+	retval = libgopar.Par(args_,true)
+	return retval
 }
+
+func main(){}
