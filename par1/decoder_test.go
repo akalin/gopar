@@ -150,6 +150,37 @@ func toSortedStrings(arr []string) []string {
 	return arrCopy
 }
 
+func buildVTemplate(t *testing.T, io testFileIO, sortedPaths []string) volume {
+	var entries []fileEntry
+	var setHashInput []byte
+	for _, path := range sortedPaths {
+		data := io.getData(path)
+		var status fileEntryStatus
+		status.setSavedInVolumeSet(true)
+		hash := md5.Sum(data)
+		entry := fileEntry{
+			header: fileEntryHeader{
+				Status:       status,
+				FileBytes:    uint64(len(data)),
+				Hash:         hash,
+				SixteenKHash: sixteenKHash(data),
+			},
+			filename: filepath.Base(path),
+		}
+		entries = append(entries, entry)
+		setHashInput = append(setHashInput, hash[:]...)
+	}
+
+	return volume{
+		header: header{
+			ID:            expectedID,
+			VersionNumber: makeVersionNumber(expectedVersion),
+			SetHash:       md5.Sum(setHashInput),
+		},
+		entries: entries,
+	}
+}
+
 func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 	dataShardCount := io.fileCount()
 	rs, err := reedsolomon.New(dataShardCount, parityShardCount, reedsolomon.WithPAR1Matrix())
@@ -176,34 +207,7 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 	err = rs.Encode(shards)
 	require.NoError(t, err)
 
-	var entries []fileEntry
-	var setHashInput []byte
-	for _, path := range sortedPaths {
-		data := io.getData(path)
-		var status fileEntryStatus
-		status.setSavedInVolumeSet(true)
-		hash := md5.Sum(data)
-		entry := fileEntry{
-			header: fileEntryHeader{
-				Status:       status,
-				FileBytes:    uint64(len(data)),
-				Hash:         hash,
-				SixteenKHash: sixteenKHash(data),
-			},
-			filename: filepath.Base(path),
-		}
-		entries = append(entries, entry)
-		setHashInput = append(setHashInput, hash[:]...)
-	}
-
-	vTemplate := volume{
-		header: header{
-			ID:            expectedID,
-			VersionNumber: makeVersionNumber(expectedVersion),
-			SetHash:       md5.Sum(setHashInput),
-		},
-		entries: entries,
-	}
+	vTemplate := buildVTemplate(t, io, sortedPaths)
 
 	indexVolume := vTemplate
 	indexVolume.header.VolumeNumber = 0
@@ -303,6 +307,27 @@ func TestVerify(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestBadFilename(t *testing.T) {
+	workingDir := filepath.Join(rootDir(), "dir")
+	io := makeTestFileIO(t, workingDir, map[string][]byte{
+		"file.rar": {0x1, 0x2, 0x3, 0x4},
+	})
+
+	indexVolume := buildVTemplate(t, io, []string{"file.rar"})
+	indexVolume.header.VolumeNumber = 0
+	indexVolume.data = []byte{0x1, 0x2}
+	indexVolume.entries[0].filename = filepath.Join("dir", "file.rar")
+	indexVolumeBytes, err := writeVolume(indexVolume)
+	require.NoError(t, err)
+
+	io.setData("file.par", indexVolumeBytes)
+
+	decoder, err := newDecoder(io, testDecoderDelegate{t}, "file.par")
+	require.NoError(t, err)
+	err = decoder.LoadFileData()
+	require.Equal(t, errors.New("bad filename"), err)
 }
 
 func TestSetHashMismatch(t *testing.T) {

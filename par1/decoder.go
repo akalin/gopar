@@ -101,7 +101,12 @@ func (d *Decoder) LoadFileData() error {
 			continue
 		}
 
-		path := filepath.Join(dir, entry.filename)
+		filename := entry.filename
+		if filepath.Base(filename) != filename {
+			return errors.New("bad filename")
+		}
+
+		path := filepath.Join(dir, filename)
 		data, corrupt, err := func() ([]byte, bool, error) {
 			data, err := d.fileIO.ReadFile(path)
 			if os.IsNotExist(err) {
