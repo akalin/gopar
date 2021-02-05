@@ -292,7 +292,7 @@ func testVerify(t *testing.T, workingDir string, useAbsPath bool) {
 	require.Equal(t, expectedErr, err)
 }
 
-func TestVerify(t *testing.T) {
+func runOnExampleWorkingDirs(t *testing.T, testFn func(*testing.T, string, bool)) {
 	workingDirs := []string{
 		rootDir(),
 		filepath.Join(rootDir(), "dir"),
@@ -303,10 +303,14 @@ func TestVerify(t *testing.T) {
 		for _, useAbsPath := range []bool{false, true} {
 			useAbsPath := useAbsPath
 			t.Run(fmt.Sprintf("workingDir=%s,useAbsPath=%t", workingDir, useAbsPath), func(t *testing.T) {
-				testVerify(t, workingDir, useAbsPath)
+				testFn(t, workingDir, useAbsPath)
 			})
 		}
 	}
+}
+
+func TestVerify(t *testing.T) {
+	runOnExampleWorkingDirs(t, testVerify)
 }
 
 func TestBadFilename(t *testing.T) {
@@ -348,12 +352,16 @@ func TestSetHashMismatch(t *testing.T) {
 	require.Equal(t, errors.New("unexpected set hash for parity volume"), err)
 }
 
-func TestRepair(t *testing.T) {
-	io := makeDecoderTestFileIO(t, rootDir())
+func testRepair(t *testing.T, workingDir string, useAbsPath bool) {
+	io := makeDecoderTestFileIO(t, workingDir)
 
 	buildPARData(t, io, 3)
 
-	decoder, err := newDecoder(io, testDecoderDelegate{t}, "file.par")
+	parPath := "file.par"
+	if useAbsPath {
+		parPath = filepath.Join(workingDir, parPath)
+	}
+	decoder, err := newDecoder(io, testDecoderDelegate{t}, parPath)
 	require.NoError(t, err)
 
 	r02Data := io.getData("file.r02")
@@ -374,8 +382,13 @@ func TestRepair(t *testing.T) {
 	// removeData returns nil for "file.r03", but Repair writes a
 	// zero-length array instead.
 	expectedR03Data := []byte{}
+	// TODO: These should be absolute paths if useAbsPath is true.
 	require.Equal(t, []string{"file.r02", "file.r03", "file.r04"}, repaired)
 	require.Equal(t, r02DataCopy, io.getData("file.r02"))
 	require.Equal(t, expectedR03Data, io.getData("file.r03"))
 	require.Equal(t, r04Data, io.getData("file.r04"))
+}
+
+func TestRepair(t *testing.T) {
+	runOnExampleWorkingDirs(t, testRepair)
 }
