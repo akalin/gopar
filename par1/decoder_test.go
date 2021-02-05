@@ -190,7 +190,7 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 				Hash:         hash,
 				SixteenKHash: sixteenKHash(data),
 			},
-			filename: path,
+			filename: filepath.Base(path),
 		}
 		entries = append(entries, entry)
 		setHashInput = append(setHashInput, hash[:]...)
@@ -237,8 +237,8 @@ func makeDecoderTestFileIO(t *testing.T, workingDir string) testFileIO {
 	})
 }
 
-func TestVerify(t *testing.T) {
-	io := makeDecoderTestFileIO(t, rootDir())
+func testVerify(t *testing.T, workingDir string) {
+	io := makeDecoderTestFileIO(t, workingDir)
 
 	buildPARData(t, io, 3)
 
@@ -282,6 +282,20 @@ func TestVerify(t *testing.T) {
 	needsRepair, err = decoder.Verify()
 	expectedErr = errors.New("shard sizes do not match")
 	require.Equal(t, expectedErr, err)
+}
+
+func TestVerify(t *testing.T) {
+	workingDirs := []string{
+		rootDir(),
+		filepath.Join(rootDir(), "dir"),
+		filepath.Join(rootDir(), "dir1", "dir2"),
+	}
+	for _, workingDir := range workingDirs {
+		workingDir := workingDir
+		t.Run(fmt.Sprintf("workingDir=%s", workingDir), func(t *testing.T) {
+			testVerify(t, workingDir)
+		})
+	}
 }
 
 func TestSetHashMismatch(t *testing.T) {
@@ -328,8 +342,7 @@ func TestRepair(t *testing.T) {
 	// removeData returns nil for "file.r03", but Repair writes a
 	// zero-length array instead.
 	expectedR03Data := []byte{}
-	// TODO: Repair should return paths relative to "file.par".
-	require.Equal(t, []string{filepath.Join(rootDir(), "file.r02"), filepath.Join(rootDir(), "file.r03"), filepath.Join(rootDir(), "file.r04")}, repaired)
+	require.Equal(t, []string{"file.r02", "file.r03", "file.r04"}, repaired)
 	require.Equal(t, r02DataCopy, io.getData("file.r02"))
 	require.Equal(t, expectedR03Data, io.getData("file.r03"))
 	require.Equal(t, r04Data, io.getData("file.r04"))
