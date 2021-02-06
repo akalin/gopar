@@ -304,9 +304,14 @@ func fillShardInfos(sliceByteCount int, data []byte, checksumToLocation checksum
 	return hits, misses
 }
 
+func (d *Decoder) getFilePath(info decoderInputFileInfo) string {
+	// TODO: Make this configurable.
+	basePath := filepath.Dir(d.indexPath)
+	return filepath.Join(basePath, info.filename)
+}
+
 func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocationMap, fileIntegrityInfos []fileIntegrityInfo, fileIDIndices map[fileID]int, i int, info decoderInputFileInfo) (int, int, int, error) {
-	path := filepath.Join(filepath.Dir(d.indexPath), info.filename)
-	data, err := d.fileIO.ReadFile(path)
+	data, err := d.fileIO.ReadFile(d.getFilePath(info))
 	if os.IsNotExist(err) {
 		fileIntegrityInfos[i].missing = true
 		return 0, 0, 0, nil
@@ -583,8 +588,6 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 		}
 	}
 
-	dir := filepath.Dir(d.indexPath)
-
 	wasOK := make([]bool, len(d.fileIntegrityInfos))
 
 	k := 0
@@ -624,7 +627,7 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 			return repairedFiles, errors.New("hash mismatch in reconstructed data")
 		}
 
-		path := filepath.Join(dir, decoderInputFileInfo.filename)
+		path := d.getFilePath(decoderInputFileInfo)
 		err = d.fileIO.WriteFile(path, data)
 		d.delegate.OnDataFileWrite(i+1, len(d.recoverySet), path, len(data), err)
 		if err != nil {
