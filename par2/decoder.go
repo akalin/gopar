@@ -191,9 +191,9 @@ type DecoderDelegate interface {
 	OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int)
 	OnDataFileLoad(i, n int, path string, byteCount, hits, misses int, err error)
 	OnParityFileLoad(i int, path string, err error)
-	OnDetectCorruptDataChunk(fileID [16]byte, filename string, startByteOffset, endByteOffset int)
-	OnDetectDataFileHashMismatch(fileID [16]byte, filename string)
-	OnDetectDataFileWrongByteCount(fileID [16]byte, filename string)
+	OnDetectCorruptDataChunk(fileID [16]byte, path string, startByteOffset, endByteOffset int)
+	OnDetectDataFileHashMismatch(fileID [16]byte, path string)
+	OnDetectDataFileWrongByteCount(fileID [16]byte, path string)
 	OnDataFileWrite(i, n int, path string, byteCount int, err error)
 }
 
@@ -311,7 +311,8 @@ func (d *Decoder) getFilePath(info decoderInputFileInfo) string {
 }
 
 func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocationMap, fileIntegrityInfos []fileIntegrityInfo, fileIDIndices map[fileID]int, i int, info decoderInputFileInfo) (int, int, int, error) {
-	data, err := d.fileIO.ReadFile(d.getFilePath(info))
+	path := d.getFilePath(info)
+	data, err := d.fileIO.ReadFile(path)
 	if os.IsNotExist(err) {
 		fileIntegrityInfos[i].missing = true
 		return 0, 0, 0, nil
@@ -324,13 +325,13 @@ func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocatio
 	hashMismatch := sixteenKHash(data) != info.sixteenKHash || md5.Sum(data) != info.hash
 	fileIntegrityInfos[i].hashMismatch = hashMismatch
 	if hashMismatch {
-		d.delegate.OnDetectDataFileHashMismatch(info.fileID, info.filename)
+		d.delegate.OnDetectDataFileHashMismatch(info.fileID, path)
 	}
 
 	hasWrongByteCount := len(data) != info.byteCount
 	fileIntegrityInfos[i].hasWrongByteCount = hasWrongByteCount
 	if hasWrongByteCount {
-		d.delegate.OnDetectDataFileWrongByteCount(info.fileID, info.filename)
+		d.delegate.OnDetectDataFileWrongByteCount(info.fileID, path)
 	}
 
 	return len(data), hits, misses, nil
@@ -351,8 +352,9 @@ func (d *Decoder) LoadFileData() error {
 	}
 
 	for i, info := range d.recoverySet {
+		path := d.getFilePath(info)
 		byteCount, hits, misses, err := d.fillFileIntegrityInfos(checksumToLocation, fileIntegrityInfos, fileIDIndices, i, info)
-		d.delegate.OnDataFileLoad(i+1, len(d.recoverySet), info.filename, byteCount, hits, misses, err)
+		d.delegate.OnDataFileLoad(i+1, len(d.recoverySet), path, byteCount, hits, misses, err)
 		if err != nil {
 			return err
 		}
@@ -366,7 +368,7 @@ func (d *Decoder) LoadFileData() error {
 				startByteOffset = info.byteCount
 				endByteOffset = byteCount
 			}
-			d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, startByteOffset, endByteOffset)
+			d.delegate.OnDetectCorruptDataChunk(info.fileID, path, startByteOffset, endByteOffset)
 		}
 	}
 
@@ -382,7 +384,7 @@ func (d *Decoder) LoadFileData() error {
 			}
 			if shardInfo.ok(shardLocation{info.fileID, startByteOffset}) {
 				if corruptStartByteOffset != -1 {
-					d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, corruptStartByteOffset, corruptEndByteOffset)
+					d.delegate.OnDetectCorruptDataChunk(info.fileID, d.getFilePath(info), corruptStartByteOffset, corruptEndByteOffset)
 					corruptStartByteOffset = -1
 					corruptEndByteOffset = -1
 				}
@@ -395,7 +397,7 @@ func (d *Decoder) LoadFileData() error {
 		}
 
 		if corruptStartByteOffset != -1 {
-			d.delegate.OnDetectCorruptDataChunk(info.fileID, info.filename, corruptStartByteOffset, info.byteCount)
+			d.delegate.OnDetectCorruptDataChunk(info.fileID, d.getFilePath(info), corruptStartByteOffset, info.byteCount)
 		}
 	}
 
@@ -432,12 +434,12 @@ func (recoveryDelegate) OnDataFileLoad(i, n int, path string, byteCount, hits, m
 
 func (recoveryDelegate) OnParityFileLoad(i int, path string, err error) {}
 
-func (recoveryDelegate) OnDetectCorruptDataChunk(fileID [16]byte, filename string, startByteOffset, endByteOffset int) {
+func (recoveryDelegate) OnDetectCorruptDataChunk(fileID [16]byte, path string, startByteOffset, endByteOffset int) {
 }
 
-func (recoveryDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, filename string) {}
+func (recoveryDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, path string) {}
 
-func (recoveryDelegate) OnDetectDataFileWrongByteCount(fileID [16]byte, filename string) {}
+func (recoveryDelegate) OnDetectDataFileWrongByteCount(fileID [16]byte, path string) {}
 
 func (recoveryDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {}
 
@@ -557,12 +559,10 @@ func (d *Decoder) Verify() (needsRepair bool, err error) {
 }
 
 // Repair tries to repair any missing or corrupted data, using the
-// parity volumes. Returns a list of files that were successfully
-// repaired, which is present even if an error is returned. If
-// checkParity is true, extra checking is done of the reconstructed
-// parity data.
-//
-// TODO: Return paths instead of filenames.
+// parity volumes. Returns a list of paths to files that were
+// successfully repaired, which is present even if an error is
+// returned. If checkParity is true, extra checking is done of the
+// reconstructed parity data.
 func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 	coder, dataShards, err := d.newCoderAndShards()
 	if err != nil {
@@ -604,7 +604,7 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 		d.fileIntegrityInfos[i] = info
 	}
 
-	var repairedFiles []string
+	var repairedPaths []string
 
 	for i, decoderInputFileInfo := range d.recoverySet {
 		fileIntegrityInfo := d.fileIntegrityInfos[i]
@@ -616,31 +616,31 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 		for _, shardInfo := range fileIntegrityInfo.shardInfos {
 			err := binary.Write(buf, binary.LittleEndian, shardInfo.data)
 			if err != nil {
-				return repairedFiles, err
+				return repairedPaths, err
 			}
 		}
 
 		data := buf.Bytes()[:decoderInputFileInfo.byteCount]
 		if sixteenKHash(data) != decoderInputFileInfo.sixteenKHash {
-			return repairedFiles, errors.New("hash mismatch (16k) in reconstructed data")
+			return repairedPaths, errors.New("hash mismatch (16k) in reconstructed data")
 		} else if md5.Sum(data) != decoderInputFileInfo.hash {
-			return repairedFiles, errors.New("hash mismatch in reconstructed data")
+			return repairedPaths, errors.New("hash mismatch in reconstructed data")
 		}
 
 		path := d.getFilePath(decoderInputFileInfo)
 		err = d.fileIO.WriteFile(path, data)
 		d.delegate.OnDataFileWrite(i+1, len(d.recoverySet), path, len(data), err)
 		if err != nil {
-			return repairedFiles, err
+			return repairedPaths, err
 		}
 
-		repairedFiles = append(repairedFiles, decoderInputFileInfo.filename)
+		repairedPaths = append(repairedPaths, path)
 	}
 
 	// TODO: Repair missing parity volumes, too, and then make
 	// sure d.Verify() passes.
 
-	return repairedFiles, nil
+	return repairedPaths, nil
 }
 
 // NewDecoder reads the given index file, which usually has a .par2
