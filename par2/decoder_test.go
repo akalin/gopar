@@ -292,8 +292,7 @@ func TestSetIDMismatch(t *testing.T) {
 	require.False(t, needsRepair)
 }
 
-func TestRepair(t *testing.T) {
-	workingDir := memfs.RootDir()
+func testRepair(t *testing.T, workingDir string, useAbsPath bool) {
 	fs := makeDecoderMemFS(workingDir)
 	r02Path := filepath.Join("dir1", "file.r02")
 	r03Path := filepath.Join("dir2", "dir3", "file.r03")
@@ -301,7 +300,11 @@ func TestRepair(t *testing.T) {
 
 	buildPAR2Data(t, fs, workingDir, 4, 3)
 
-	decoder, err := newDecoderForTest(t, fs, "file.par2")
+	parPath := "file.par2"
+	if useAbsPath {
+		parPath = filepath.Join(workingDir, parPath)
+	}
+	decoder, err := newDecoderForTest(t, fs, parPath)
 	require.NoError(t, err)
 
 	r02Data, err := fs.ReadFile(r02Path)
@@ -322,7 +325,13 @@ func TestRepair(t *testing.T) {
 	repairedPaths, err := decoder.Repair(true)
 	require.NoError(t, err)
 
-	require.Equal(t, []string{r02Path, r03Path, r04Path}, repairedPaths)
+	expectedRepairedPaths := []string{r02Path, r03Path, r04Path}
+	if useAbsPath {
+		for i, path := range expectedRepairedPaths {
+			expectedRepairedPaths[i] = filepath.Join(workingDir, path)
+		}
+	}
+	require.Equal(t, expectedRepairedPaths, repairedPaths)
 	repairedR02Data, err := fs.ReadFile(r02Path)
 	require.NoError(t, err)
 	require.Equal(t, r02DataCopy, repairedR02Data)
@@ -332,6 +341,10 @@ func TestRepair(t *testing.T) {
 	repairedR04Data, err := fs.ReadFile(r04Path)
 	require.NoError(t, err)
 	require.Equal(t, r04Data, repairedR04Data)
+}
+
+func TestRepair(t *testing.T) {
+	runOnExampleWorkingDirs(t, testRepair)
 }
 
 func TestRepairAddedBytes(t *testing.T) {
