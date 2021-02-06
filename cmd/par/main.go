@@ -314,6 +314,19 @@ func newEncoder(parFile string, filePaths []string, sliceByteCount, numParitySha
 	if ext == ".par2" {
 		return par2.NewEncoder(par2LogEncoderDelegate{}, filePaths, sliceByteCount, numParityShards, numGoroutines)
 	}
+
+	parDir := filepath.Dir(parFile)
+	allFilesInSameDir := true
+	for _, p := range filePaths {
+		if filepath.Dir(p) != parDir {
+			allFilesInSameDir = false
+			break
+		}
+	}
+	if !allFilesInSameDir {
+		fmt.Printf("Warning: PAR and data files not all in the same directory, which a decoder will expect\n")
+	}
+
 	return par1.NewEncoder(par1LogEncoderDelegate{}, filePaths, numParityShards)
 }
 
@@ -418,10 +431,9 @@ func main() {
 			printUsageAndExit(name, createCommand, err)
 		}
 
-		parFile := createFlagSet.Arg(0)
-		files := createFlagSet.Args()[1:]
-
-		encoder, err := newEncoder(parFile, files, createFlags.sliceByteCount, createFlags.numParityShards, globalFlags.numGoroutines)
+		allFiles := createFlagSet.Args()
+		parFile, filePaths := allFiles[0], allFiles[1:]
+		encoder, err := newEncoder(parFile, filePaths, createFlags.sliceByteCount, createFlags.numParityShards, globalFlags.numGoroutines)
 		if err != nil {
 			panic(err)
 		}
