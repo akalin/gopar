@@ -91,22 +91,30 @@ func sixteenKHash(data []byte) [md5.Size]byte {
 	return md5.Sum(data[:16*1024])
 }
 
+func (d *Decoder) getFilePath(entry fileEntry) (string, error) {
+	filename := entry.filename
+	if filepath.Base(filename) != filename {
+		return "", errors.New("bad filename")
+	}
+
+	basePath := filepath.Dir(d.indexFile)
+	return filepath.Join(basePath, filename), nil
+}
+
 // LoadFileData loads existing file data into memory.
 func (d *Decoder) LoadFileData() error {
 	fileData := make([][]byte, 0, len(d.indexVolume.entries))
 
-	dir := filepath.Dir(d.indexFile)
 	for i, entry := range d.indexVolume.entries {
 		if !entry.header.Status.savedInVolumeSet() {
 			continue
 		}
 
-		filename := entry.filename
-		if filepath.Base(filename) != filename {
-			return errors.New("bad filename")
+		path, err := d.getFilePath(entry)
+		if err != nil {
+			return err
 		}
 
-		path := filepath.Join(dir, filename)
 		data, corrupt, err := func() ([]byte, bool, error) {
 			data, err := d.fileIO.ReadFile(path)
 			if os.IsNotExist(err) {
@@ -278,10 +286,11 @@ func (d *Decoder) Verify() (needsRepair bool, err error) {
 }
 
 // Repair tries to repair any missing or corrupted data, using the
-// parity volumes. Returns a list of files that were successfully
-// repaired in no particular order, which is present even if an error
-// is returned. If checkParity is true, extra checking is done of the
-// reconstructed parity data.
+// parity volumes. Returns a list of paths to files that were
+// successfully repaired (relative to the indexFile passed to
+// NewDecoder) in no particular order, which is present even if an
+// error is returned. If checkParity is true, extra checking is done
+// of the reconstructed parity data.
 func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 	shards := d.buildShards()
 
@@ -306,9 +315,7 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 		}
 	}
 
-	dir := filepath.Dir(d.indexFile)
-
-	var repairedFiles []string
+	var repairedPaths []string
 
 	for i, data := range d.fileData {
 		if data != nil {
@@ -318,25 +325,28 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 		entry := d.indexVolume.entries[i]
 		data = shards[i][:entry.header.FileBytes]
 		if sixteenKHash(data) != entry.header.SixteenKHash {
-			return repairedFiles, errors.New("hash mismatch (16k) in reconstructed data")
+			return repairedPaths, errors.New("hash mismatch (16k) in reconstructed data")
 		} else if md5.Sum(data) != entry.header.Hash {
-			return repairedFiles, errors.New("hash mismatch in reconstructed data")
+			return repairedPaths, errors.New("hash mismatch in reconstructed data")
 		}
 
-		filename := d.indexVolume.entries[i].filename
-		path := filepath.Join(dir, filename)
+		path, err := d.getFilePath(entry)
+		if err != nil {
+			return repairedPaths, err
+		}
+
 		err = d.fileIO.WriteFile(path, data)
 		d.delegate.OnDataFileWrite(i+1, len(d.fileData), path, len(data), err)
 		if err != nil {
-			return repairedFiles, err
+			return repairedPaths, err
 		}
 
-		repairedFiles = append(repairedFiles, filename)
+		repairedPaths = append(repairedPaths, path)
 		d.fileData[i] = data
 	}
 
 	// TODO: Repair missing parity volumes, too, and then make
 	// sure d.Verify() passes.
 
-	return repairedFiles, nil
+	return repairedPaths, nil
 }

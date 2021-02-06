@@ -380,14 +380,19 @@ func testRepair(t *testing.T, workingDir string, useAbsPath bool) {
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
 
-	repaired, err := decoder.Repair(true)
+	repairedPaths, err := decoder.Repair(true)
 	require.NoError(t, err)
 
 	// removeData returns nil for "file.r03", but Repair writes a
 	// zero-length array instead.
 	expectedR03Data := []byte{}
-	// TODO: These should be absolute paths if useAbsPath is true.
-	require.Equal(t, []string{"file.r02", "file.r03", "file.r04"}, toSortedStrings(repaired))
+	expectedRepairedPaths := []string{"file.r02", "file.r03", "file.r04"}
+	if useAbsPath {
+		for i, path := range expectedRepairedPaths {
+			expectedRepairedPaths[i] = filepath.Join(workingDir, path)
+		}
+	}
+	require.Equal(t, toSortedStrings(expectedRepairedPaths), toSortedStrings(repairedPaths))
 	require.Equal(t, r02DataCopy, io.getData("file.r02"))
 	require.Equal(t, expectedR03Data, io.getData("file.r03"))
 	require.Equal(t, r04Data, io.getData("file.r04"))
