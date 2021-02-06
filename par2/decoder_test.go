@@ -110,7 +110,7 @@ func (io testFileIO) WriteFile(path string, data []byte) (err error) {
 	return io.fileIO.WriteFile(path, data)
 }
 
-func buildPAR2Data(t *testing.T, fs memfs.MemFS, sliceByteCount, parityShardCount int) {
+func buildPAR2Data(t *testing.T, fs memfs.MemFS, basePath string, sliceByteCount, parityShardCount int) {
 	var recoverySet []fileID
 	fileDescriptionPackets := make(map[fileID]fileDescriptionPacket)
 	ifscPackets := make(map[fileID]ifscPacket)
@@ -119,7 +119,7 @@ func buildPAR2Data(t *testing.T, fs memfs.MemFS, sliceByteCount, parityShardCoun
 	for _, path := range paths {
 		data, err := fs.ReadFile(path)
 		require.NoError(t, err)
-		relPath, err := filepath.Rel(memfs.RootDir(), path)
+		relPath, err := filepath.Rel(basePath, path)
 		require.NoError(t, err)
 		fileID, fileDescriptionPacket, ifscPacket, fileDataShards := computeDataFileInfo(sliceByteCount, relPath, data)
 		recoverySet = append(recoverySet, fileID)
@@ -179,8 +179,8 @@ func newDecoderForTest(t *testing.T, fs memfs.MemFS, indexPath string) (*Decoder
 	return newDecoder(testFileIO{t, fs}, testDecoderDelegate{t}, indexPath, rsec16.DefaultNumGoroutines())
 }
 
-func makeDecoderMemFS() memfs.MemFS {
-	return memfs.MakeMemFS(memfs.RootDir(), map[string][]byte{
+func makeDecoderMemFS(workingDir string) memfs.MemFS {
+	return memfs.MakeMemFS(workingDir, map[string][]byte{
 		"file.rar":                                {0x1, 0x2, 0x3, 0x4},
 		filepath.Join("dir1", "file.r01"):         {0x5, 0x6, 0x7},
 		filepath.Join("dir1", "file.r02"):         {0x8, 0x9, 0xa, 0xb, 0xc},
@@ -189,13 +189,18 @@ func makeDecoderMemFS() memfs.MemFS {
 	})
 }
 
-func TestVerify(t *testing.T) {
-	fs := makeDecoderMemFS()
+func testVerify(t *testing.T, workingDir string, useAbsPath bool) {
+	fs := makeDecoderMemFS(workingDir)
 	r04Path := filepath.Join("dir4", "dir5", "file.r04")
 
-	buildPAR2Data(t, fs, 4, 3)
+	buildPAR2Data(t, fs, workingDir, 4, 3)
 
-	decoder, err := newDecoderForTest(t, fs, "file.par2")
+	parPath := "file.par2"
+	if useAbsPath {
+		parPath = filepath.Join(workingDir, parPath)
+	}
+
+	decoder, err := newDecoderForTest(t, fs, parPath)
 	require.NoError(t, err)
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
@@ -240,15 +245,37 @@ func TestVerify(t *testing.T) {
 	require.False(t, needsRepair)
 }
 
+func runOnExampleWorkingDirs(t *testing.T, testFn func(*testing.T, string, bool)) {
+	workingDirs := []string{
+		memfs.RootDir(),
+		filepath.Join(memfs.RootDir(), "dir"),
+		filepath.Join(memfs.RootDir(), "dir1", "dir2"),
+	}
+	for _, workingDir := range workingDirs {
+		workingDir := workingDir
+		for _, useAbsPath := range []bool{false, true} {
+			useAbsPath := useAbsPath
+			t.Run(fmt.Sprintf("workingDir=%s,useAbsPath=%t", workingDir, useAbsPath), func(t *testing.T) {
+				testFn(t, workingDir, useAbsPath)
+			})
+		}
+	}
+}
+
+func TestVerify(t *testing.T) {
+	runOnExampleWorkingDirs(t, testVerify)
+}
+
 func TestSetIDMismatch(t *testing.T) {
-	fs1 := makeDecoderMemFS()
-	fs2 := makeDecoderMemFS()
+	workingDir := memfs.RootDir()
+	fs1 := makeDecoderMemFS(workingDir)
+	fs2 := makeDecoderMemFS(workingDir)
 	rarData, err := fs2.ReadFile("file.rar")
 	require.NoError(t, err)
 	rarData[0]++
 
-	buildPAR2Data(t, fs1, 4, 3)
-	buildPAR2Data(t, fs2, 4, 3)
+	buildPAR2Data(t, fs1, workingDir, 4, 3)
+	buildPAR2Data(t, fs2, workingDir, 4, 3)
 	// Insert a parity volume that has a different set hash.
 	vol1Data, err := fs2.ReadFile("file.vol01+01.par2")
 	require.NoError(t, err)
@@ -266,12 +293,13 @@ func TestSetIDMismatch(t *testing.T) {
 }
 
 func TestRepair(t *testing.T) {
-	fs := makeDecoderMemFS()
+	workingDir := memfs.RootDir()
+	fs := makeDecoderMemFS(workingDir)
 	r02Path := filepath.Join("dir1", "file.r02")
 	r03Path := filepath.Join("dir2", "dir3", "file.r03")
 	r04Path := filepath.Join("dir4", "dir5", "file.r04")
 
-	buildPAR2Data(t, fs, 4, 3)
+	buildPAR2Data(t, fs, workingDir, 4, 3)
 
 	decoder, err := newDecoderForTest(t, fs, "file.par2")
 	require.NoError(t, err)
@@ -307,7 +335,8 @@ func TestRepair(t *testing.T) {
 }
 
 func TestRepairAddedBytes(t *testing.T) {
-	fs := memfs.MakeMemFS(memfs.RootDir(), map[string][]byte{
+	workingDir := memfs.RootDir()
+	fs := memfs.MakeMemFS(workingDir, map[string][]byte{
 		"file.rar": {
 			0x01, 0x02, 0x03, 0x04, 0x05,
 			0x11, 0x12, 0x13, 0x14, 0x15,
@@ -316,7 +345,7 @@ func TestRepairAddedBytes(t *testing.T) {
 		},
 	})
 
-	buildPAR2Data(t, fs, 4, 3)
+	buildPAR2Data(t, fs, workingDir, 4, 3)
 
 	decoder, err := newDecoderForTest(t, fs, "file.par2")
 	require.NoError(t, err)
@@ -342,7 +371,8 @@ func TestRepairAddedBytes(t *testing.T) {
 }
 
 func TestRepairRemovedBytes(t *testing.T) {
-	fs := memfs.MakeMemFS(memfs.RootDir(), map[string][]byte{
+	workingDir := memfs.RootDir()
+	fs := memfs.MakeMemFS(workingDir, map[string][]byte{
 		"file.rar": {
 			0x01, 0x02, 0x03, 0x04, 0x05,
 			0x11, 0x12, 0x13, 0x14, 0x15,
@@ -351,7 +381,7 @@ func TestRepairRemovedBytes(t *testing.T) {
 		},
 	})
 
-	buildPAR2Data(t, fs, 4, 3)
+	buildPAR2Data(t, fs, workingDir, 4, 3)
 
 	decoder, err := newDecoderForTest(t, fs, "file.par2")
 	require.NoError(t, err)
@@ -377,7 +407,8 @@ func TestRepairRemovedBytes(t *testing.T) {
 }
 
 func TestRepairSwappedFiles(t *testing.T) {
-	fs := memfs.MakeMemFS(memfs.RootDir(), map[string][]byte{
+	workingDir := memfs.RootDir()
+	fs := memfs.MakeMemFS(workingDir, map[string][]byte{
 		"file.rar": {
 			0x01, 0x02, 0x03, 0x04, 0x05,
 			0x11, 0x12, 0x13, 0x14, 0x15,
@@ -391,7 +422,7 @@ func TestRepairSwappedFiles(t *testing.T) {
 		},
 	})
 
-	buildPAR2Data(t, fs, 4, 3)
+	buildPAR2Data(t, fs, workingDir, 4, 3)
 
 	decoder, err := newDecoderForTest(t, fs, "file.par2")
 	require.NoError(t, err)
