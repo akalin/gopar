@@ -154,16 +154,16 @@ func (par2LogDecoderDelegate) OnParityFileLoad(i int, path string, err error) {
 	}
 }
 
-func (par2LogDecoderDelegate) OnDetectCorruptDataChunk(fileID [16]byte, filename string, startByteOffset, endByteOffset int) {
-	fmt.Printf("Corrupt data chunk: %q (ID %x), bytes %d to %d\n", filename, fileID, startByteOffset, endByteOffset-1)
+func (par2LogDecoderDelegate) OnDetectCorruptDataChunk(fileID [16]byte, path string, startByteOffset, endByteOffset int) {
+	fmt.Printf("Corrupt data chunk: %q (ID %x), bytes %d to %d\n", path, fileID, startByteOffset, endByteOffset-1)
 }
 
-func (par2LogDecoderDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, filename string) {
-	fmt.Printf("Hash mismatch for %q (ID %x)\n", filename, fileID)
+func (par2LogDecoderDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, path string) {
+	fmt.Printf("Hash mismatch for %q (ID %x)\n", path, fileID)
 }
 
-func (par2LogDecoderDelegate) OnDetectDataFileWrongByteCount(fileID [16]byte, filename string) {
-	fmt.Printf("Wrong byte count for %q (ID %x)\n", filename, fileID)
+func (par2LogDecoderDelegate) OnDetectDataFileWrongByteCount(fileID [16]byte, path string) {
+	fmt.Printf("Wrong byte count for %q (ID %x)\n", path, fileID)
 }
 
 func (par2LogDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {
