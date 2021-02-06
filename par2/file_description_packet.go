@@ -34,9 +34,14 @@ func computeFileID(sixteenKHash [md5.Size]byte, byteCount uint64, filenameBytes 
 	return md5.Sum(hashInput)
 }
 
+// TODO: It's theoretically possible for filename to contain
+// backslashes -- check to see what par2cmdline does on Windows. We'd
+// then have to handle par files where the filenames have backslashes
+// but the current OS uses only forward slashes.
 func checkFilename(filename string) error {
+	// Filenames shouldn't be absolute, to preclude the repair process overwriting arbitrary
+	// files.
 	if path.IsAbs(filename) {
-		// TODO: Allow this via an option.
 		return errors.New("absolute paths not allowed")
 	}
 	filename = path.Clean(filename)
