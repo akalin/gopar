@@ -1,6 +1,7 @@
 package par1
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -60,6 +61,16 @@ func TestEncodeParity(t *testing.T) {
 	ok, err := rs.Verify(shards)
 	require.NoError(t, err)
 	require.True(t, ok)
+}
+
+func TestEncodeParityFilenameCollision(t *testing.T) {
+	io := makeEncoderTestFileIO(t, rootDir())
+	io.setData(filepath.Join("dir6", "file.rar"), []byte{0x5, 0x6})
+
+	paths := io.paths()
+
+	_, err := newEncoder(io, testEncoderDelegate{t}, paths, 3)
+	require.Equal(t, errors.New("filename collision"), err)
 }
 
 func testWriteParity(t *testing.T, workingDir string, useAbsPath bool) {

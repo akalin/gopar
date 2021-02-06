@@ -2,6 +2,7 @@ package par1
 
 import (
 	"crypto/md5"
+	"errors"
 	"fmt"
 	"path"
 	"path/filepath"
@@ -32,6 +33,14 @@ type EncoderDelegate interface {
 }
 
 func newEncoder(fileIO fileIO, delegate EncoderDelegate, filePaths []string, volumeCount int) (*Encoder, error) {
+	filenames := make(map[string]bool)
+	for _, p := range filePaths {
+		filename := filepath.Base(p)
+		if filenames[filename] {
+			return nil, errors.New("filename collision")
+		}
+		filenames[filename] = true
+	}
 	// TODO: Check len(filePaths) and volumeCount.
 	return &Encoder{fileIO, delegate, filePaths, volumeCount, 0, nil, nil}, nil
 }
