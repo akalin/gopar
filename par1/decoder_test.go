@@ -88,6 +88,10 @@ func (io testFileIO) removeData(path string) []byte {
 	return data
 }
 
+func (io testFileIO) moveData(oldPath, newPath string) {
+	io.setData(newPath, io.removeData(oldPath))
+}
+
 func (io testFileIO) ReadFile(path string) (data []byte, err error) {
 	io.t.Helper()
 	defer func() {
