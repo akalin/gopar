@@ -556,6 +556,8 @@ func (d *Decoder) Verify() (needsRepair bool, err error) {
 // repaired, which is present even if an error is returned. If
 // checkParity is true, extra checking is done of the reconstructed
 // parity data.
+//
+// TODO: Return paths instead of filenames.
 func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 	coder, dataShards, err := d.newCoderAndShards()
 	if err != nil {

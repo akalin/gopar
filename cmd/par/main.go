@@ -519,8 +519,8 @@ func main() {
 			panic(err)
 		}
 
-		repairedFiles, err := decoder.Repair(repairFlags.checkParity)
-		fmt.Printf("Repaired files: %v\n", repairedFiles)
+		repairedPaths, err := decoder.Repair(repairFlags.checkParity)
+		fmt.Printf("Repaired files: %v\n", repairedPaths)
 		needsRepair := false
 		exitCode := processVerifyOrRepairError(needsRepair, err)
 		os.Exit(exitCode)
