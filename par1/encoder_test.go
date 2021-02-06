@@ -1,6 +1,7 @@
 package par1
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/klauspost/reedsolomon"
@@ -23,11 +24,11 @@ func (d testEncoderDelegate) OnVolumeFileWrite(i, n int, path string, dataByteCo
 
 func makeEncoderTestFileIO(t *testing.T) testFileIO {
 	return makeTestFileIO(t, rootDir(), map[string][]byte{
-		"file.rar": {0x1, 0x2, 0x3},
-		"file.r01": {0x5, 0x6, 0x7, 0x8},
-		"file.r02": {0x9, 0xa, 0xb, 0xc},
-		"file.r03": {0xd, 0xe},
-		"file.r04": nil,
+		"file.rar":                                {0x1, 0x2, 0x3},
+		filepath.Join("dir1", "file.r01"):         {0x5, 0x6, 0x7, 0x8},
+		filepath.Join("dir2", "file.r02"):         {0x9, 0xa, 0xb, 0xc},
+		filepath.Join("dir2", "dir3", "file.r03"): {0xd, 0xe},
+		filepath.Join("dir4", "dir5", "file.r04"): nil,
 	})
 }
 
@@ -77,6 +78,10 @@ func TestWriteParity(t *testing.T) {
 
 	err = encoder.Write("parity.par")
 	require.NoError(t, err)
+
+	for _, path := range paths {
+		io.moveData(path, filepath.Base(path))
+	}
 
 	decoder, err := newDecoder(io, testDecoderDelegate{t}, "parity.par")
 	require.NoError(t, err)
