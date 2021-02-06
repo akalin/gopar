@@ -22,8 +22,8 @@ func (d testEncoderDelegate) OnVolumeFileWrite(i, n int, path string, dataByteCo
 	d.t.Logf("OnVolumeFileWrite(%d, %d, %s, dataByteCount=%d, byteCount=%d, %v)", i, n, path, dataByteCount, byteCount, err)
 }
 
-func makeEncoderTestFileIO(t *testing.T) testFileIO {
-	return makeTestFileIO(t, rootDir(), map[string][]byte{
+func makeEncoderTestFileIO(t *testing.T, workingDir string) testFileIO {
+	return makeTestFileIO(t, workingDir, map[string][]byte{
 		"file.rar":                                {0x1, 0x2, 0x3},
 		filepath.Join("dir1", "file.r01"):         {0x5, 0x6, 0x7, 0x8},
 		filepath.Join("dir2", "file.r02"):         {0x9, 0xa, 0xb, 0xc},
@@ -33,7 +33,7 @@ func makeEncoderTestFileIO(t *testing.T) testFileIO {
 }
 
 func TestEncodeParity(t *testing.T) {
-	io := makeEncoderTestFileIO(t)
+	io := makeEncoderTestFileIO(t, rootDir())
 
 	paths := io.paths()
 
@@ -62,8 +62,8 @@ func TestEncodeParity(t *testing.T) {
 	require.True(t, ok)
 }
 
-func TestWriteParity(t *testing.T) {
-	io := makeEncoderTestFileIO(t)
+func testWriteParity(t *testing.T, workingDir string, useAbsPath bool) {
+	io := makeEncoderTestFileIO(t, workingDir)
 
 	paths := io.paths()
 
@@ -76,14 +76,18 @@ func TestWriteParity(t *testing.T) {
 	err = encoder.ComputeParityData()
 	require.NoError(t, err)
 
-	err = encoder.Write("parity.par")
+	parPath := "file.par"
+	if useAbsPath {
+		parPath = filepath.Join(workingDir, parPath)
+	}
+	err = encoder.Write(parPath)
 	require.NoError(t, err)
 
 	for _, path := range paths {
 		io.moveData(path, filepath.Base(path))
 	}
 
-	decoder, err := newDecoder(io, testDecoderDelegate{t}, "parity.par")
+	decoder, err := newDecoder(io, testDecoderDelegate{t}, parPath)
 	require.NoError(t, err)
 
 	err = decoder.LoadFileData()
@@ -94,4 +98,8 @@ func TestWriteParity(t *testing.T) {
 	needsRepair, err := decoder.Verify()
 	require.NoError(t, err)
 	require.False(t, needsRepair)
+}
+
+func TestWriteParity(t *testing.T) {
+	runOnExampleWorkingDirs(t, testWriteParity)
 }
