@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"math/rand"
-	"path"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -120,7 +119,9 @@ func buildPAR2Data(t *testing.T, fs memfs.MemFS, sliceByteCount, parityShardCoun
 	for _, path := range paths {
 		data, err := fs.ReadFile(path)
 		require.NoError(t, err)
-		fileID, fileDescriptionPacket, ifscPacket, fileDataShards := computeDataFileInfo(sliceByteCount, filepath.Base(path), data)
+		relPath, err := filepath.Rel(memfs.RootDir(), path)
+		require.NoError(t, err)
+		fileID, fileDescriptionPacket, ifscPacket, fileDataShards := computeDataFileInfo(sliceByteCount, relPath, data)
 		recoverySet = append(recoverySet, fileID)
 		fileDescriptionPackets[fileID] = fileDescriptionPacket
 		ifscPackets[fileID] = ifscPacket
@@ -160,21 +161,7 @@ func buildPAR2Data(t *testing.T, fs memfs.MemFS, sliceByteCount, parityShardCoun
 	_, indexFileBytes, err := writeFile(indexFile)
 	require.NoError(t, err)
 
-	// Require that all files have the same base.
-	var base string
-	for _, filename := range paths {
-		ext := path.Ext(filename)
-		filenameBase := filename[:len(filename)-len(ext)]
-		if base == "" {
-			base = filenameBase
-		} else {
-			require.Equal(t, base, filenameBase)
-		}
-		break
-	}
-	require.NotEmpty(t, base)
-
-	require.NoError(t, fs.WriteFile(base+".par2", indexFileBytes))
+	require.NoError(t, fs.WriteFile("file.par2", indexFileBytes))
 
 	for exp, packet := range recoveryPackets {
 		recoveryFile := indexFile
@@ -183,7 +170,7 @@ func buildPAR2Data(t *testing.T, fs memfs.MemFS, sliceByteCount, parityShardCoun
 		}
 		_, recoveryFileBytes, err := writeFile(recoveryFile)
 		require.NoError(t, err)
-		filename := fmt.Sprintf("%s.vol%02d+01.par2", base, exp)
+		filename := fmt.Sprintf("file.vol%02d+01.par2", exp)
 		require.NoError(t, fs.WriteFile(filename, recoveryFileBytes))
 	}
 }
@@ -194,16 +181,17 @@ func newDecoderForTest(t *testing.T, fs memfs.MemFS, indexPath string) (*Decoder
 
 func makeDecoderMemFS() memfs.MemFS {
 	return memfs.MakeMemFS(memfs.RootDir(), map[string][]byte{
-		"file.rar": {0x1, 0x2, 0x3, 0x4},
-		"file.r01": {0x5, 0x6, 0x7},
-		"file.r02": {0x8, 0x9, 0xa, 0xb, 0xc},
-		"file.r03": {0xe, 0xf},
-		"file.r04": {0xd},
+		"file.rar":                                {0x1, 0x2, 0x3, 0x4},
+		filepath.Join("dir1", "file.r01"):         {0x5, 0x6, 0x7},
+		filepath.Join("dir1", "file.r02"):         {0x8, 0x9, 0xa, 0xb, 0xc},
+		filepath.Join("dir2", "dir3", "file.r03"): {0xe, 0xf},
+		filepath.Join("dir4", "dir5", "file.r04"): {0xd},
 	})
 }
 
 func TestVerify(t *testing.T) {
 	fs := makeDecoderMemFS()
+	r04Path := filepath.Join("dir4", "dir5", "file.r04")
 
 	buildPAR2Data(t, fs, 4, 3)
 
@@ -218,7 +206,7 @@ func TestVerify(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, needsRepair)
 
-	fileData5, err := fs.ReadFile("file.r04")
+	fileData5, err := fs.ReadFile(r04Path)
 	require.NoError(t, err)
 	fileData5[len(fileData5)-1]++
 	err = decoder.LoadFileData()
@@ -279,20 +267,23 @@ func TestSetIDMismatch(t *testing.T) {
 
 func TestRepair(t *testing.T) {
 	fs := makeDecoderMemFS()
+	r02Path := filepath.Join("dir1", "file.r02")
+	r03Path := filepath.Join("dir2", "dir3", "file.r03")
+	r04Path := filepath.Join("dir4", "dir5", "file.r04")
 
 	buildPAR2Data(t, fs, 4, 3)
 
 	decoder, err := newDecoderForTest(t, fs, "file.par2")
 	require.NoError(t, err)
 
-	r02Data, err := fs.ReadFile("file.r02")
+	r02Data, err := fs.ReadFile(r02Path)
 	require.NoError(t, err)
 	r02DataCopy := make([]byte, len(r02Data))
 	copy(r02DataCopy, r02Data)
 	r02Data[len(r02Data)-1]++
-	r03Data, err := fs.RemoveFile("file.r03")
+	r03Data, err := fs.RemoveFile(r03Path)
 	require.NoError(t, err)
-	r04Data, err := fs.RemoveFile("file.r04")
+	r04Data, err := fs.RemoveFile(r04Path)
 	require.NoError(t, err)
 
 	err = decoder.LoadFileData()
@@ -303,14 +294,14 @@ func TestRepair(t *testing.T) {
 	repairedPaths, err := decoder.Repair(true)
 	require.NoError(t, err)
 
-	require.Equal(t, []string{"file.r02", "file.r03", "file.r04"}, repairedPaths)
-	repairedR02Data, err := fs.ReadFile("file.r02")
+	require.Equal(t, []string{r02Path, r03Path, r04Path}, repairedPaths)
+	repairedR02Data, err := fs.ReadFile(r02Path)
 	require.NoError(t, err)
 	require.Equal(t, r02DataCopy, repairedR02Data)
-	repairedR03Data, err := fs.ReadFile("file.r03")
+	repairedR03Data, err := fs.ReadFile(r03Path)
 	require.NoError(t, err)
 	require.Equal(t, r03Data, repairedR03Data)
-	repairedR04Data, err := fs.ReadFile("file.r04")
+	repairedR04Data, err := fs.ReadFile(r04Path)
 	require.NoError(t, err)
 	require.Equal(t, r04Data, repairedR04Data)
 }
