@@ -2,6 +2,7 @@ package par2
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -89,8 +90,7 @@ func TestEncodeParity(t *testing.T) {
 	require.Equal(t, computedParityShards, encoder.parityShards)
 }
 
-func TestWriteParity(t *testing.T) {
-	workingDir := memfs.RootDir()
+func testWriteParity(t *testing.T, workingDir string) {
 	fs := makeEncoderMemFS(workingDir)
 
 	paths := fs.Paths()
@@ -106,10 +106,11 @@ func TestWriteParity(t *testing.T) {
 	err = encoder.ComputeParityData()
 	require.NoError(t, err)
 
-	err = encoder.Write("parity.par2")
+	parPath := filepath.Join(workingDir, "parity.par2")
+	err = encoder.Write(parPath)
 	require.NoError(t, err)
 
-	decoder, err := newDecoderForTest(t, fs, "parity.par2")
+	decoder, err := newDecoderForTest(t, fs, parPath)
 	require.NoError(t, err)
 
 	err = decoder.LoadFileData()
@@ -120,6 +121,20 @@ func TestWriteParity(t *testing.T) {
 	needsRepair, err := decoder.Verify()
 	require.NoError(t, err)
 	require.False(t, needsRepair)
+}
+
+func TestWriteParity(t *testing.T) {
+	workingDirs := []string{
+		memfs.RootDir(),
+		filepath.Join(memfs.RootDir(), "dir"),
+		filepath.Join(memfs.RootDir(), "dir1", "dir2"),
+	}
+	for _, workingDir := range workingDirs {
+		workingDir := workingDir
+		t.Run(fmt.Sprintf("workingDir=%s", workingDir), func(t *testing.T) {
+			testWriteParity(t, workingDir)
+		})
+	}
 }
 
 func TestWriteParityFilesOutOfBasePath(t *testing.T) {
