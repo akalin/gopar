@@ -312,7 +312,12 @@ func newEncoder(parFile string, filePaths []string, sliceByteCount, numParitySha
 	// TODO: Detect file type more robustly.
 	ext := path.Ext(parFile)
 	if ext == ".par2" {
-		return par2.NewEncoder(par2LogEncoderDelegate{}, filePaths, sliceByteCount, numParityShards, numGoroutines)
+		parPath, err := filepath.Abs(parFile)
+		if err != nil {
+			return nil, err
+		}
+		basePath := filepath.Dir(parPath)
+		return par2.NewEncoder(par2LogEncoderDelegate{}, basePath, filePaths, sliceByteCount, numParityShards, numGoroutines)
 	}
 
 	parDir := filepath.Dir(parFile)
