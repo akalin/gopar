@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"path/filepath"
 	"sort"
 
 	"github.com/akalin/gopar/rsec16"
@@ -43,7 +44,10 @@ type EncoderDelegate interface {
 	OnRecoveryFileWrite(start, count, total int, path string, dataByteCount, byteCount int, err error)
 }
 
-func newEncoder(fileIO fileIO, delegate EncoderDelegate, filePaths []string, sliceByteCount, parityShardCount, numGoroutines int) (*Encoder, error) {
+func newEncoder(fileIO fileIO, delegate EncoderDelegate, basePath string, filePaths []string, sliceByteCount, parityShardCount, numGoroutines int) (*Encoder, error) {
+	if !filepath.IsAbs(basePath) {
+		return nil, errors.New("basePath must be absolute")
+	}
 	// TODO: Check filePaths and parityShardCount.
 	if sliceByteCount == 0 || sliceByteCount%4 != 0 {
 		return nil, errors.New("invalid slice byte count")
@@ -52,9 +56,12 @@ func newEncoder(fileIO fileIO, delegate EncoderDelegate, filePaths []string, sli
 }
 
 // NewEncoder creates an encoder with the given list of file paths,
-// and with the given number of intended parity volumes.
-func NewEncoder(delegate EncoderDelegate, filePaths []string, sliceByteCount, parityShardCount, numGoroutines int) (*Encoder, error) {
-	return newEncoder(defaultFileIO{}, delegate, filePaths, sliceByteCount, parityShardCount, numGoroutines)
+// and with the given number of intended parity volumes. basePath must
+// be absolute.
+//
+// TODO: Mandate that elements of filePaths must also be absolute.
+func NewEncoder(delegate EncoderDelegate, basePath string, filePaths []string, sliceByteCount, parityShardCount, numGoroutines int) (*Encoder, error) {
+	return newEncoder(defaultFileIO{}, delegate, basePath, filePaths, sliceByteCount, parityShardCount, numGoroutines)
 }
 
 // LoadFileData loads the file data into memory.

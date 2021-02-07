@@ -28,12 +28,12 @@ func (d testEncoderDelegate) OnRecoveryFileWrite(start, count, total int, path s
 	d.t.Logf("OnRecoveryFileWrite(start=%d, count=%d, total=%d, %s, dataByteCount=%d, byteCount=%d, %v)", start, count, total, path, dataByteCount, byteCount, err)
 }
 
-func newEncoderForTest(t *testing.T, fs memfs.MemFS, paths []string, sliceByteCount, parityShardCount int) (*Encoder, error) {
-	return newEncoder(testFileIO{t, fs}, testEncoderDelegate{t}, paths, sliceByteCount, parityShardCount, rsec16.DefaultNumGoroutines())
+func newEncoderForTest(t *testing.T, fs memfs.MemFS, basePath string, paths []string, sliceByteCount, parityShardCount int) (*Encoder, error) {
+	return newEncoder(testFileIO{t, fs}, testEncoderDelegate{t}, basePath, paths, sliceByteCount, parityShardCount, rsec16.DefaultNumGoroutines())
 }
 
-func makeEncoderMemFS() memfs.MemFS {
-	return memfs.MakeMemFS(memfs.RootDir(), map[string][]byte{
+func makeEncoderMemFS(workingDir string) memfs.MemFS {
+	return memfs.MakeMemFS(workingDir, map[string][]byte{
 		"file.rar": {0x1, 0x2, 0x3},
 		"file.r01": {0x5, 0x6, 0x7, 0x8},
 		"file.r02": {0x9, 0xa, 0xb, 0xc},
@@ -43,13 +43,14 @@ func makeEncoderMemFS() memfs.MemFS {
 }
 
 func TestEncodeParity(t *testing.T) {
-	fs := makeEncoderMemFS()
+	workingDir := memfs.RootDir()
+	fs := makeEncoderMemFS(workingDir)
 
 	paths := fs.Paths()
 
 	sliceByteCount := 4
 	parityShardCount := 3
-	encoder, err := newEncoderForTest(t, fs, paths, sliceByteCount, parityShardCount)
+	encoder, err := newEncoderForTest(t, fs, workingDir, paths, sliceByteCount, parityShardCount)
 	require.NoError(t, err)
 
 	err = encoder.LoadFileData()
@@ -88,7 +89,8 @@ func TestEncodeParity(t *testing.T) {
 }
 
 func TestWriteParity(t *testing.T) {
-	fs := makeEncoderMemFS()
+	workingDir := memfs.RootDir()
+	fs := makeEncoderMemFS(workingDir)
 
 	// Encoder doesn't properly convert absolute to relative
 	// paths, so we can't pass in fs.Paths() to
@@ -99,7 +101,7 @@ func TestWriteParity(t *testing.T) {
 
 	sliceByteCount := 4
 	parityShardCount := 100
-	encoder, err := newEncoderForTest(t, fs, paths, sliceByteCount, parityShardCount)
+	encoder, err := newEncoderForTest(t, fs, workingDir, paths, sliceByteCount, parityShardCount)
 	require.NoError(t, err)
 
 	err = encoder.LoadFileData()
