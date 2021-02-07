@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/akalin/gopar/memfs"
@@ -90,7 +91,7 @@ func TestEncodeParity(t *testing.T) {
 	require.Equal(t, computedParityShards, encoder.parityShards)
 }
 
-func testWriteParity(t *testing.T, workingDir string) {
+func testWriteParity(t *testing.T, workingDir, outputPath string) {
 	fs := makeEncoderMemFS(workingDir)
 
 	paths := fs.Paths()
@@ -106,11 +107,40 @@ func testWriteParity(t *testing.T, workingDir string) {
 	err = encoder.ComputeParityData()
 	require.NoError(t, err)
 
-	parPath := filepath.Join(workingDir, "parity.par2")
+	parPath := filepath.Join(outputPath, "parity.par2")
 	err = encoder.Write(parPath)
 	require.NoError(t, err)
 
-	decoder, err := newDecoderForTest(t, fs, parPath)
+	var movedParPath string
+	if workingDir == outputPath {
+		movedParPath = parPath
+	} else {
+		decoder, err := newDecoderForTest(t, fs, parPath)
+		require.NoError(t, err)
+
+		err = decoder.LoadFileData()
+		require.NoError(t, err)
+		err = decoder.LoadParityData()
+		require.NoError(t, err)
+
+		needsRepair, err := decoder.Verify()
+		require.NoError(t, err)
+		require.True(t, needsRepair)
+
+		// Call fs.Paths() again to pick up newly-written files.
+		for _, path := range fs.Paths() {
+			if strings.HasPrefix(path, filepath.Join(outputPath, "parity")) {
+				relPath, err := filepath.Rel(outputPath, path)
+				require.NoError(t, err)
+				movedPath := filepath.Join(workingDir, relPath)
+				require.NoError(t, fs.MoveFile(path, movedPath))
+			}
+		}
+
+		movedParPath = filepath.Join(workingDir, "parity.par2")
+	}
+
+	decoder, err := newDecoderForTest(t, fs, movedParPath)
 	require.NoError(t, err)
 
 	err = decoder.LoadFileData()
@@ -124,16 +154,19 @@ func testWriteParity(t *testing.T, workingDir string) {
 }
 
 func TestWriteParity(t *testing.T) {
-	workingDirs := []string{
-		memfs.RootDir(),
-		filepath.Join(memfs.RootDir(), "dir"),
-		filepath.Join(memfs.RootDir(), "dir1", "dir2"),
-	}
-	for _, workingDir := range workingDirs {
+	root := memfs.RootDir()
+	dir1 := filepath.Join(root, "dir1")
+	dir2 := filepath.Join(dir1, "dir2")
+	dir3 := filepath.Join(root, "dir3")
+	dirs := []string{root, dir1, dir2, dir3}
+	for _, workingDir := range dirs {
 		workingDir := workingDir
-		t.Run(fmt.Sprintf("workingDir=%s", workingDir), func(t *testing.T) {
-			testWriteParity(t, workingDir)
-		})
+		for _, outputDir := range dirs {
+			outputDir := outputDir
+			t.Run(fmt.Sprintf("workingDir=%s,outputDir=%s", workingDir, outputDir), func(t *testing.T) {
+				testWriteParity(t, workingDir, outputDir)
+			})
+		}
 	}
 }
 
