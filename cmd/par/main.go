@@ -317,7 +317,15 @@ func newEncoder(parFile string, filePaths []string, sliceByteCount, numParitySha
 			return nil, err
 		}
 		basePath := filepath.Dir(parPath)
-		return par2.NewEncoder(par2LogEncoderDelegate{}, basePath, filePaths, sliceByteCount, numParityShards, numGoroutines)
+		absFilePaths := make([]string, len(filePaths))
+		for i, path := range filePaths {
+			absPath, err := filepath.Abs(path)
+			if err != nil {
+				return nil, err
+			}
+			absFilePaths[i] = absPath
+		}
+		return par2.NewEncoder(par2LogEncoderDelegate{}, basePath, absFilePaths, sliceByteCount, numParityShards, numGoroutines)
 	}
 
 	parDir := filepath.Dir(parFile)

@@ -23,7 +23,8 @@ type Encoder struct {
 	fileIO   fileIO
 	delegate EncoderDelegate
 
-	filePaths []string
+	basePath     string
+	relFilePaths []string
 
 	sliceByteCount   int
 	parityShardCount int
@@ -48,18 +49,34 @@ func newEncoder(fileIO fileIO, delegate EncoderDelegate, basePath string, filePa
 	if !filepath.IsAbs(basePath) {
 		return nil, errors.New("basePath must be absolute")
 	}
-	// TODO: Check filePaths and parityShardCount.
+
+	relFilePaths := make([]string, len(filePaths))
+	for i, path := range filePaths {
+		var relPath string
+		if !filepath.IsAbs(path) {
+			return nil, errors.New("all elements of filePaths must be absolute")
+		}
+		relPath, err := filepath.Rel(basePath, path)
+		if err != nil {
+			return nil, err
+		}
+		if relPath[0] == '.' {
+			return nil, errors.New("data files must lie in basePath")
+		}
+		relFilePaths[i] = relPath
+	}
+
+	// TODO: Check parityShardCount.
 	if sliceByteCount == 0 || sliceByteCount%4 != 0 {
 		return nil, errors.New("invalid slice byte count")
 	}
-	return &Encoder{fileIO, delegate, filePaths, sliceByteCount, parityShardCount, numGoroutines, nil, nil, nil}, nil
+	return &Encoder{fileIO, delegate, basePath, relFilePaths, sliceByteCount, parityShardCount, numGoroutines, nil, nil, nil}, nil
 }
 
 // NewEncoder creates an encoder with the given list of file paths,
 // and with the given number of intended parity volumes. basePath must
-// be absolute.
-//
-// TODO: Mandate that elements of filePaths must also be absolute.
+// be absolute. Elements of filePaths must be absolute, and must also
+// lie in basePath.
 func NewEncoder(delegate EncoderDelegate, basePath string, filePaths []string, sliceByteCount, parityShardCount, numGoroutines int) (*Encoder, error) {
 	return newEncoder(defaultFileIO{}, delegate, basePath, filePaths, sliceByteCount, parityShardCount, numGoroutines)
 }
@@ -69,14 +86,15 @@ func (e *Encoder) LoadFileData() error {
 	var recoverySet []fileID
 	recoverySetInfos := make(map[fileID]encoderInputFileInfo)
 
-	for i, path := range e.filePaths {
+	for i, relPath := range e.relFilePaths {
+		path := filepath.Join(e.basePath, relPath)
 		data, err := e.fileIO.ReadFile(path)
-		e.delegate.OnDataFileLoad(i+1, len(e.filePaths), path, len(data), err)
+		e.delegate.OnDataFileLoad(i+1, len(e.relFilePaths), path, len(data), err)
 		if err != nil {
 			return err
 		}
 
-		fileID, fileDescriptionPacket, ifscPacket, dataShards := computeDataFileInfo(e.sliceByteCount, path, data)
+		fileID, fileDescriptionPacket, ifscPacket, dataShards := computeDataFileInfo(e.sliceByteCount, relPath, data)
 		recoverySet = append(recoverySet, fileID)
 		recoverySetInfos[fileID] = encoderInputFileInfo{
 			fileDescriptionPacket, ifscPacket, dataShards,
