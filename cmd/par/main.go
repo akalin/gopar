@@ -339,23 +339,23 @@ const (
 	eMemoryError                 = 8
 )
 
-func processVerifyOrRepairError(needsRepair bool, err error) {
+func processVerifyOrRepairError(needsRepair bool, err error) int {
 	// Match exit codes to par2cmdline.
 	if err != nil {
 		switch err.(type) {
 		case rsec16.NotEnoughParityShardsError:
 			fmt.Fprintf(os.Stderr, "Repair necessary but not possible.\n")
-			os.Exit(eRepairNotPossible)
+			return eRepairNotPossible
 		default:
 			fmt.Fprintf(os.Stderr, "Error encountered: %s\n", err)
-			os.Exit(eLogicError)
+			return eLogicError
 		}
 	}
 	if needsRepair {
 		fmt.Fprintf(os.Stderr, "Repair necessary and possible.\n")
-		os.Exit(eRepairPossible)
+		return eRepairPossible
 	}
-	os.Exit(eSuccess)
+	return eSuccess
 }
 
 func main() {
@@ -467,7 +467,11 @@ func main() {
 		}
 
 		needsRepair, err := decoder.Verify()
-		processVerifyOrRepairError(needsRepair, err)
+		exitCode := processVerifyOrRepairError(needsRepair, err)
+		if exitCode == eSuccess {
+			fmt.Printf("Repair not necessary.\n")
+		}
+		os.Exit(exitCode)
 
 	case "r":
 		fallthrough
@@ -501,7 +505,8 @@ func main() {
 		repairedFiles, err := decoder.Repair(repairFlags.checkParity)
 		fmt.Printf("Repaired files: %v\n", repairedFiles)
 		needsRepair := false
-		processVerifyOrRepairError(needsRepair, err)
+		exitCode := processVerifyOrRepairError(needsRepair, err)
+		os.Exit(exitCode)
 
 	default:
 		err := fmt.Errorf("unknown command '%s'", cmd)
