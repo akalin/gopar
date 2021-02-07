@@ -1,6 +1,7 @@
 package par2
 
 import (
+	"path/filepath"
 	"sort"
 	"testing"
 
@@ -34,11 +35,11 @@ func newEncoderForTest(t *testing.T, fs memfs.MemFS, basePath string, paths []st
 
 func makeEncoderMemFS(workingDir string) memfs.MemFS {
 	return memfs.MakeMemFS(workingDir, map[string][]byte{
-		"file.rar": {0x1, 0x2, 0x3},
-		"file.r01": {0x5, 0x6, 0x7, 0x8},
-		"file.r02": {0x9, 0xa, 0xb, 0xc},
-		"file.r03": {0xd, 0xe},
-		"file.r04": {0xf},
+		"file.rar":                                {0x1, 0x2, 0x3},
+		filepath.Join("dir1", "file.r01"):         {0x5, 0x6, 0x7, 0x8},
+		filepath.Join("dir1", "file.r02"):         {0x9, 0xa, 0xb, 0xc},
+		filepath.Join("dir2", "dir3", "file.r03"): {0xd, 0xe},
+		filepath.Join("dir4", "dir5", "file.r04"): {0xf},
 	})
 }
 
@@ -97,7 +98,13 @@ func TestWriteParity(t *testing.T) {
 	// newEncoderForTest() yet.
 	//
 	// TODO: Fix this.
-	paths := []string{"file.rar", "file.r01", "file.r02", "file.r03", "file.r04"}
+	paths := []string{
+		"file.rar",
+		filepath.Join("dir1", "file.r01"),
+		filepath.Join("dir1", "file.r02"),
+		filepath.Join("dir2", "dir3", "file.r03"),
+		filepath.Join("dir4", "dir5", "file.r04"),
+	}
 
 	sliceByteCount := 4
 	parityShardCount := 100
