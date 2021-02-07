@@ -433,7 +433,7 @@ func main() {
 
 		err = encoder.Write(parFile)
 		if err != nil {
-			fmt.Printf("Write parity error: %s", err)
+			fmt.Printf("Write parity error: %s\n", err)
 			os.Exit(-1)
 		}
 
