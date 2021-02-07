@@ -1,6 +1,7 @@
 package par2
 
 import (
+	"errors"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -62,13 +63,12 @@ func TestEncodeParity(t *testing.T) {
 
 	var recoverySet []fileID
 	dataShardsByID := make(map[fileID][][]byte)
-	// Encoder doesn't properly convert absolute to relative
-	// paths, but we can work around it by using absolute paths
-	// here, too.
 	for _, path := range paths {
 		data, err := fs.ReadFile(path)
 		require.NoError(t, err)
-		fileID, _, _, fileDataShards := computeDataFileInfo(sliceByteCount, path, data)
+		relPath, err := filepath.Rel(workingDir, path)
+		require.NoError(t, err)
+		fileID, _, _, fileDataShards := computeDataFileInfo(sliceByteCount, relPath, data)
 		recoverySet = append(recoverySet, fileID)
 		dataShardsByID[fileID] = fileDataShards
 	}
@@ -93,18 +93,7 @@ func TestWriteParity(t *testing.T) {
 	workingDir := memfs.RootDir()
 	fs := makeEncoderMemFS(workingDir)
 
-	// Encoder doesn't properly convert absolute to relative
-	// paths, so we can't pass in fs.Paths() to
-	// newEncoderForTest() yet.
-	//
-	// TODO: Fix this.
-	paths := []string{
-		"file.rar",
-		filepath.Join("dir1", "file.r01"),
-		filepath.Join("dir1", "file.r02"),
-		filepath.Join("dir2", "dir3", "file.r03"),
-		filepath.Join("dir4", "dir5", "file.r04"),
-	}
+	paths := fs.Paths()
 
 	sliceByteCount := 4
 	parityShardCount := 100
@@ -131,4 +120,16 @@ func TestWriteParity(t *testing.T) {
 	needsRepair, err := decoder.Verify()
 	require.NoError(t, err)
 	require.False(t, needsRepair)
+}
+
+func TestWriteParityFilesOutOfBasePath(t *testing.T) {
+	dir := memfs.RootDir()
+	fs := makeEncoderMemFS(dir)
+
+	paths := fs.Paths()
+
+	sliceByteCount := 4
+	parityShardCount := 100
+	_, err := newEncoderForTest(t, fs, filepath.Join(dir, "somedir"), paths, sliceByteCount, parityShardCount)
+	require.Equal(t, errors.New("data files must lie in basePath"), err)
 }
