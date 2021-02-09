@@ -29,6 +29,10 @@ jobs:
       run: go get -u golang.org/x/lint/golint
     - name: Run golint
       run: golint github.com/${{ github.repository }}/...
+    - name: Install errcheck
+      run: go get -u github.com/kisielk/errcheck
+    - name: Run errcheck
+      run: errcheck github.com/${{ github.repository }}/...
     - name: Run go install
       run: go install github.com/${{ github.repository }}/...
     - name: Run go test
