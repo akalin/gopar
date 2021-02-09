@@ -37,5 +37,13 @@ jobs:
       run: errcheck github.com/${{ github.repository }}/...
     - name: Run go install
       run: go install github.com/${{ github.repository }}/...
-    - name: Run go test
+    - name: Run go test (GOARCH=amd64)
       run: go test github.com/${{ github.repository }}/...
+      env:
+        GOARCH: amd64
+    - name: Run go test (GOARCH=386)
+      # darwin/386 isn't supported anymore.
+      if: matrix.os != 'macos-latest'
+      run: go test github.com/${{ github.repository }}/...
+      env:
+        GOARCH: 386
