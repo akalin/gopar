@@ -1,0 +1,29 @@
+name: Test
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    env:
+      GOPATH: ${{ github.workspace }}/go
+    strategy:
+      matrix:
+        go-version: [1.14.x, 1.15.x]
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - name: Install Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go-version }}
+    - name: Checkout code
+      uses: actions/checkout@v2
+      with:
+        path: go/src/github.com/${{ github.repository }}
+    - name: Get dependencies
+      # Need to specify cpuid specifically for some reason.
+      run: go get -d -t github.com/klauspost/cpuid/... github.com/${{ github.repository }}/...
+    - name: Run go install
+      run: go install github.com/${{ github.repository }}/...
+    - name: Run go test
+      run: go test github.com/${{ github.repository }}/...
