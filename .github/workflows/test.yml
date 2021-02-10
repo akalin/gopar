@@ -20,6 +20,8 @@ jobs:
       uses: actions/checkout@v2
       with:
         path: go/src/github.com/${{ github.repository }}
+    - name: Run verify-gofmt.sh
+      run: go/src/github.com/${{ github.repository }}/.github/scripts/verify-gofmt.sh go/src/github.com/${{ github.repository }}
     - name: Get dependencies
       # Need to specify cpuid specifically for some reason.
       run: go get -d -t github.com/klauspost/cpuid/... github.com/${{ github.repository }}/...
