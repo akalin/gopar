@@ -20,7 +20,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 			VolumeNumber:  5,
 		},
 		entries: []fileEntry{
-			fileEntry{
+			{
 				header: fileEntryHeader{
 					Status:       10,
 					FileBytes:    10,
@@ -29,7 +29,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 				},
 				filename: "filename世界.r01",
 			},
-			fileEntry{
+			{
 				header: fileEntryHeader{
 					Status:       11,
 					FileBytes:    10,

@@ -407,7 +407,8 @@ func (recoveryDelegate) OnCreatorPacketLoad(clientID string) {}
 
 func (recoveryDelegate) OnMainPacketLoad(sliceByteCount, recoverySetCount, nonRecoverySetCount int) {}
 
-func (recoveryDelegate) OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int) {}
+func (recoveryDelegate) OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int) {
+}
 
 func (recoveryDelegate) OnIFSCPacketLoad(fileID [16]byte) {}
 
