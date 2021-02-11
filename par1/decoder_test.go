@@ -148,8 +148,8 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 	}
 }
 
-func TestVerify(t *testing.T) {
-	io := testFileIO{
+func makeDecoderTestFileIO(t *testing.T) testFileIO {
+	return testFileIO{
 		t: t,
 		fileData: map[string][]byte{
 			"file.rar": {0x1, 0x2, 0x3, 0x4},
@@ -159,6 +159,10 @@ func TestVerify(t *testing.T) {
 			"file.r04": {0xd},
 		},
 	}
+}
+
+func TestVerify(t *testing.T) {
+	io := makeDecoderTestFileIO(t)
 
 	buildPARData(t, io, 3)
 
@@ -206,25 +210,8 @@ func TestVerify(t *testing.T) {
 }
 
 func TestSetHashMismatch(t *testing.T) {
-	io1 := testFileIO{
-		t: t,
-		fileData: map[string][]byte{
-			"file.rar": {0x1, 0x2, 0x3, 0x4},
-			"file.r01": {0x5, 0x6, 0x7},
-			"file.r02": {0x8, 0x9, 0xa, 0xb, 0xc},
-			"file.r03": nil,
-			"file.r04": {0xd},
-		},
-	}
-
-	io2 := testFileIO{
-		t:        t,
-		fileData: make(map[string][]byte),
-	}
-	for k, v := range io1.fileData {
-		io2.fileData[k] = make([]byte, len(v))
-		copy(io2.fileData[k], v)
-	}
+	io1 := makeDecoderTestFileIO(t)
+	io2 := makeDecoderTestFileIO(t)
 	io2.fileData["file.rar"][0]++
 
 	buildPARData(t, io1, 3)
@@ -241,16 +228,7 @@ func TestSetHashMismatch(t *testing.T) {
 }
 
 func TestRepair(t *testing.T) {
-	io := testFileIO{
-		t: t,
-		fileData: map[string][]byte{
-			"file.rar": {0x1, 0x2, 0x3, 0x4},
-			"file.r01": {0x5, 0x6, 0x7},
-			"file.r02": {0x8, 0x9, 0xa, 0xb, 0xc},
-			"file.r03": nil,
-			"file.r04": {0xd},
-		},
-	}
+	io := makeDecoderTestFileIO(t)
 
 	buildPARData(t, io, 3)
 
