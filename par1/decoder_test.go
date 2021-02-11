@@ -18,6 +18,36 @@ type testFileIO struct {
 	fileData map[string][]byte
 }
 
+func (io testFileIO) fileCount() int {
+	return len(io.fileData)
+}
+
+func (io testFileIO) paths() []string {
+	var paths []string
+	for path := range io.fileData {
+		paths = append(paths, path)
+	}
+	return paths
+}
+
+func (io testFileIO) getData(path string) []byte {
+	data, ok := io.fileData[path]
+	if !ok {
+		io.t.Fatalf("no file at path %s", path)
+	}
+	return data
+}
+
+func (io testFileIO) setData(path string, data []byte) {
+	io.fileData[path] = data
+}
+
+func (io testFileIO) removeData(path string) []byte {
+	data := io.getData(path)
+	delete(io.fileData, path)
+	return data
+}
+
 func (io testFileIO) ReadFile(path string) (data []byte, err error) {
 	io.t.Helper()
 	defer func() {
@@ -71,26 +101,32 @@ func (d testDecoderDelegate) OnVolumeFileLoad(i uint64, path string, storedSetHa
 	d.t.Logf("OnVolumeFileLoad(%d, %s, storedSetHash=%x, computedSetHash=%x, dataByteCount=%d, %v)", i, path, storedSetHash, computedSetHash, dataByteCount, err)
 }
 
+func toSortedStrings(arr []string) []string {
+	arrCopy := make([]string, len(arr))
+	copy(arrCopy, arr)
+	sort.Strings(arrCopy)
+	return arrCopy
+}
+
 func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
-	dataShardCount := len(io.fileData)
+	dataShardCount := io.fileCount()
 	rs, err := reedsolomon.New(dataShardCount, parityShardCount, reedsolomon.WithPAR1Matrix())
 	require.NoError(t, err)
 
-	var keys []string
-	for k := range io.fileData {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+	paths := io.paths()
+	sortedPaths := toSortedStrings(paths)
 
 	shardByteCount := 0
-	for _, k := range keys {
-		if len(io.fileData[k]) > shardByteCount {
-			shardByteCount = len(io.fileData[k])
+	for _, path := range paths {
+		dataLength := len(io.getData(path))
+		if dataLength > shardByteCount {
+			shardByteCount = dataLength
 		}
 	}
 	var shards [][]byte
-	for _, k := range keys {
-		shards = append(shards, append(io.fileData[k], make([]byte, shardByteCount-len(io.fileData[k]))...))
+	for _, path := range sortedPaths {
+		data := io.getData(path)
+		shards = append(shards, append(data, make([]byte, shardByteCount-len(data))...))
 	}
 	for i := 0; i < parityShardCount; i++ {
 		shards = append(shards, make([]byte, shardByteCount))
@@ -100,8 +136,8 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 
 	var entries []fileEntry
 	var setHashInput []byte
-	for _, k := range keys {
-		data := io.fileData[k]
+	for _, path := range sortedPaths {
+		data := io.getData(path)
 		var status fileEntryStatus
 		status.setSavedInVolumeSet(true)
 		hash := md5.Sum(data)
@@ -112,7 +148,7 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 				Hash:         hash,
 				SixteenKHash: sixteenKHash(data),
 			},
-			filename: k,
+			filename: path,
 		}
 		entries = append(entries, entry)
 		setHashInput = append(setHashInput, hash[:]...)
@@ -133,10 +169,11 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 	indexVolumeBytes, err := writeVolume(indexVolume)
 	require.NoError(t, err)
 
-	ext := path.Ext(keys[0])
-	base := keys[0][:len(keys[0])-len(ext)]
+	firstPath := sortedPaths[0]
+	ext := path.Ext(firstPath)
+	base := firstPath[:len(firstPath)-len(ext)]
 
-	io.fileData[base+".par"] = indexVolumeBytes
+	io.setData(base+".par", indexVolumeBytes)
 
 	for i, parityShard := range shards[dataShardCount:] {
 		vol := vTemplate
@@ -144,7 +181,7 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 		vol.data = parityShard
 		volBytes, err := writeVolume(vol)
 		require.NoError(t, err)
-		io.fileData[fmt.Sprintf("%s.p%02d", base, i+1)] = volBytes
+		io.setData(fmt.Sprintf("%s.p%02d", base, i+1), volBytes)
 	}
 }
 
@@ -177,7 +214,7 @@ func TestVerify(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, needsRepair)
 
-	fileData5 := io.fileData["file.r04"]
+	fileData5 := io.getData("file.r04")
 	fileData5[len(fileData5)-1]++
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
@@ -192,16 +229,15 @@ func TestVerify(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, needsRepair)
 
-	p03Data := io.fileData["file.p03"]
-	delete(io.fileData, "file.p03")
+	p03Data := io.removeData("file.p03")
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
 	needsRepair, err = decoder.Verify()
 	require.NoError(t, err)
 	require.False(t, needsRepair)
 
-	io.fileData["file.p03"] = p03Data
-	delete(io.fileData, "file.p02")
+	io.setData("file.p03", p03Data)
+	io.removeData("file.p02")
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
 	needsRepair, err = decoder.Verify()
@@ -235,13 +271,12 @@ func TestRepair(t *testing.T) {
 	decoder, err := newDecoder(io, testDecoderDelegate{t}, "file.par")
 	require.NoError(t, err)
 
-	r02Data := io.fileData["file.r02"]
+	r02Data := io.getData("file.r02")
 	r02DataCopy := make([]byte, len(r02Data))
 	copy(r02DataCopy, r02Data)
 	r02Data[len(r02Data)-1]++
-	delete(io.fileData, "file.r03")
-	r04Data := io.fileData["file.r04"]
-	delete(io.fileData, "file.r04")
+	io.removeData("file.r03")
+	r04Data := io.removeData("file.r04")
 
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
@@ -251,8 +286,11 @@ func TestRepair(t *testing.T) {
 	repaired, err := decoder.Repair(true)
 	require.NoError(t, err)
 
+	// removeData returns nil for "file.r03", but Repair writes a
+	// zero-length array instead.
+	expectedR03Data := []byte{}
 	require.Equal(t, []string{"file.r02", "file.r03", "file.r04"}, repaired)
-	require.Equal(t, r02DataCopy, io.fileData["file.r02"])
-	require.Equal(t, 0, len(io.fileData["file.r03"]))
-	require.Equal(t, r04Data, io.fileData["file.r04"])
+	require.Equal(t, r02DataCopy, io.getData("file.r02"))
+	require.Equal(t, expectedR03Data, io.getData("file.r03"))
+	require.Equal(t, r04Data, io.getData("file.r04"))
 }

@@ -37,7 +37,7 @@ func makeEncoderTestFileIO(t *testing.T) testFileIO {
 func TestEncodeParity(t *testing.T) {
 	io := makeEncoderTestFileIO(t)
 
-	paths := []string{"file.rar", "file.r01", "file.r02", "file.r03", "file.r04"}
+	paths := io.paths()
 
 	encoder, err := newEncoder(io, testEncoderDelegate{t}, paths, 3)
 	require.NoError(t, err)
@@ -53,7 +53,8 @@ func TestEncodeParity(t *testing.T) {
 
 	var shards [][]byte
 	for _, path := range paths {
-		shards = append(shards, append(io.fileData[path], make([]byte, 4-len(io.fileData[path]))...))
+		data := io.getData(path)
+		shards = append(shards, append(data, make([]byte, 4-len(data))...))
 	}
 
 	shards = append(shards, encoder.parityData...)
@@ -66,7 +67,7 @@ func TestEncodeParity(t *testing.T) {
 func TestWriteParity(t *testing.T) {
 	io := makeEncoderTestFileIO(t)
 
-	paths := []string{"file.rar", "file.r01", "file.r02", "file.r03", "file.r04"}
+	paths := io.paths()
 
 	encoder, err := newEncoder(io, testEncoderDelegate{t}, paths, 3)
 	require.NoError(t, err)
