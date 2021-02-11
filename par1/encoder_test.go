@@ -21,8 +21,8 @@ func (d testEncoderDelegate) OnVolumeFileWrite(i, n int, path string, dataByteCo
 	d.t.Logf("OnVolumeFileWrite(%d, %d, %s, dataByteCount=%d, byteCount=%d, %v)", i, n, path, dataByteCount, byteCount, err)
 }
 
-func TestEncodeParity(t *testing.T) {
-	io := testFileIO{
+func makeEncoderTestFileIO(t *testing.T) testFileIO {
+	return testFileIO{
 		t: t,
 		fileData: map[string][]byte{
 			"file.rar": {0x1, 0x2, 0x3},
@@ -32,6 +32,10 @@ func TestEncodeParity(t *testing.T) {
 			"file.r04": nil,
 		},
 	}
+}
+
+func TestEncodeParity(t *testing.T) {
+	io := makeEncoderTestFileIO(t)
 
 	paths := []string{"file.rar", "file.r01", "file.r02", "file.r03", "file.r04"}
 
@@ -60,16 +64,7 @@ func TestEncodeParity(t *testing.T) {
 }
 
 func TestWriteParity(t *testing.T) {
-	io := testFileIO{
-		t: t,
-		fileData: map[string][]byte{
-			"file.rar": {0x1, 0x2, 0x3},
-			"file.r01": {0x5, 0x6, 0x7, 0x8},
-			"file.r02": {0x9, 0xa, 0xb, 0xc},
-			"file.r03": {0xd, 0xe},
-			"file.r04": nil,
-		},
-	}
+	io := makeEncoderTestFileIO(t)
 
 	paths := []string{"file.rar", "file.r01", "file.r02", "file.r03", "file.r04"}
 
