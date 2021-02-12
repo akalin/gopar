@@ -22,16 +22,13 @@ func (d testEncoderDelegate) OnVolumeFileWrite(i, n int, path string, dataByteCo
 }
 
 func makeEncoderTestFileIO(t *testing.T) testFileIO {
-	return testFileIO{
-		t: t,
-		fileData: map[string][]byte{
-			"file.rar": {0x1, 0x2, 0x3},
-			"file.r01": {0x5, 0x6, 0x7, 0x8},
-			"file.r02": {0x9, 0xa, 0xb, 0xc},
-			"file.r03": {0xd, 0xe},
-			"file.r04": nil,
-		},
-	}
+	return makeTestFileIO(t, rootDir(), map[string][]byte{
+		"file.rar": {0x1, 0x2, 0x3},
+		"file.r01": {0x5, 0x6, 0x7, 0x8},
+		"file.r02": {0x9, 0xa, 0xb, 0xc},
+		"file.r03": {0xd, 0xe},
+		"file.r04": nil,
+	})
 }
 
 func TestEncodeParity(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"testing"
 
@@ -13,9 +14,45 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func rootDir() string {
+	// This complexity is only for Windows, the only platform
+	// which has the concept of a VolumeName, e.g. C:. We don't
+	// care which drive the current working directory is on. On
+	// all other platforms, volName is empty.
+	wd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	volName := filepath.VolumeName(filepath.Clean(wd))
+	return volName + string(filepath.Separator)
+}
+
+func toAbsPath(workingDir, path string) string {
+	if !filepath.IsAbs(workingDir) {
+		panic("workingDir must be an absolute path")
+	}
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(workingDir, path)
+}
+
+func fileDataToAbsPaths(workingDir string, fileData map[string][]byte) map[string][]byte {
+	newFileData := make(map[string][]byte)
+	for path, data := range fileData {
+		newFileData[toAbsPath(workingDir, path)] = data
+	}
+	return newFileData
+}
+
 type testFileIO struct {
-	t        *testing.T
-	fileData map[string][]byte
+	t          *testing.T
+	workingDir string
+	fileData   map[string][]byte
+}
+
+func makeTestFileIO(t *testing.T, workingDir string, fileData map[string][]byte) testFileIO {
+	return testFileIO{t, workingDir, fileDataToAbsPaths(workingDir, fileData)}
 }
 
 func (io testFileIO) fileCount() int {
@@ -31,20 +68,23 @@ func (io testFileIO) paths() []string {
 }
 
 func (io testFileIO) getData(path string) []byte {
-	data, ok := io.fileData[path]
+	absPath := toAbsPath(io.workingDir, path)
+	data, ok := io.fileData[absPath]
 	if !ok {
-		io.t.Fatalf("no file at path %s", path)
+		io.t.Fatalf("no file at path %s", absPath)
 	}
 	return data
 }
 
 func (io testFileIO) setData(path string, data []byte) {
-	io.fileData[path] = data
+	absPath := toAbsPath(io.workingDir, path)
+	io.fileData[absPath] = data
 }
 
 func (io testFileIO) removeData(path string) []byte {
-	data := io.getData(path)
-	delete(io.fileData, path)
+	absPath := toAbsPath(io.workingDir, path)
+	data := io.getData(absPath)
+	delete(io.fileData, absPath)
 	return data
 }
 
@@ -54,7 +94,8 @@ func (io testFileIO) ReadFile(path string) (data []byte, err error) {
 		io.t.Helper()
 		io.t.Logf("ReadFile(%s) => (%d, %v)", path, len(data), err)
 	}()
-	if data, ok := io.fileData[path]; ok {
+	absPath := toAbsPath(io.workingDir, path)
+	if data, ok := io.fileData[absPath]; ok {
 		return data, nil
 	}
 	return nil, os.ErrNotExist
@@ -63,7 +104,8 @@ func (io testFileIO) ReadFile(path string) (data []byte, err error) {
 func (io testFileIO) WriteFile(path string, data []byte) error {
 	io.t.Helper()
 	io.t.Logf("WriteFile(%s, %d bytes)", path, len(data))
-	io.fileData[path] = data
+	absPath := toAbsPath(io.workingDir, path)
+	io.fileData[absPath] = data
 	return nil
 }
 
@@ -185,21 +227,18 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 	}
 }
 
-func makeDecoderTestFileIO(t *testing.T) testFileIO {
-	return testFileIO{
-		t: t,
-		fileData: map[string][]byte{
-			"file.rar": {0x1, 0x2, 0x3, 0x4},
-			"file.r01": {0x5, 0x6, 0x7},
-			"file.r02": {0x8, 0x9, 0xa, 0xb, 0xc},
-			"file.r03": nil,
-			"file.r04": {0xd},
-		},
-	}
+func makeDecoderTestFileIO(t *testing.T, workingDir string) testFileIO {
+	return makeTestFileIO(t, workingDir, map[string][]byte{
+		"file.rar": {0x1, 0x2, 0x3, 0x4},
+		"file.r01": {0x5, 0x6, 0x7},
+		"file.r02": {0x8, 0x9, 0xa, 0xb, 0xc},
+		"file.r03": nil,
+		"file.r04": {0xd},
+	})
 }
 
 func TestVerify(t *testing.T) {
-	io := makeDecoderTestFileIO(t)
+	io := makeDecoderTestFileIO(t, rootDir())
 
 	buildPARData(t, io, 3)
 
@@ -246,14 +285,14 @@ func TestVerify(t *testing.T) {
 }
 
 func TestSetHashMismatch(t *testing.T) {
-	io1 := makeDecoderTestFileIO(t)
-	io2 := makeDecoderTestFileIO(t)
-	io2.fileData["file.rar"][0]++
+	io1 := makeDecoderTestFileIO(t, rootDir())
+	io2 := makeDecoderTestFileIO(t, rootDir())
+	io2.getData("file.rar")[0]++
 
 	buildPARData(t, io1, 3)
 	buildPARData(t, io2, 3)
 	// Insert a parity volume that has a different set hash.
-	io1.fileData["file.p02"] = io2.fileData["file.p02"]
+	io1.setData("file.p02", io2.getData("file.p02"))
 
 	decoder, err := newDecoder(io1, testDecoderDelegate{t}, "file.par")
 	require.NoError(t, err)
@@ -264,7 +303,7 @@ func TestSetHashMismatch(t *testing.T) {
 }
 
 func TestRepair(t *testing.T) {
-	io := makeDecoderTestFileIO(t)
+	io := makeDecoderTestFileIO(t, rootDir())
 
 	buildPARData(t, io, 3)
 
@@ -289,7 +328,8 @@ func TestRepair(t *testing.T) {
 	// removeData returns nil for "file.r03", but Repair writes a
 	// zero-length array instead.
 	expectedR03Data := []byte{}
-	require.Equal(t, []string{"file.r02", "file.r03", "file.r04"}, repaired)
+	// TODO: Repair should return paths relative to "file.par".
+	require.Equal(t, []string{filepath.Join(rootDir(), "file.r02"), filepath.Join(rootDir(), "file.r03"), filepath.Join(rootDir(), "file.r04")}, repaired)
 	require.Equal(t, r02DataCopy, io.getData("file.r02"))
 	require.Equal(t, expectedR03Data, io.getData("file.r03"))
 	require.Equal(t, r04Data, io.getData("file.r04"))
