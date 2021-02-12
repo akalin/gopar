@@ -237,12 +237,16 @@ func makeDecoderTestFileIO(t *testing.T, workingDir string) testFileIO {
 	})
 }
 
-func testVerify(t *testing.T, workingDir string) {
+func testVerify(t *testing.T, workingDir string, useAbsPath bool) {
 	io := makeDecoderTestFileIO(t, workingDir)
 
 	buildPARData(t, io, 3)
 
-	decoder, err := newDecoder(io, testDecoderDelegate{t}, "file.par")
+	parPath := "file.par"
+	if useAbsPath {
+		parPath = filepath.Join(workingDir, parPath)
+	}
+	decoder, err := newDecoder(io, testDecoderDelegate{t}, parPath)
 	require.NoError(t, err)
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
@@ -292,9 +296,12 @@ func TestVerify(t *testing.T) {
 	}
 	for _, workingDir := range workingDirs {
 		workingDir := workingDir
-		t.Run(fmt.Sprintf("workingDir=%s", workingDir), func(t *testing.T) {
-			testVerify(t, workingDir)
-		})
+		for _, useAbsPath := range []bool{false, true} {
+			useAbsPath := useAbsPath
+			t.Run(fmt.Sprintf("workingDir=%s,useAbsPath=%t", workingDir, useAbsPath), func(t *testing.T) {
+				testVerify(t, workingDir, useAbsPath)
+			})
+		}
 	}
 }
 
