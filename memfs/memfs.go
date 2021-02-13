@@ -3,6 +3,7 @@ package memfs
 import (
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // RootDir returns a string representing a root directory. On
@@ -61,6 +62,20 @@ func (fs MemFS) ReadFile(path string) (data []byte, err error) {
 		return data, nil
 	}
 	return nil, os.ErrNotExist
+}
+
+// FindWithPrefixAndSuffix returns all files whose path matches the
+// given prefix and suffix, in no particular order. The prefix may be
+// absolute or relative (to the working directory).
+func (fs MemFS) FindWithPrefixAndSuffix(prefix, suffix string) ([]string, error) {
+	absPrefix := toAbsPath(fs.workingDir, prefix)
+	var matches []string
+	for _, filename := range fs.Paths() {
+		if len(filename) >= len(absPrefix)+len(suffix) && strings.HasPrefix(filename, absPrefix) && strings.HasSuffix(filename, suffix) {
+			matches = append(matches, filename)
+		}
+	}
+	return matches, nil
 }
 
 // WriteFile sets the data of the file at the given path, which may be
