@@ -4,6 +4,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/akalin/gopar/memfs"
 	"github.com/akalin/gopar/rsec16"
 	"github.com/stretchr/testify/require"
 )
@@ -27,27 +28,28 @@ func (d testEncoderDelegate) OnRecoveryFileWrite(start, count, total int, path s
 	d.t.Logf("OnRecoveryFileWrite(start=%d, count=%d, total=%d, %s, dataByteCount=%d, byteCount=%d, %v)", start, count, total, path, dataByteCount, byteCount, err)
 }
 
-func newEncoderForTest(t *testing.T, io testFileIO, paths []string, sliceByteCount, parityShardCount int) (*Encoder, error) {
-	return newEncoder(io, testEncoderDelegate{t}, paths, sliceByteCount, parityShardCount, rsec16.DefaultNumGoroutines())
+func newEncoderForTest(t *testing.T, fs memfs.MemFS, paths []string, sliceByteCount, parityShardCount int) (*Encoder, error) {
+	return newEncoder(testFileIO{t, fs}, testEncoderDelegate{t}, paths, sliceByteCount, parityShardCount, rsec16.DefaultNumGoroutines())
+}
+
+func makeEncoderMemFS() memfs.MemFS {
+	return memfs.MakeMemFS(memfs.RootDir(), map[string][]byte{
+		"file.rar": {0x1, 0x2, 0x3},
+		"file.r01": {0x5, 0x6, 0x7, 0x8},
+		"file.r02": {0x9, 0xa, 0xb, 0xc},
+		"file.r03": {0xd, 0xe},
+		"file.r04": {0xf},
+	})
 }
 
 func TestEncodeParity(t *testing.T) {
-	io := testFileIO{
-		t: t,
-		fileData: map[string][]byte{
-			"file.rar": {0x1, 0x2, 0x3},
-			"file.r01": {0x5, 0x6, 0x7, 0x8},
-			"file.r02": {0x9, 0xa, 0xb, 0xc},
-			"file.r03": {0xd, 0xe},
-			"file.r04": {0xf},
-		},
-	}
+	fs := makeEncoderMemFS()
 
-	paths := []string{"file.rar", "file.r01", "file.r02", "file.r03", "file.r04"}
+	paths := fs.Paths()
 
 	sliceByteCount := 4
 	parityShardCount := 3
-	encoder, err := newEncoderForTest(t, io, paths, sliceByteCount, parityShardCount)
+	encoder, err := newEncoderForTest(t, fs, paths, sliceByteCount, parityShardCount)
 	require.NoError(t, err)
 
 	err = encoder.LoadFileData()
@@ -58,8 +60,13 @@ func TestEncodeParity(t *testing.T) {
 
 	var recoverySet []fileID
 	dataShardsByID := make(map[fileID][][]byte)
-	for filename, data := range io.fileData {
-		fileID, _, _, fileDataShards := computeDataFileInfo(sliceByteCount, filename, data)
+	// Encoder doesn't properly convert absolute to relative
+	// paths, but we can work around it by using absolute paths
+	// here, too.
+	for _, path := range paths {
+		data, err := fs.ReadFile(path)
+		require.NoError(t, err)
+		fileID, _, _, fileDataShards := computeDataFileInfo(sliceByteCount, path, data)
 		recoverySet = append(recoverySet, fileID)
 		dataShardsByID[fileID] = fileDataShards
 	}
@@ -81,22 +88,18 @@ func TestEncodeParity(t *testing.T) {
 }
 
 func TestWriteParity(t *testing.T) {
-	io := testFileIO{
-		t: t,
-		fileData: map[string][]byte{
-			"file.rar": {0x1, 0x2, 0x3},
-			"file.r01": {0x5, 0x6, 0x7, 0x8},
-			"file.r02": {0x9, 0xa, 0xb, 0xc},
-			"file.r03": {0xd, 0xe},
-			"file.r04": {0xf},
-		},
-	}
+	fs := makeEncoderMemFS()
 
+	// Encoder doesn't properly convert absolute to relative
+	// paths, so we can't pass in fs.Paths() to
+	// newEncoderForTest() yet.
+	//
+	// TODO: Fix this.
 	paths := []string{"file.rar", "file.r01", "file.r02", "file.r03", "file.r04"}
 
 	sliceByteCount := 4
 	parityShardCount := 100
-	encoder, err := newEncoderForTest(t, io, paths, sliceByteCount, parityShardCount)
+	encoder, err := newEncoderForTest(t, fs, paths, sliceByteCount, parityShardCount)
 	require.NoError(t, err)
 
 	err = encoder.LoadFileData()
@@ -108,7 +111,7 @@ func TestWriteParity(t *testing.T) {
 	err = encoder.Write("parity.par2")
 	require.NoError(t, err)
 
-	decoder, err := newDecoderForTest(t, io, "parity.par2")
+	decoder, err := newDecoderForTest(t, fs, "parity.par2")
 	require.NoError(t, err)
 
 	err = decoder.LoadFileData()
