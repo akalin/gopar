@@ -4,113 +4,37 @@ import (
 	"crypto/md5"
 	"errors"
 	"fmt"
-	"os"
 	"path"
 	"path/filepath"
 	"sort"
 	"testing"
 
+	"github.com/akalin/gopar/memfs"
 	"github.com/klauspost/reedsolomon"
 	"github.com/stretchr/testify/require"
 )
 
-func rootDir() string {
-	// This complexity is only for Windows, the only platform
-	// which has the concept of a VolumeName, e.g. C:. We don't
-	// care which drive the current working directory is on. On
-	// all other platforms, volName is empty.
-	wd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	volName := filepath.VolumeName(filepath.Clean(wd))
-	return volName + string(filepath.Separator)
-}
-
-func toAbsPath(workingDir, path string) string {
-	if !filepath.IsAbs(workingDir) {
-		panic("workingDir must be an absolute path")
-	}
-	if filepath.IsAbs(path) {
-		return path
-	}
-	return filepath.Join(workingDir, path)
-}
-
-func fileDataToAbsPaths(workingDir string, fileData map[string][]byte) map[string][]byte {
-	newFileData := make(map[string][]byte)
-	for path, data := range fileData {
-		newFileData[toAbsPath(workingDir, path)] = data
-	}
-	return newFileData
-}
-
 type testFileIO struct {
-	t          *testing.T
-	workingDir string
-	fileData   map[string][]byte
-}
-
-func makeTestFileIO(t *testing.T, workingDir string, fileData map[string][]byte) testFileIO {
-	return testFileIO{t, workingDir, fileDataToAbsPaths(workingDir, fileData)}
-}
-
-func (io testFileIO) fileCount() int {
-	return len(io.fileData)
-}
-
-func (io testFileIO) paths() []string {
-	var paths []string
-	for path := range io.fileData {
-		paths = append(paths, path)
-	}
-	return paths
-}
-
-func (io testFileIO) getData(path string) []byte {
-	absPath := toAbsPath(io.workingDir, path)
-	data, ok := io.fileData[absPath]
-	if !ok {
-		io.t.Fatalf("no file at path %s", absPath)
-	}
-	return data
-}
-
-func (io testFileIO) setData(path string, data []byte) {
-	absPath := toAbsPath(io.workingDir, path)
-	io.fileData[absPath] = data
-}
-
-func (io testFileIO) removeData(path string) []byte {
-	absPath := toAbsPath(io.workingDir, path)
-	data := io.getData(absPath)
-	delete(io.fileData, absPath)
-	return data
-}
-
-func (io testFileIO) moveData(oldPath, newPath string) {
-	io.setData(newPath, io.removeData(oldPath))
+	t *testing.T
+	fileIO
 }
 
 func (io testFileIO) ReadFile(path string) (data []byte, err error) {
 	io.t.Helper()
 	defer func() {
 		io.t.Helper()
-		io.t.Logf("ReadFile(%s) => (%d, %v)", path, len(data), err)
+		io.t.Logf("ReadFile(%s) => (%d bytes, %v)", path, len(data), err)
 	}()
-	absPath := toAbsPath(io.workingDir, path)
-	if data, ok := io.fileData[absPath]; ok {
-		return data, nil
-	}
-	return nil, os.ErrNotExist
+	return io.fileIO.ReadFile(path)
 }
 
-func (io testFileIO) WriteFile(path string, data []byte) error {
+func (io testFileIO) WriteFile(path string, data []byte) (err error) {
 	io.t.Helper()
-	io.t.Logf("WriteFile(%s, %d bytes)", path, len(data))
-	absPath := toAbsPath(io.workingDir, path)
-	io.fileData[absPath] = data
-	return nil
+	defer func() {
+		io.t.Helper()
+		io.t.Logf("WriteFile(%s, %d bytes) => %v", path, len(data), err)
+	}()
+	return io.fileIO.WriteFile(path, data)
 }
 
 type testDecoderDelegate struct {
@@ -154,11 +78,12 @@ func toSortedStrings(arr []string) []string {
 	return arrCopy
 }
 
-func buildVTemplate(t *testing.T, io testFileIO, sortedPaths []string) volume {
+func buildVTemplate(t *testing.T, fs memfs.MemFS, sortedPaths []string) volume {
 	var entries []fileEntry
 	var setHashInput []byte
 	for _, path := range sortedPaths {
-		data := io.getData(path)
+		data, err := fs.ReadFile(path)
+		require.NoError(t, err)
 		var status fileEntryStatus
 		status.setSavedInVolumeSet(true)
 		hash := md5.Sum(data)
@@ -185,24 +110,27 @@ func buildVTemplate(t *testing.T, io testFileIO, sortedPaths []string) volume {
 	}
 }
 
-func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
-	dataShardCount := io.fileCount()
+func buildPARData(t *testing.T, fs memfs.MemFS, parityShardCount int) {
+	dataShardCount := fs.FileCount()
 	rs, err := reedsolomon.New(dataShardCount, parityShardCount, reedsolomon.WithPAR1Matrix())
 	require.NoError(t, err)
 
-	paths := io.paths()
+	paths := fs.Paths()
 	sortedPaths := toSortedStrings(paths)
 
 	shardByteCount := 0
 	for _, path := range paths {
-		dataLength := len(io.getData(path))
+		data, err := fs.ReadFile(path)
+		require.NoError(t, err)
+		dataLength := len(data)
 		if dataLength > shardByteCount {
 			shardByteCount = dataLength
 		}
 	}
 	var shards [][]byte
 	for _, path := range sortedPaths {
-		data := io.getData(path)
+		data, err := fs.ReadFile(path)
+		require.NoError(t, err)
 		shards = append(shards, append(data, make([]byte, shardByteCount-len(data))...))
 	}
 	for i := 0; i < parityShardCount; i++ {
@@ -211,7 +139,7 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 	err = rs.Encode(shards)
 	require.NoError(t, err)
 
-	vTemplate := buildVTemplate(t, io, sortedPaths)
+	vTemplate := buildVTemplate(t, fs, sortedPaths)
 
 	indexVolume := vTemplate
 	indexVolume.header.VolumeNumber = 0
@@ -223,7 +151,7 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 	ext := path.Ext(firstPath)
 	base := firstPath[:len(firstPath)-len(ext)]
 
-	io.setData(base+".par", indexVolumeBytes)
+	require.NoError(t, fs.WriteFile(base+".par", indexVolumeBytes))
 
 	for i, parityShard := range shards[dataShardCount:] {
 		vol := vTemplate
@@ -231,12 +159,12 @@ func buildPARData(t *testing.T, io testFileIO, parityShardCount int) {
 		vol.data = parityShard
 		volBytes, err := writeVolume(vol)
 		require.NoError(t, err)
-		io.setData(fmt.Sprintf("%s.p%02d", base, i+1), volBytes)
+		require.NoError(t, fs.WriteFile(fmt.Sprintf("%s.p%02d", base, i+1), volBytes))
 	}
 }
 
-func makeDecoderTestFileIO(t *testing.T, workingDir string) testFileIO {
-	return makeTestFileIO(t, workingDir, map[string][]byte{
+func makeDecoderMemFS(workingDir string) memfs.MemFS {
+	return memfs.MakeMemFS(workingDir, map[string][]byte{
 		"file.rar": {0x1, 0x2, 0x3, 0x4},
 		"file.r01": {0x5, 0x6, 0x7},
 		"file.r02": {0x8, 0x9, 0xa, 0xb, 0xc},
@@ -245,16 +173,20 @@ func makeDecoderTestFileIO(t *testing.T, workingDir string) testFileIO {
 	})
 }
 
-func testVerify(t *testing.T, workingDir string, useAbsPath bool) {
-	io := makeDecoderTestFileIO(t, workingDir)
+func newDecoderForTest(t *testing.T, fs memfs.MemFS, indexFile string) (*Decoder, error) {
+	return newDecoder(testFileIO{t, fs}, testDecoderDelegate{t}, indexFile)
+}
 
-	buildPARData(t, io, 3)
+func testVerify(t *testing.T, workingDir string, useAbsPath bool) {
+	fs := makeDecoderMemFS(workingDir)
+
+	buildPARData(t, fs, 3)
 
 	parPath := "file.par"
 	if useAbsPath {
 		parPath = filepath.Join(workingDir, parPath)
 	}
-	decoder, err := newDecoder(io, testDecoderDelegate{t}, parPath)
+	decoder, err := newDecoderForTest(t, fs, parPath)
 	require.NoError(t, err)
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
@@ -265,7 +197,8 @@ func testVerify(t *testing.T, workingDir string, useAbsPath bool) {
 	require.NoError(t, err)
 	require.False(t, needsRepair)
 
-	fileData5 := io.getData("file.r04")
+	fileData5, err := fs.ReadFile("file.r04")
+	require.NoError(t, err)
 	fileData5[len(fileData5)-1]++
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
@@ -280,15 +213,17 @@ func testVerify(t *testing.T, workingDir string, useAbsPath bool) {
 	require.NoError(t, err)
 	require.False(t, needsRepair)
 
-	p03Data := io.removeData("file.p03")
+	p03Data, err := fs.RemoveFile("file.p03")
+	require.NoError(t, err)
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
 	needsRepair, err = decoder.Verify()
 	require.NoError(t, err)
 	require.False(t, needsRepair)
 
-	io.setData("file.p03", p03Data)
-	io.removeData("file.p02")
+	require.NoError(t, fs.WriteFile("file.p03", p03Data))
+	_, err = fs.RemoveFile("file.p02")
+	require.NoError(t, err)
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
 	needsRepair, err = decoder.Verify()
@@ -298,9 +233,9 @@ func testVerify(t *testing.T, workingDir string, useAbsPath bool) {
 
 func runOnExampleWorkingDirs(t *testing.T, testFn func(*testing.T, string, bool)) {
 	workingDirs := []string{
-		rootDir(),
-		filepath.Join(rootDir(), "dir"),
-		filepath.Join(rootDir(), "dir1", "dir2"),
+		memfs.RootDir(),
+		filepath.Join(memfs.RootDir(), "dir"),
+		filepath.Join(memfs.RootDir(), "dir1", "dir2"),
 	}
 	for _, workingDir := range workingDirs {
 		workingDir := workingDir
@@ -318,37 +253,41 @@ func TestVerify(t *testing.T) {
 }
 
 func TestBadFilename(t *testing.T) {
-	workingDir := filepath.Join(rootDir(), "dir")
-	io := makeTestFileIO(t, workingDir, map[string][]byte{
+	workingDir := filepath.Join(memfs.RootDir(), "dir")
+	fs := memfs.MakeMemFS(workingDir, map[string][]byte{
 		"file.rar": {0x1, 0x2, 0x3, 0x4},
 	})
 
-	indexVolume := buildVTemplate(t, io, []string{"file.rar"})
+	indexVolume := buildVTemplate(t, fs, []string{"file.rar"})
 	indexVolume.header.VolumeNumber = 0
 	indexVolume.data = []byte{0x1, 0x2}
 	indexVolume.entries[0].filename = filepath.Join("dir", "file.rar")
 	indexVolumeBytes, err := writeVolume(indexVolume)
 	require.NoError(t, err)
 
-	io.setData("file.par", indexVolumeBytes)
+	require.NoError(t, fs.WriteFile("file.par", indexVolumeBytes))
 
-	decoder, err := newDecoder(io, testDecoderDelegate{t}, "file.par")
+	decoder, err := newDecoderForTest(t, fs, "file.par")
 	require.NoError(t, err)
 	err = decoder.LoadFileData()
 	require.Equal(t, errors.New("bad filename"), err)
 }
 
 func TestSetHashMismatch(t *testing.T) {
-	io1 := makeDecoderTestFileIO(t, rootDir())
-	io2 := makeDecoderTestFileIO(t, rootDir())
-	io2.getData("file.rar")[0]++
+	fs1 := makeDecoderMemFS(memfs.RootDir())
+	fs2 := makeDecoderMemFS(memfs.RootDir())
+	rarData, err := fs2.ReadFile("file.rar")
+	require.NoError(t, err)
+	rarData[0]++
 
-	buildPARData(t, io1, 3)
-	buildPARData(t, io2, 3)
+	buildPARData(t, fs1, 3)
+	buildPARData(t, fs2, 3)
 	// Insert a parity volume that has a different set hash.
-	io1.setData("file.p02", io2.getData("file.p02"))
+	p02Data, err := fs2.ReadFile("file.p02")
+	require.NoError(t, err)
+	require.NoError(t, fs1.WriteFile("file.p02", p02Data))
 
-	decoder, err := newDecoder(io1, testDecoderDelegate{t}, "file.par")
+	decoder, err := newDecoderForTest(t, fs1, "file.par")
 	require.NoError(t, err)
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
@@ -357,23 +296,26 @@ func TestSetHashMismatch(t *testing.T) {
 }
 
 func testRepair(t *testing.T, workingDir string, useAbsPath bool) {
-	io := makeDecoderTestFileIO(t, workingDir)
+	fs := makeDecoderMemFS(workingDir)
 
-	buildPARData(t, io, 3)
+	buildPARData(t, fs, 3)
 
 	parPath := "file.par"
 	if useAbsPath {
 		parPath = filepath.Join(workingDir, parPath)
 	}
-	decoder, err := newDecoder(io, testDecoderDelegate{t}, parPath)
+	decoder, err := newDecoderForTest(t, fs, parPath)
 	require.NoError(t, err)
 
-	r02Data := io.getData("file.r02")
+	r02Data, err := fs.ReadFile("file.r02")
+	require.NoError(t, err)
 	r02DataCopy := make([]byte, len(r02Data))
 	copy(r02DataCopy, r02Data)
 	r02Data[len(r02Data)-1]++
-	io.removeData("file.r03")
-	r04Data := io.removeData("file.r04")
+	_, err = fs.RemoveFile("file.r03")
+	require.NoError(t, err)
+	r04Data, err := fs.RemoveFile("file.r04")
+	require.NoError(t, err)
 
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
@@ -393,9 +335,15 @@ func testRepair(t *testing.T, workingDir string, useAbsPath bool) {
 		}
 	}
 	require.Equal(t, toSortedStrings(expectedRepairedPaths), toSortedStrings(repairedPaths))
-	require.Equal(t, r02DataCopy, io.getData("file.r02"))
-	require.Equal(t, expectedR03Data, io.getData("file.r03"))
-	require.Equal(t, r04Data, io.getData("file.r04"))
+	repairedR02Data, err := fs.ReadFile("file.r02")
+	require.NoError(t, err)
+	require.Equal(t, r02DataCopy, repairedR02Data)
+	repairedR03Data, err := fs.ReadFile("file.r03")
+	require.NoError(t, err)
+	require.Equal(t, expectedR03Data, repairedR03Data)
+	repairedR04Data, err := fs.ReadFile("file.r04")
+	require.NoError(t, err)
+	require.Equal(t, r04Data, repairedR04Data)
 }
 
 func TestRepair(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/akalin/gopar/memfs"
 	"github.com/klauspost/reedsolomon"
 	"github.com/stretchr/testify/require"
 )
@@ -23,8 +24,8 @@ func (d testEncoderDelegate) OnVolumeFileWrite(i, n int, path string, dataByteCo
 	d.t.Logf("OnVolumeFileWrite(%d, %d, %s, dataByteCount=%d, byteCount=%d, %v)", i, n, path, dataByteCount, byteCount, err)
 }
 
-func makeEncoderTestFileIO(t *testing.T, workingDir string) testFileIO {
-	return makeTestFileIO(t, workingDir, map[string][]byte{
+func makeEncoderMemFS(workingDir string) memfs.MemFS {
+	return memfs.MakeMemFS(workingDir, map[string][]byte{
 		"file.rar":                                {0x1, 0x2, 0x3},
 		filepath.Join("dir1", "file.r01"):         {0x5, 0x6, 0x7, 0x8},
 		filepath.Join("dir2", "file.r02"):         {0x9, 0xa, 0xb, 0xc},
@@ -33,12 +34,16 @@ func makeEncoderTestFileIO(t *testing.T, workingDir string) testFileIO {
 	})
 }
 
+func newEncoderForTest(t *testing.T, fs memfs.MemFS, filePaths []string, volumeCount int) (*Encoder, error) {
+	return newEncoder(testFileIO{t, fs}, testEncoderDelegate{t}, filePaths, volumeCount)
+}
+
 func TestEncodeParity(t *testing.T) {
-	io := makeEncoderTestFileIO(t, rootDir())
+	fs := makeEncoderMemFS(memfs.RootDir())
 
-	paths := io.paths()
+	paths := fs.Paths()
 
-	encoder, err := newEncoder(io, testEncoderDelegate{t}, paths, 3)
+	encoder, err := newEncoderForTest(t, fs, paths, 3)
 	require.NoError(t, err)
 
 	err = encoder.LoadFileData()
@@ -52,7 +57,8 @@ func TestEncodeParity(t *testing.T) {
 
 	var shards [][]byte
 	for _, path := range paths {
-		data := io.getData(path)
+		data, err := fs.ReadFile(path)
+		require.NoError(t, err)
 		shards = append(shards, append(data, make([]byte, 4-len(data))...))
 	}
 
@@ -64,21 +70,21 @@ func TestEncodeParity(t *testing.T) {
 }
 
 func TestEncodeParityFilenameCollision(t *testing.T) {
-	io := makeEncoderTestFileIO(t, rootDir())
-	io.setData(filepath.Join("dir6", "file.rar"), []byte{0x5, 0x6})
+	fs := makeEncoderMemFS(memfs.RootDir())
+	require.NoError(t, fs.WriteFile(filepath.Join("dir6", "file.rar"), []byte{0x5, 0x6}))
 
-	paths := io.paths()
+	paths := fs.Paths()
 
-	_, err := newEncoder(io, testEncoderDelegate{t}, paths, 3)
+	_, err := newEncoderForTest(t, fs, paths, 3)
 	require.Equal(t, errors.New("filename collision"), err)
 }
 
 func testWriteParity(t *testing.T, workingDir string, useAbsPath bool) {
-	io := makeEncoderTestFileIO(t, workingDir)
+	fs := makeEncoderMemFS(workingDir)
 
-	paths := io.paths()
+	paths := fs.Paths()
 
-	encoder, err := newEncoder(io, testEncoderDelegate{t}, paths, 3)
+	encoder, err := newEncoderForTest(t, fs, paths, 3)
 	require.NoError(t, err)
 
 	err = encoder.LoadFileData()
@@ -95,10 +101,10 @@ func testWriteParity(t *testing.T, workingDir string, useAbsPath bool) {
 	require.NoError(t, err)
 
 	for _, path := range paths {
-		io.moveData(path, filepath.Base(path))
+		require.NoError(t, fs.MoveFile(path, filepath.Base(path)))
 	}
 
-	decoder, err := newDecoder(io, testDecoderDelegate{t}, parPath)
+	decoder, err := newDecoder(testFileIO{t, fs}, testDecoderDelegate{t}, parPath)
 	require.NoError(t, err)
 
 	err = decoder.LoadFileData()
