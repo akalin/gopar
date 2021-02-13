@@ -19,7 +19,9 @@ type testFileIO struct {
 }
 
 func (io testFileIO) ReadFile(path string) (data []byte, err error) {
+	io.t.Helper()
 	defer func() {
+		io.t.Helper()
 		io.t.Logf("ReadFile(%s) => (%d, %v)", path, len(data), err)
 	}()
 	if data, ok := io.fileData[path]; ok {
@@ -29,6 +31,7 @@ func (io testFileIO) ReadFile(path string) (data []byte, err error) {
 }
 
 func (io testFileIO) WriteFile(path string, data []byte) error {
+	io.t.Helper()
 	io.t.Logf("WriteFile(%s, %d bytes)", path, len(data))
 	io.fileData[path] = data
 	return nil
@@ -39,26 +42,32 @@ type testDecoderDelegate struct {
 }
 
 func (d testDecoderDelegate) OnHeaderLoad(headerInfo string) {
+	d.t.Helper()
 	d.t.Logf("OnHeaderLoad(%s)", headerInfo)
 }
 
 func (d testDecoderDelegate) OnFileEntryLoad(i, n int, filename, entryInfo string) {
+	d.t.Helper()
 	d.t.Logf("OnFileEntryLoad(%d, %d, %s, %s)", i, n, filename, entryInfo)
 }
 
 func (d testDecoderDelegate) OnCommentLoad(comment []byte) {
+	d.t.Helper()
 	d.t.Logf("OnCommentLoad(%q)", comment)
 }
 
 func (d testDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error) {
+	d.t.Helper()
 	d.t.Logf("OnDataFileLoad(%d, %d, %s, byteCount=%d, corrupt=%t, %v)", i, n, path, byteCount, corrupt, err)
 }
 
 func (d testDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {
+	d.t.Helper()
 	d.t.Logf("OnDataFileWrite(%d, %d, %s, byteCount=%d, %v)", i, n, path, byteCount, err)
 }
 
 func (d testDecoderDelegate) OnVolumeFileLoad(i uint64, path string, storedSetHash, computedSetHash [16]byte, dataByteCount int, err error) {
+	d.t.Helper()
 	d.t.Logf("OnVolumeFileLoad(%d, %s, storedSetHash=%x, computedSetHash=%x, dataByteCount=%d, %v)", i, path, storedSetHash, computedSetHash, dataByteCount, err)
 }
 

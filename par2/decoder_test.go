@@ -85,7 +85,9 @@ type testFileIO struct {
 }
 
 func (io testFileIO) ReadFile(path string) (data []byte, err error) {
+	io.t.Helper()
 	defer func() {
+		io.t.Helper()
 		io.t.Logf("ReadFile(%s) => (%d, %v)", path, len(data), err)
 	}()
 	if data, ok := io.fileData[path]; ok {
@@ -95,6 +97,7 @@ func (io testFileIO) ReadFile(path string) (data []byte, err error) {
 }
 
 func (io testFileIO) FindWithPrefixAndSuffix(prefix, suffix string) ([]string, error) {
+	io.t.Helper()
 	var matches []string
 	for filename := range io.fileData {
 		if len(filename) >= len(prefix)+len(suffix) && strings.HasPrefix(filename, prefix) && strings.HasSuffix(filename, suffix) {
@@ -106,6 +109,7 @@ func (io testFileIO) FindWithPrefixAndSuffix(prefix, suffix string) ([]string, e
 }
 
 func (io testFileIO) WriteFile(path string, data []byte) error {
+	io.t.Helper()
 	io.t.Logf("WriteFile(%s, %d bytes)", path, len(data))
 	io.fileData[path] = data
 	return nil

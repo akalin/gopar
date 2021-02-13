@@ -13,14 +13,17 @@ type testEncoderDelegate struct {
 }
 
 func (d testEncoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {
+	d.t.Helper()
 	d.t.Logf("OnDataFileLoad(%d, %d, byteCount=%d, %s, %v)", i, n, byteCount, path, err)
 }
 
 func (d testEncoderDelegate) OnIndexFileWrite(path string, byteCount int, err error) {
+	d.t.Helper()
 	d.t.Logf("OnIndexFileWrite(%s, %d, %v)", path, byteCount, err)
 }
 
 func (d testEncoderDelegate) OnRecoveryFileWrite(start, count, total int, path string, dataByteCount, byteCount int, err error) {
+	d.t.Helper()
 	d.t.Logf("OnRecoveryFileWrite(start=%d, count=%d, total=%d, %s, dataByteCount=%d, byteCount=%d, %v)", start, count, total, path, dataByteCount, byteCount, err)
 }
 
