@@ -383,7 +383,7 @@ func testRepair(t *testing.T, workingDir string, useAbsPath bool) {
 	// zero-length array instead.
 	expectedR03Data := []byte{}
 	// TODO: These should be absolute paths if useAbsPath is true.
-	require.Equal(t, []string{"file.r02", "file.r03", "file.r04"}, repaired)
+	require.Equal(t, []string{"file.r02", "file.r03", "file.r04"}, toSortedStrings(repaired))
 	require.Equal(t, r02DataCopy, io.getData("file.r02"))
 	require.Equal(t, expectedR03Data, io.getData("file.r03"))
 	require.Equal(t, r04Data, io.getData("file.r04"))
