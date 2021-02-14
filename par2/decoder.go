@@ -560,9 +560,10 @@ func (d *Decoder) Verify() (needsRepair bool, err error) {
 
 // Repair tries to repair any missing or corrupted data, using the
 // parity volumes. Returns a list of paths to files that were
-// successfully repaired, which is present even if an error is
-// returned. If checkParity is true, extra checking is done of the
-// reconstructed parity data.
+// successfully repaired (relative to the indexFile passed to
+// NewDecoder) in no particular order, which is present even if an
+// error is returned. If checkParity is true, extra checking is done
+// of the reconstructed parity data.
 func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 	coder, dataShards, err := d.newCoderAndShards()
 	if err != nil {
