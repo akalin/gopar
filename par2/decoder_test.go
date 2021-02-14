@@ -292,6 +292,13 @@ func TestSetIDMismatch(t *testing.T) {
 	require.False(t, needsRepair)
 }
 
+func toSortedStrings(arr []string) []string {
+	arrCopy := make([]string, len(arr))
+	copy(arrCopy, arr)
+	sort.Strings(arrCopy)
+	return arrCopy
+}
+
 func testRepair(t *testing.T, workingDir string, useAbsPath bool) {
 	fs := makeDecoderMemFS(workingDir)
 	r02Path := filepath.Join("dir1", "file.r02")
@@ -331,7 +338,7 @@ func testRepair(t *testing.T, workingDir string, useAbsPath bool) {
 			expectedRepairedPaths[i] = filepath.Join(workingDir, path)
 		}
 	}
-	require.Equal(t, expectedRepairedPaths, repairedPaths)
+	require.Equal(t, toSortedStrings(expectedRepairedPaths), toSortedStrings(repairedPaths))
 	repairedR02Data, err := fs.ReadFile(r02Path)
 	require.NoError(t, err)
 	require.Equal(t, r02DataCopy, repairedR02Data)
@@ -455,7 +462,7 @@ func TestRepairSwappedFiles(t *testing.T) {
 	repairedPaths, err := decoder.Repair(true)
 	require.NoError(t, err)
 
-	require.Equal(t, []string{"file.rar", "file.r01"}, repairedPaths)
+	require.Equal(t, []string{"file.r01", "file.rar"}, toSortedStrings(repairedPaths))
 	repairedRarData, err := fs.ReadFile("file.rar")
 	require.NoError(t, err)
 	require.Equal(t, rarData, repairedRarData)
