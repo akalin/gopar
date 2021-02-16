@@ -246,7 +246,7 @@ const (
 	allCommands = createCommand | verifyCommand | repairCommand
 )
 
-func printUsageAndExit(name string, mask commandMask, err error) {
+func printUsage(name string, mask commandMask, err error) {
 	if err != nil {
 		fmt.Printf("Error: %s\n", err.Error())
 	}
@@ -292,7 +292,6 @@ func printUsageAndExit(name string, mask commandMask, err error) {
 	}
 
 	fmt.Printf("\n")
-	os.Exit(2)
 }
 
 type encoder interface {
@@ -393,7 +392,8 @@ func main() {
 		err = errors.New("no command specified")
 	}
 	if err != nil || globalFlags.usage {
-		printUsageAndExit(name, allCommands, err)
+		printUsage(name, allCommands, err)
+		os.Exit(eSuccess)
 	}
 
 	if globalFlags.cpuProfile != "" {
@@ -418,7 +418,7 @@ func main() {
 		go func() {
 			<-c
 			pprof.StopCPUProfile()
-			os.Exit(1)
+			os.Exit(eMemoryError)
 		}()
 
 		defer pprof.StopCPUProfile()
@@ -441,7 +441,8 @@ func main() {
 			}
 		}
 		if err != nil {
-			printUsageAndExit(name, createCommand, err)
+			printUsage(name, createCommand, err)
+			os.Exit(eInvalidCommandLineArguments)
 		}
 
 		allFiles := createFlagSet.Args()
@@ -464,8 +465,9 @@ func main() {
 		err = encoder.Write(parFile)
 		if err != nil {
 			fmt.Printf("Write parity error: %s\n", err)
-			os.Exit(-1)
+			os.Exit(eFileIOError)
 		}
+		os.Exit(eSuccess)
 
 	case "v":
 		fallthrough
@@ -476,7 +478,8 @@ func main() {
 			err = errors.New("no PAR file specified")
 		}
 		if err != nil {
-			printUsageAndExit(name, verifyCommand, err)
+			printUsage(name, verifyCommand, err)
+			os.Exit(eInvalidCommandLineArguments)
 		}
 
 		parFile := verifyFlagSet.Arg(0)
@@ -497,11 +500,7 @@ func main() {
 		}
 
 		needsRepair, err := decoder.Verify()
-		exitCode := processVerifyOrRepairError(needsRepair, err)
-		if exitCode == eSuccess {
-			fmt.Printf("Repair not necessary.\n")
-		}
-		os.Exit(exitCode)
+		os.Exit(processVerifyOrRepairError(needsRepair, err))
 
 	case "r":
 		fallthrough
@@ -512,7 +511,8 @@ func main() {
 			err = errors.New("no PAR file specified")
 		}
 		if err != nil {
-			printUsageAndExit(name, repairCommand, err)
+			printUsage(name, repairCommand, err)
+			os.Exit(eInvalidCommandLineArguments)
 		}
 
 		parFile := repairFlagSet.Arg(0)
@@ -535,11 +535,11 @@ func main() {
 		repairedPaths, err := decoder.Repair(repairFlags.checkParity)
 		fmt.Printf("Repaired files: %v\n", repairedPaths)
 		needsRepair := false
-		exitCode := processVerifyOrRepairError(needsRepair, err)
-		os.Exit(exitCode)
+		os.Exit(processVerifyOrRepairError(needsRepair, err))
 
 	default:
 		err := fmt.Errorf("unknown command '%s'", cmd)
-		printUsageAndExit(name, allCommands, err)
+		printUsage(name, allCommands, err)
+		os.Exit(eInvalidCommandLineArguments)
 	}
 }
