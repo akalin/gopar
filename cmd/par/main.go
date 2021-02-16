@@ -501,7 +501,6 @@ func main() {
 
 		needsRepair, err := decoder.Verify()
 		exitCode := processVerifyOrRepairError(needsRepair, err)
-		os.Exit(processVerifyOrRepairError(needsRepair, err))
 		if exitCode == eSuccess {
 			fmt.Printf("Repair not necessary.\n")
 		}
