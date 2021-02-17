@@ -421,7 +421,7 @@ func main() {
 		go func() {
 			<-c
 			pprof.StopCPUProfile()
-			os.Exit(eMemoryError)
+			os.Exit(eLogicError)
 		}()
 
 		defer pprof.StopCPUProfile()
