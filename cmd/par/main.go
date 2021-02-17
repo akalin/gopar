@@ -539,7 +539,8 @@ func main() {
 		repairedPaths, err := decoder.Repair(repairFlags.checkParity)
 		fmt.Printf("Repaired files: %v\n", repairedPaths)
 		needsRepair := false
-		os.Exit(processVerifyOrRepairError(needsRepair, err))
+		exitCode := processVerifyOrRepairError(needsRepair, err)
+		os.Exit(exitCode)
 
 	default:
 		err := fmt.Errorf("unknown command '%s'", cmd)
