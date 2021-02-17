@@ -292,7 +292,10 @@ func printUsageAndExit(name string, mask commandMask, err error) {
 	}
 
 	fmt.Printf("\n")
-	os.Exit(2)
+	if err != nil {
+		os.Exit(eInvalidCommandLineArguments)
+	}
+	os.Exit(eSuccess)
 }
 
 type encoder interface {
@@ -418,7 +421,7 @@ func main() {
 		go func() {
 			<-c
 			pprof.StopCPUProfile()
-			os.Exit(1)
+			os.Exit(eLogicError)
 		}()
 
 		defer pprof.StopCPUProfile()
@@ -464,8 +467,9 @@ func main() {
 		err = encoder.Write(parFile)
 		if err != nil {
 			fmt.Printf("Write parity error: %s\n", err)
-			os.Exit(-1)
+			os.Exit(eFileIOError)
 		}
+		os.Exit(eSuccess)
 
 	case "v":
 		fallthrough
