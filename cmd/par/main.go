@@ -246,7 +246,7 @@ const (
 	allCommands = createCommand | verifyCommand | repairCommand
 )
 
-func printUsage(name string, mask commandMask, err error) {
+func printUsageAndExit(name string, mask commandMask, err error) {
 	if err != nil {
 		fmt.Printf("Error: %s\n", err.Error())
 	}
@@ -292,6 +292,10 @@ func printUsage(name string, mask commandMask, err error) {
 	}
 
 	fmt.Printf("\n")
+	if err != nil {
+		os.Exit(eInvalidCommandLineArguments)
+	}
+	os.Exit(eSuccess)
 }
 
 type encoder interface {
@@ -392,8 +396,7 @@ func main() {
 		err = errors.New("no command specified")
 	}
 	if err != nil || globalFlags.usage {
-		printUsage(name, allCommands, err)
-		os.Exit(eSuccess)
+		printUsageAndExit(name, allCommands, err)
 	}
 
 	if globalFlags.cpuProfile != "" {
@@ -441,8 +444,7 @@ func main() {
 			}
 		}
 		if err != nil {
-			printUsage(name, createCommand, err)
-			os.Exit(eInvalidCommandLineArguments)
+			printUsageAndExit(name, createCommand, err)
 		}
 
 		allFiles := createFlagSet.Args()
@@ -478,8 +480,7 @@ func main() {
 			err = errors.New("no PAR file specified")
 		}
 		if err != nil {
-			printUsage(name, verifyCommand, err)
-			os.Exit(eInvalidCommandLineArguments)
+			printUsageAndExit(name, verifyCommand, err)
 		}
 
 		parFile := verifyFlagSet.Arg(0)
@@ -515,8 +516,7 @@ func main() {
 			err = errors.New("no PAR file specified")
 		}
 		if err != nil {
-			printUsage(name, repairCommand, err)
-			os.Exit(eInvalidCommandLineArguments)
+			printUsageAndExit(name, repairCommand, err)
 		}
 
 		parFile := repairFlagSet.Arg(0)
@@ -543,7 +543,6 @@ func main() {
 
 	default:
 		err := fmt.Errorf("unknown command '%s'", cmd)
-		printUsage(name, allCommands, err)
-		os.Exit(eInvalidCommandLineArguments)
+		printUsageAndExit(name, allCommands, err)
 	}
 }
