@@ -33,6 +33,10 @@ jobs:
       run: go install github.com/kisielk/errcheck
     - name: Run errcheck
       run: errcheck ./...
+    - name: Install staticcheck
+      run: go install honnef.co/go/tools/cmd/staticcheck
+    - name: Run staticcheck
+      run: staticcheck ./...
     - name: Run go install
       run: go install ./...
     - name: Run go test (GOARCH=amd64)
