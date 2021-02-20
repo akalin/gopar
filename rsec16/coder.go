@@ -6,7 +6,7 @@ import (
 	"runtime"
 
 	"github.com/akalin/gopar/gf2p16"
-	"github.com/klauspost/cpuid"
+	"github.com/klauspost/cpuid/v2"
 )
 
 // DefaultNumGoroutines returns a default value for the numGoroutines
