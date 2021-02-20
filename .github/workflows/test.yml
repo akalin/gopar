@@ -5,7 +5,7 @@ on: [push, pull_request]
 jobs:
   test:
     env:
-      GOPATH: ${{ github.workspace }}/go
+      GO111MODULE: on
     strategy:
       matrix:
         go-version: [1.14.x, 1.15.x]
@@ -18,32 +18,30 @@ jobs:
         go-version: ${{ matrix.go-version }}
     - name: Checkout code
       uses: actions/checkout@v2
-      with:
-        path: go/src/github.com/${{ github.repository }}
     - name: Run verify-gofmt.sh
-      run: go/src/github.com/${{ github.repository }}/.github/scripts/verify-gofmt.sh go/src/github.com/${{ github.repository }}
-    - name: Get dependencies
-      # Need to specify cpuid specifically for some reason.
-      run: go get -d -t github.com/klauspost/cpuid/... github.com/${{ github.repository }}/...
+      run: .github/scripts/verify-gofmt.sh .
     - name: Run go vet
-      run: go vet github.com/${{ github.repository }}/...
+      run: go vet ./...
+    # This (and similar install commands) pollute go.mod,
+    # which isn't great. We can fix this once we're on
+    # go 1.16.x and above by using version suffixes.
     - name: Install golint
-      run: go get -u golang.org/x/lint/golint
+      run: go install golang.org/x/lint/golint
     - name: Run golint
-      run: go/src/github.com/${{ github.repository }}/.github/scripts/verify-golint.sh github.com/${{ github.repository }}/...
+      run: .github/scripts/verify-golint.sh ./...
     - name: Install errcheck
-      run: go get -u github.com/kisielk/errcheck
+      run: go install github.com/kisielk/errcheck
     - name: Run errcheck
-      run: errcheck github.com/${{ github.repository }}/...
+      run: errcheck ./...
     - name: Run go install
-      run: go install github.com/${{ github.repository }}/...
+      run: go install ./...
     - name: Run go test (GOARCH=amd64)
-      run: go test github.com/${{ github.repository }}/...
+      run: go test ./...
       env:
         GOARCH: amd64
     - name: Run go test (GOARCH=386)
       # darwin/386 isn't supported anymore.
       if: matrix.os != 'macos-latest'
-      run: go test github.com/${{ github.repository }}/...
+      run: go test ./...
       env:
         GOARCH: 386
