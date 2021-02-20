@@ -10,10 +10,15 @@ PAR2 files.
 
 ### Installation
 
-To install the par command-line application:
+To install the par command-line application, if go 1.16 or later:
 
 ```
-go get -u github.com/akalin/gopar/cmd/par
+go install github.com/akalin/gopar/cmd/par@latest
+```
+and otherwise:
+
+```
+go install github.com/akalin/gopar/cmd/par
 ```
 
 ## License
