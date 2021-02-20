@@ -214,7 +214,6 @@ func getCreateFlags(name string) (*flag.FlagSet, *createFlags) {
 }
 
 type verifyFlags struct {
-	checkParity bool
 }
 
 func getVerifyFlags(name string) (*flag.FlagSet, *verifyFlags) {

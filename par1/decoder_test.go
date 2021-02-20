@@ -202,7 +202,7 @@ func testVerify(t *testing.T, workingDir string, useAbsPath bool) {
 	fileData5[len(fileData5)-1]++
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
-	needsRepair, err = decoder.Verify()
+	_, err = decoder.Verify()
 	expectedErr := errors.New("shard sizes do not match")
 	require.Equal(t, expectedErr, err)
 
@@ -226,7 +226,7 @@ func testVerify(t *testing.T, workingDir string, useAbsPath bool) {
 	require.NoError(t, err)
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
-	needsRepair, err = decoder.Verify()
+	_, err = decoder.Verify()
 	expectedErr = errors.New("shard sizes do not match")
 	require.Equal(t, expectedErr, err)
 }
