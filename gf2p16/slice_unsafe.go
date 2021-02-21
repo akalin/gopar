@@ -6,10 +6,15 @@ import (
 )
 
 func castByteToTSlice(bs []byte) []T {
-	h := *(*reflect.SliceHeader)(unsafe.Pointer(&bs))
-	h.Len /= 2
-	h.Cap /= 2
-	return *(*[]T)(unsafe.Pointer(&h))
+	bsHdr := (*reflect.SliceHeader)(unsafe.Pointer(&bs))
+	p := unsafe.Pointer(bsHdr.Data)
+
+	var ts []T
+	tsHdr := (*reflect.SliceHeader)(unsafe.Pointer(&ts))
+	tsHdr.Data = uintptr(p)
+	tsHdr.Len = bsHdr.Len / 2
+	tsHdr.Cap = bsHdr.Cap / 2
+	return ts
 }
 
 func mulByteSliceLEPlatformLE(c T, in, out []byte) {

@@ -63,10 +63,15 @@ func mulAndAddByteSliceLE(c T, in, out []byte, useSSSE3 bool) {
 }
 
 func castTToByteSlice(ts []T) []byte {
-	h := *(*reflect.SliceHeader)(unsafe.Pointer(&ts))
-	h.Len *= 2
-	h.Cap *= 2
-	return *(*[]byte)(unsafe.Pointer(&h))
+	tsHdr := (*reflect.SliceHeader)(unsafe.Pointer(&ts))
+	p := unsafe.Pointer(tsHdr.Data)
+
+	var bs []byte
+	bsHdr := (*reflect.SliceHeader)(unsafe.Pointer(&bs))
+	bsHdr.Data = uintptr(p)
+	bsHdr.Len = 2 * tsHdr.Len
+	bsHdr.Cap = 2 * tsHdr.Cap
+	return bs
 }
 
 func mulSlice(c T, in, out []T) {
