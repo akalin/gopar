@@ -17,9 +17,9 @@ import (
 	"github.com/akalin/gopar/rsec16"
 )
 
-type par1LogEncoderDelegate struct{}
+type par1LogCreateDelegate struct{}
 
-func (par1LogEncoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {
+func (par1LogCreateDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {
 	if err != nil {
 		fmt.Printf("[%d/%d] Loading data file %q failed: %+v\n", i, n, path, err)
 	} else {
@@ -27,12 +27,16 @@ func (par1LogEncoderDelegate) OnDataFileLoad(i, n int, path string, byteCount in
 	}
 }
 
-func (par1LogEncoderDelegate) OnVolumeFileWrite(i, n int, path string, dataByteCount, byteCount int, err error) {
+func (par1LogCreateDelegate) OnVolumeFileWrite(i, n int, path string, dataByteCount, byteCount int, err error) {
 	if err != nil {
 		fmt.Printf("[%d/%d] Writing volume file %q failed: %+v\n", i, n, path, err)
 	} else {
 		fmt.Printf("[%d/%d] Wrote volume file %q (%d data bytes, %d bytes)\n", i, n, path, dataByteCount, byteCount)
 	}
+}
+
+func (par1LogCreateDelegate) OnFilesNotAllInSameDir() {
+	fmt.Printf("Warning: PAR and data files not all in the same directory, which a decoder will expect\n")
 }
 
 type par1LogDecoderDelegate struct{}
@@ -82,9 +86,9 @@ func (par1LogDecoderDelegate) OnVolumeFileLoad(i uint64, path string, storedSetH
 	}
 }
 
-type par2LogEncoderDelegate struct{}
+type par2LogCreateDelegate struct{}
 
-func (par2LogEncoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {
+func (par2LogCreateDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {
 	if err != nil {
 		fmt.Printf("[%d/%d] Loading data file %q failed: %+v\n", i, n, path, err)
 	} else {
@@ -92,7 +96,7 @@ func (par2LogEncoderDelegate) OnDataFileLoad(i, n int, path string, byteCount in
 	}
 }
 
-func (par2LogEncoderDelegate) OnIndexFileWrite(path string, byteCount int, err error) {
+func (par2LogCreateDelegate) OnIndexFileWrite(path string, byteCount int, err error) {
 	if err != nil {
 		fmt.Printf("Writing index file %q failed: %+v\n", path, err)
 	} else {
@@ -100,7 +104,7 @@ func (par2LogEncoderDelegate) OnIndexFileWrite(path string, byteCount int, err e
 	}
 }
 
-func (par2LogEncoderDelegate) OnRecoveryFileWrite(start, count, total int, path string, dataByteCount, byteCount int, err error) {
+func (par2LogCreateDelegate) OnRecoveryFileWrite(start, count, total int, path string, dataByteCount, byteCount int, err error) {
 	if err != nil {
 		fmt.Printf("[%d+%d/%d] Writing recovery file %q failed: %+v\n", start, count, total, path, err)
 	} else {
@@ -297,52 +301,11 @@ func printUsageAndExit(name string, mask commandMask, err error) {
 	os.Exit(eSuccess)
 }
 
-type encoder interface {
-	LoadFileData() error
-	ComputeParityData() error
-	Write(string) error
-}
-
 type decoder interface {
 	LoadFileData() error
 	LoadParityData() error
 	Verify() (needsRepair bool, err error)
 	Repair(checkParity bool) ([]string, error)
-}
-
-func newEncoder(parFile string, filePaths []string, sliceByteCount, numParityShards, numGoroutines int) (encoder, error) {
-	// TODO: Detect file type more robustly.
-	ext := path.Ext(parFile)
-	if ext == ".par2" {
-		parPath, err := filepath.Abs(parFile)
-		if err != nil {
-			return nil, err
-		}
-		basePath := filepath.Dir(parPath)
-		absFilePaths := make([]string, len(filePaths))
-		for i, path := range filePaths {
-			absPath, err := filepath.Abs(path)
-			if err != nil {
-				return nil, err
-			}
-			absFilePaths[i] = absPath
-		}
-		return par2.NewEncoder(par2LogEncoderDelegate{}, basePath, absFilePaths, sliceByteCount, numParityShards, numGoroutines)
-	}
-
-	parDir := filepath.Dir(parFile)
-	allFilesInSameDir := true
-	for _, p := range filePaths {
-		if filepath.Dir(p) != parDir {
-			allFilesInSameDir = false
-			break
-		}
-	}
-	if !allFilesInSameDir {
-		fmt.Printf("Warning: PAR and data files not all in the same directory, which a decoder will expect\n")
-	}
-
-	return par1.NewEncoder(par1LogEncoderDelegate{}, filePaths, numParityShards)
 }
 
 func newDecoder(parFile string, numGoroutines int) (decoder, error) {
@@ -448,22 +411,24 @@ func main() {
 
 		allFiles := createFlagSet.Args()
 		parFile, filePaths := allFiles[0], allFiles[1:]
-		encoder, err := newEncoder(parFile, filePaths, createFlags.sliceByteCount, createFlags.numParityShards, globalFlags.numGoroutines)
-		if err != nil {
-			panic(err)
-		}
 
-		err = encoder.LoadFileData()
-		if err != nil {
-			panic(err)
+		ext := path.Ext(parFile)
+		if ext == ".par" {
+			err = par1.Create(parFile, filePaths, par1.CreateOptions{
+				NumParityFiles: createFlags.numParityShards,
+				CreateDelegate: par1LogCreateDelegate{},
+			})
+		} else if ext == ".par2" {
+			err = par2.Create(parFile, filePaths, par2.CreateOptions{
+				SliceByteCount:  createFlags.sliceByteCount,
+				NumParityShards: createFlags.numParityShards,
+				NumGoroutines:   globalFlags.numGoroutines,
+				CreateDelegate:  par2LogCreateDelegate{},
+			})
+		} else {
+			err = fmt.Errorf("unknown extension %s", ext)
 		}
-
-		err = encoder.ComputeParityData()
-		if err != nil {
-			panic(err)
-		}
-
-		err = encoder.Write(parFile)
+		// TODO: Pull this out into a utility function.
 		if err != nil {
 			fmt.Printf("Write parity error: %s\n", err)
 			os.Exit(eFileIOError)
