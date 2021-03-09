@@ -7,16 +7,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func testCreate(t *testing.T, workingDir string, useAbsPath bool) {
+func testCreate(t *testing.T, workingDir string, useAbsPath bool, options CreateOptions) {
 	fs := makeEncoderMemFS(workingDir)
 
 	paths := fs.Paths()
 
 	parPath := "file.par"
-	err := create(testFileIO{t, fs}, parPath, paths, CreateOptions{
-		NumParityFiles:  NumParityFilesDefault,
-		EncoderDelegate: testEncoderDelegate{t},
-	})
+	err := create(testFileIO{t, fs}, parPath, paths, options)
 	require.NoError(t, err)
 
 	for _, path := range paths {
@@ -37,5 +34,16 @@ func testCreate(t *testing.T, workingDir string, useAbsPath bool) {
 }
 
 func TestCreate(t *testing.T) {
-	runOnExampleWorkingDirs(t, testCreate)
+	runOnExampleWorkingDirs(t, func(t *testing.T, workingDir string, useAbsPath bool) {
+		testCreate(t, workingDir, useAbsPath, CreateOptions{
+			NumParityFiles:  NumParityFilesDefault,
+			EncoderDelegate: testEncoderDelegate{t},
+		})
+	})
+}
+
+func TestCreateDefaults(t *testing.T) {
+	runOnExampleWorkingDirs(t, func(t *testing.T, workingDir string, useAbsPath bool) {
+		testCreate(t, workingDir, useAbsPath, CreateOptions{})
+	})
 }
