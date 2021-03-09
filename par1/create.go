@@ -35,6 +35,10 @@ type CreateOptions struct {
 // Create a par file for the given file paths at parPath with the
 // given options.
 func Create(parPath string, filePaths []string, options CreateOptions) error {
+	return create(defaultFileIO{}, parPath, filePaths, options)
+}
+
+func create(fileIO fileIO, parPath string, filePaths []string, options CreateOptions) error {
 	ext := path.Ext(parPath)
 	if ext != ".par" {
 		return errors.New("parPath must have a .par extension")
@@ -67,7 +71,7 @@ func Create(parPath string, filePaths []string, options CreateOptions) error {
 		fmt.Printf("Warning: PAR and data files not all in the same directory, which a decoder will expect\n")
 	}
 
-	encoder, err := NewEncoder(delegate, filePaths, numParityFiles)
+	encoder, err := newEncoder(fileIO, delegate, filePaths, numParityFiles)
 	if err != nil {
 		return err
 	}
