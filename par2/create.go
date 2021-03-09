@@ -62,6 +62,10 @@ type CreateOptions struct {
 // Create a par file for the given file paths at parPath with the
 // given options.
 func Create(parPath string, filePaths []string, options CreateOptions) error {
+	return create(defaultFileIO{}, parPath, filePaths, options)
+}
+
+func create(fileIO fileIO, parPath string, filePaths []string, options CreateOptions) error {
 	ext := path.Ext(parPath)
 	if ext != ".par2" {
 		return errors.New("parPath must have a .par2 extension")
@@ -105,7 +109,7 @@ func Create(parPath string, filePaths []string, options CreateOptions) error {
 		absFilePaths[i] = absPath
 	}
 
-	encoder, err := NewEncoder(delegate, basePath, absFilePaths, sliceByteCount, numParityShards, numGoroutines)
+	encoder, err := newEncoder(fileIO, delegate, basePath, absFilePaths, sliceByteCount, numParityShards, numGoroutines)
 	if err != nil {
 		return err
 	}
