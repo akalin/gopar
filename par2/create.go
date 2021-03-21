@@ -5,6 +5,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/akalin/gopar/par2cmdline"
 	"github.com/akalin/gopar/rsec16"
 )
 
@@ -124,4 +125,15 @@ func create(fileIO fileIO, parPath string, filePaths []string, options CreateOpt
 		return err
 	}
 	return encoder.Write(parPath)
+}
+
+// ExitCodeForCreateErrorPar2CmdLine returns the error code
+// par2cmdline would have returned for the given error returned by
+// Create.
+func ExitCodeForCreateErrorPar2CmdLine(err error) int {
+	if err != nil {
+		// Map everything to eFileIOError for now.
+		return par2cmdline.ExitFileIOError
+	}
+	return par2cmdline.ExitSuccess
 }
