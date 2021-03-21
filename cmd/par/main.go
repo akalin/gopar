@@ -302,6 +302,11 @@ func printUsageAndExit(name string, mask commandMask, err error) {
 	os.Exit(par2cmdline.ExitSuccess)
 }
 
+func printCreateErrorAndExit(err error, exitCode int) {
+	fmt.Printf("Create error: %s\n", err)
+	os.Exit(exitCode)
+}
+
 type decoder interface {
 	LoadFileData() error
 	LoadParityData() error
@@ -400,28 +405,33 @@ func main() {
 		allFiles := createFlagSet.Args()
 		parFile, filePaths := allFiles[0], allFiles[1:]
 
-		ext := path.Ext(parFile)
-		if ext == ".par" {
-			err = par1.Create(parFile, filePaths, par1.CreateOptions{
+		switch ext := path.Ext(parFile); ext {
+		case ".par":
+			err := par1.Create(parFile, filePaths, par1.CreateOptions{
+
 				NumParityFiles: createFlags.numParityShards,
 				CreateDelegate: par1LogCreateDelegate{},
 			})
-		} else if ext == ".par2" {
-			err = par2.Create(parFile, filePaths, par2.CreateOptions{
+			if err != nil {
+				printCreateErrorAndExit(err, par2cmdline.ExitLogicError)
+			}
+			os.Exit(par2cmdline.ExitSuccess)
+
+		case ".par2":
+			err := par2.Create(parFile, filePaths, par2.CreateOptions{
 				SliceByteCount:  createFlags.sliceByteCount,
 				NumParityShards: createFlags.numParityShards,
 				NumGoroutines:   globalFlags.numGoroutines,
 				CreateDelegate:  par2LogCreateDelegate{},
 			})
-		} else {
-			err = fmt.Errorf("unknown extension %s", ext)
+			if err != nil {
+				printCreateErrorAndExit(err, par2.ExitCodeForCreateErrorPar2CmdLine(err))
+			}
+			os.Exit(par2cmdline.ExitSuccess)
+
+		default:
+			printCreateErrorAndExit(fmt.Errorf("unknown extension %s", ext), par2cmdline.ExitLogicError)
 		}
-		// TODO: Pull this out into a utility function.
-		if err != nil {
-			fmt.Printf("Write parity error: %s\n", err)
-			os.Exit(par2cmdline.ExitFileIOError)
-		}
-		os.Exit(par2cmdline.ExitSuccess)
 
 	case "v":
 		fallthrough
