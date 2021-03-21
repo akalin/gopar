@@ -7,6 +7,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type testCreateDelegate struct {
+	testEncoderDelegate
+}
+
+func (d testCreateDelegate) OnFilesNotAllInSameDir() {
+	d.t.Helper()
+	d.t.Log("OnFilesNotAllInSameDir()")
+}
+
 func testCreate(t *testing.T, workingDir string, useAbsPath bool, options CreateOptions) {
 	fs := makeEncoderMemFS(workingDir)
 
@@ -36,8 +45,8 @@ func testCreate(t *testing.T, workingDir string, useAbsPath bool, options Create
 func TestCreate(t *testing.T) {
 	runOnExampleWorkingDirs(t, func(t *testing.T, workingDir string, useAbsPath bool) {
 		testCreate(t, workingDir, useAbsPath, CreateOptions{
-			NumParityFiles:  NumParityFilesDefault,
-			EncoderDelegate: testEncoderDelegate{t},
+			NumParityFiles: NumParityFilesDefault,
+			CreateDelegate: testCreateDelegate{testEncoderDelegate{t}},
 		})
 	})
 }
