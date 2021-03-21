@@ -14,6 +14,7 @@ import (
 
 	"github.com/akalin/gopar/par1"
 	"github.com/akalin/gopar/par2"
+	"github.com/akalin/gopar/par2cmdline"
 	"github.com/akalin/gopar/rsec16"
 )
 
@@ -296,9 +297,9 @@ func printUsageAndExit(name string, mask commandMask, err error) {
 
 	fmt.Printf("\n")
 	if err != nil {
-		os.Exit(eInvalidCommandLineArguments)
+		os.Exit(par2cmdline.ExitInvalidCommandLineArguments)
 	}
-	os.Exit(eSuccess)
+	os.Exit(par2cmdline.ExitSuccess)
 }
 
 type decoder interface {
@@ -317,36 +318,23 @@ func newDecoder(parFile string, numGoroutines int) (decoder, error) {
 	return par1.NewDecoder(par1LogDecoderDelegate{}, parFile)
 }
 
-// Taken from https://github.com/brenthuisman/libpar2/blob/master/src/libpar2.h#L109 .
-const (
-	eSuccess                     = 0
-	eRepairPossible              = 1
-	eRepairNotPossible           = 2
-	eInvalidCommandLineArguments = 3
-	eInsufficientCriticalData    = 4
-	eRepairFailed                = 5
-	eFileIOError                 = 6
-	eLogicError                  = 7
-	eMemoryError                 = 8
-)
-
 func processVerifyOrRepairError(needsRepair bool, err error) int {
 	// Match exit codes to par2cmdline.
 	if err != nil {
 		switch err.(type) {
 		case rsec16.NotEnoughParityShardsError:
 			fmt.Fprintf(os.Stderr, "Repair necessary but not possible.\n")
-			return eRepairNotPossible
+			return par2cmdline.ExitRepairNotPossible
 		default:
 			fmt.Fprintf(os.Stderr, "Error encountered: %s\n", err)
-			return eLogicError
+			return par2cmdline.ExitLogicError
 		}
 	}
 	if needsRepair {
 		fmt.Fprintf(os.Stderr, "Repair necessary and possible.\n")
-		return eRepairPossible
+		return par2cmdline.ExitRepairPossible
 	}
-	return eSuccess
+	return par2cmdline.ExitSuccess
 }
 
 func main() {
@@ -383,7 +371,7 @@ func main() {
 		go func() {
 			<-c
 			pprof.StopCPUProfile()
-			os.Exit(eLogicError)
+			os.Exit(par2cmdline.ExitLogicError)
 		}()
 
 		defer pprof.StopCPUProfile()
@@ -431,9 +419,9 @@ func main() {
 		// TODO: Pull this out into a utility function.
 		if err != nil {
 			fmt.Printf("Write parity error: %s\n", err)
-			os.Exit(eFileIOError)
+			os.Exit(par2cmdline.ExitFileIOError)
 		}
-		os.Exit(eSuccess)
+		os.Exit(par2cmdline.ExitSuccess)
 
 	case "v":
 		fallthrough
@@ -466,7 +454,7 @@ func main() {
 
 		needsRepair, err := decoder.Verify()
 		exitCode := processVerifyOrRepairError(needsRepair, err)
-		if exitCode == eSuccess {
+		if exitCode == par2cmdline.ExitSuccess {
 			fmt.Printf("Repair not necessary.\n")
 		}
 		os.Exit(exitCode)
