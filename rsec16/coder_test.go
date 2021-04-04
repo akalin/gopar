@@ -182,17 +182,17 @@ func testCoderReconstructData(t *testing.T, newCoder func(int, int) (Coder, erro
 	require.NoError(t, err)
 	parity := c.GenerateParity(data)
 
-	corruptedData := [][]byte{
+	corruptData := [][]byte{
 		nil,
 		data[1],
 		nil,
 		data[3],
 		nil,
 	}
-	dataToReconstruct := corruptedData[:]
+	dataToReconstruct := corruptData[:]
 	err = c.CanReconstructData(dataToReconstruct, parity)
 	require.NoError(t, err)
-	require.Equal(t, corruptedData, dataToReconstruct)
+	require.Equal(t, corruptData, dataToReconstruct)
 
 	err = c.ReconstructData(dataToReconstruct, parity)
 	require.NoError(t, err)
@@ -209,25 +209,25 @@ func testCoderReconstructDataMissingParity(t *testing.T, newCoder func(int, int)
 	require.NoError(t, err)
 	parity := c.GenerateParity(data)
 
-	corruptedData := [][]byte{
+	corruptData := [][]byte{
 		data[0],
 		nil,
 		data[2],
 		data[3],
 		nil,
 	}
-	corruptedParity := [][]byte{
+	corruptParity := [][]byte{
 		nil,
 		parity[1],
 		parity[2],
 	}
 
-	dataToReconstruct := corruptedData[:]
-	err = c.CanReconstructData(dataToReconstruct, corruptedParity)
+	dataToReconstruct := corruptData[:]
+	err = c.CanReconstructData(dataToReconstruct, corruptParity)
 	require.NoError(t, err)
-	require.Equal(t, corruptedData, dataToReconstruct)
+	require.Equal(t, corruptData, dataToReconstruct)
 
-	err = c.ReconstructData(dataToReconstruct, corruptedParity)
+	err = c.ReconstructData(dataToReconstruct, corruptParity)
 	require.NoError(t, err)
 	require.Equal(t, data, dataToReconstruct)
 }
@@ -242,7 +242,7 @@ func testCoderReconstructDataNotEnough(t *testing.T, newCoder func(int, int) (Co
 	require.NoError(t, err)
 	parity := c.GenerateParity(data)
 
-	corruptedData := [][]byte{
+	corruptData := [][]byte{
 		data[0],
 		nil,
 		nil,
@@ -250,26 +250,26 @@ func testCoderReconstructDataNotEnough(t *testing.T, newCoder func(int, int) (Co
 		nil,
 	}
 	expectedErr := NotEnoughParityShardsError{}
-	err = c.CanReconstructData(corruptedData, parity)
+	err = c.CanReconstructData(corruptData, parity)
 	require.Equal(t, expectedErr, err)
-	err = c.ReconstructData(corruptedData, parity)
+	err = c.ReconstructData(corruptData, parity)
 	require.Equal(t, expectedErr, err)
 
-	corruptedData = [][]byte{
+	corruptData = [][]byte{
 		data[0],
 		data[1],
 		nil,
 		nil,
 		nil,
 	}
-	corruptedParity := [][]byte{
+	corruptParity := [][]byte{
 		nil,
 		parity[1],
 		parity[2],
 	}
-	err = c.CanReconstructData(corruptedData, corruptedParity)
+	err = c.CanReconstructData(corruptData, corruptParity)
 	require.Equal(t, expectedErr, err)
-	err = c.ReconstructData(corruptedData, corruptedParity)
+	err = c.ReconstructData(corruptData, corruptParity)
 	require.Equal(t, expectedErr, err)
 }
 

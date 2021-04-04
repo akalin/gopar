@@ -155,8 +155,8 @@ func (info fileIntegrityInfo) ok(sliceByteCount int) bool {
 
 // A Decoder keeps track of all information needed to check the
 // integrity of a set of data files, and possibly repair any
-// missing/corrupted data files from the parity files (that usually
-// end in .par2).
+// missing/corrupt data files from the parity files (that usually end
+// in .par2).
 type Decoder struct {
 	fileIO   fileIO
 	delegate DecoderDelegate
@@ -558,7 +558,7 @@ func (d *Decoder) Verify() (needsRepair bool, err error) {
 	return needsRepair, nil
 }
 
-// Repair tries to repair any missing or corrupted data, using the
+// Repair tries to repair any missing or corrupt data, using the
 // parity volumes. Returns a list of paths to files that were
 // successfully repaired (relative to the indexFile passed to
 // NewDecoder) in no particular order, which is present even if an
