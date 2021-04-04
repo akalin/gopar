@@ -220,12 +220,15 @@ func getCreateFlags(name string) (*flag.FlagSet, *createFlags) {
 }
 
 type verifyFlags struct {
+	verifyAllData bool
 }
 
 func getVerifyFlags(name string) (*flag.FlagSet, *verifyFlags) {
 	flagSet := newFlagSet(name + " verify")
 
 	var flags verifyFlags
+	// TODO: Implement this for PAR2 too.
+	flagSet.BoolVar(&flags.verifyAllData, "a", false, "whether or not to do extra checking even if no missing or corrupt files are detected (PAR1 only)")
 	return flagSet, &flags
 }
 
@@ -437,7 +440,7 @@ func main() {
 	case "v":
 		fallthrough
 	case "verify":
-		verifyFlagSet, _ := getVerifyFlags(name)
+		verifyFlagSet, verifyFlags := getVerifyFlags(name)
 		err := verifyFlagSet.Parse(args)
 		if err == nil && verifyFlagSet.NArg() == 0 {
 			err = errors.New("no PAR file specified")
@@ -451,14 +454,19 @@ func main() {
 		switch ext := path.Ext(parFile); ext {
 		case ".par":
 			result, err := par1.Verify(parFile, par1.VerifyOptions{
+				VerifyAllData:  verifyFlags.verifyAllData,
 				VerifyDelegate: par1LogDecoderDelegate{},
 			})
 			if err != nil {
 				printVerifyErrorAndExit(err, par2cmdline.ExitLogicError)
 			}
-			if result.NeedsRepair {
-				fmt.Printf("Repair necessary and possible.\n")
-				os.Exit(par2cmdline.ExitRepairPossible)
+			if result.FileCounts.RepairNeeded() {
+				if result.FileCounts.RepairPossible() {
+					fmt.Printf("Repair necessary and possible.\n")
+					os.Exit(par2cmdline.ExitRepairPossible)
+				}
+				fmt.Printf("Repair necessary but not possible.\n")
+				os.Exit(par2cmdline.ExitRepairNotPossible)
 			}
 			os.Exit(par2cmdline.ExitSuccess)
 

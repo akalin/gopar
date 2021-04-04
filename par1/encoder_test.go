@@ -112,9 +112,9 @@ func testWriteParity(t *testing.T, workingDir string, useAbsPath bool) {
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
 
-	needsRepair, err := decoder.Verify()
+	ok, err := decoder.VerifyAllData()
 	require.NoError(t, err)
-	require.False(t, needsRepair)
+	require.True(t, ok)
 }
 
 func TestWriteParity(t *testing.T) {

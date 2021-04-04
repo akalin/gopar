@@ -1,7 +1,6 @@
 package par1
 
 import (
-	"errors"
 	"path/filepath"
 	"testing"
 
@@ -14,8 +13,10 @@ type testVerifyDelegate struct {
 
 func testVerify(t *testing.T, workingDir string, useAbsPath bool, options VerifyOptions) {
 	fs := makeDecoderMemFS(workingDir)
+	dataFileCount := fs.FileCount()
+	parityFileCount := 3
 
-	buildPARData(t, fs, 3)
+	buildPARData(t, fs, parityFileCount)
 
 	parPath := "file.par"
 	if useAbsPath {
@@ -23,20 +24,33 @@ func testVerify(t *testing.T, workingDir string, useAbsPath bool, options Verify
 	}
 	result, err := verify(testFileIO{t, fs}, parPath, options)
 	require.NoError(t, err)
-	require.Equal(t, VerifyResult{NeedsRepair: false}, result)
+	require.Equal(t, VerifyResult{
+		FileCounts: FileCounts{
+			UsableDataFileCount:   dataFileCount,
+			UsableParityFileCount: parityFileCount,
+		},
+		AllDataOk: options.VerifyAllData,
+	}, result)
 
 	fileData5, err := fs.ReadFile("file.r04")
 	require.NoError(t, err)
 	fileData5[len(fileData5)-1]++
 	result, err = verify(testFileIO{t, fs}, parPath, options)
-	expectedErr := errors.New("shard sizes do not match")
-	require.Equal(t, expectedErr, err)
-	require.Equal(t, VerifyResult{NeedsRepair: true}, result)
+	require.NoError(t, err)
+	require.Equal(t, VerifyResult{
+		FileCounts: FileCounts{
+			UsableDataFileCount:   dataFileCount - 1,
+			UnusableDataFileCount: 1,
+			UsableParityFileCount: parityFileCount,
+		},
+		AllDataOk: false,
+	}, result)
 }
 
 func TestVerify(t *testing.T) {
 	runOnExampleWorkingDirs(t, func(t *testing.T, workingDir string, useAbsPath bool) {
 		testVerify(t, workingDir, useAbsPath, VerifyOptions{
+			VerifyAllData:  true,
 			VerifyDelegate: testVerifyDelegate{testDecoderDelegate{t}},
 		})
 	})
