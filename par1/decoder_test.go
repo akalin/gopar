@@ -177,7 +177,7 @@ func newDecoderForTest(t *testing.T, fs memfs.MemFS, indexFile string) (*Decoder
 	return newDecoder(testFileIO{t, fs}, testDecoderDelegate{t}, indexFile)
 }
 
-func testVerify(t *testing.T, workingDir string, useAbsPath bool) {
+func testDecoderVerify(t *testing.T, workingDir string, useAbsPath bool) {
 	fs := makeDecoderMemFS(workingDir)
 
 	buildPARData(t, fs, 3)
@@ -248,8 +248,8 @@ func runOnExampleWorkingDirs(t *testing.T, testFn func(*testing.T, string, bool)
 	}
 }
 
-func TestVerify(t *testing.T) {
-	runOnExampleWorkingDirs(t, testVerify)
+func TestDecoderVerify(t *testing.T) {
+	runOnExampleWorkingDirs(t, testDecoderVerify)
 }
 
 func TestBadFilename(t *testing.T) {
