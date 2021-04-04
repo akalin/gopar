@@ -177,10 +177,12 @@ func newDecoderForTest(t *testing.T, fs memfs.MemFS, indexFile string) (*Decoder
 	return newDecoder(testFileIO{t, fs}, testDecoderDelegate{t}, indexFile)
 }
 
-func testDecoderVerify(t *testing.T, workingDir string, useAbsPath bool) {
+func testFileCounts(t *testing.T, workingDir string, useAbsPath bool) {
 	fs := makeDecoderMemFS(workingDir)
+	dataFileCount := fs.FileCount()
+	parityFileCount := 3
 
-	buildPARData(t, fs, 3)
+	buildPARData(t, fs, parityFileCount)
 
 	parPath := "file.par"
 	if useAbsPath {
@@ -193,42 +195,50 @@ func testDecoderVerify(t *testing.T, workingDir string, useAbsPath bool) {
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
 
-	needsRepair, err := decoder.Verify()
-	require.NoError(t, err)
-	require.False(t, needsRepair)
+	require.Equal(t, FileCounts{
+		UsableDataFileCount:   dataFileCount,
+		UsableParityFileCount: parityFileCount,
+	}, decoder.FileCounts())
 
 	fileData5, err := fs.ReadFile("file.r04")
 	require.NoError(t, err)
 	fileData5[len(fileData5)-1]++
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
-	_, err = decoder.Verify()
-	expectedErr := errors.New("shard sizes do not match")
-	require.Equal(t, expectedErr, err)
+	require.Equal(t, FileCounts{
+		UsableDataFileCount:   dataFileCount - 1,
+		UnusableDataFileCount: 1,
+		UsableParityFileCount: parityFileCount,
+	}, decoder.FileCounts())
 
 	fileData5[len(fileData5)-1]--
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
-	needsRepair, err = decoder.Verify()
-	require.NoError(t, err)
-	require.False(t, needsRepair)
+	require.Equal(t, FileCounts{
+		UsableDataFileCount:   dataFileCount,
+		UsableParityFileCount: parityFileCount,
+	}, decoder.FileCounts())
 
 	p03Data, err := fs.RemoveFile("file.p03")
 	require.NoError(t, err)
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
-	needsRepair, err = decoder.Verify()
-	require.NoError(t, err)
-	require.False(t, needsRepair)
+	require.Equal(t, FileCounts{
+		UsableDataFileCount:     dataFileCount,
+		UsableParityFileCount:   parityFileCount - 1,
+		UnusableParityFileCount: 0,
+	}, decoder.FileCounts())
 
 	require.NoError(t, fs.WriteFile("file.p03", p03Data))
 	_, err = fs.RemoveFile("file.p02")
 	require.NoError(t, err)
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
-	_, err = decoder.Verify()
-	expectedErr = errors.New("shard sizes do not match")
-	require.Equal(t, expectedErr, err)
+	require.Equal(t, FileCounts{
+		UsableDataFileCount:     dataFileCount,
+		UsableParityFileCount:   parityFileCount - 1,
+		UnusableParityFileCount: 1,
+	}, decoder.FileCounts())
 }
 
 func runOnExampleWorkingDirs(t *testing.T, testFn func(*testing.T, string, bool)) {
@@ -248,8 +258,66 @@ func runOnExampleWorkingDirs(t *testing.T, testFn func(*testing.T, string, bool)
 	}
 }
 
-func TestDecoderVerify(t *testing.T) {
-	runOnExampleWorkingDirs(t, testDecoderVerify)
+func TestFileCounts(t *testing.T) {
+	runOnExampleWorkingDirs(t, testFileCounts)
+}
+
+func testVerifyAllData(t *testing.T, workingDir string, useAbsPath bool) {
+	fs := makeDecoderMemFS(workingDir)
+
+	buildPARData(t, fs, 3)
+
+	parPath := "file.par"
+	if useAbsPath {
+		parPath = filepath.Join(workingDir, parPath)
+	}
+	decoder, err := newDecoderForTest(t, fs, parPath)
+	require.NoError(t, err)
+	err = decoder.LoadFileData()
+	require.NoError(t, err)
+	err = decoder.LoadParityData()
+	require.NoError(t, err)
+
+	ok, err := decoder.VerifyAllData()
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	fileData5, err := fs.ReadFile("file.r04")
+	require.NoError(t, err)
+	fileData5[len(fileData5)-1]++
+	err = decoder.LoadFileData()
+	require.NoError(t, err)
+	_, err = decoder.VerifyAllData()
+	expectedErr := errors.New("shard sizes do not match")
+	require.Equal(t, expectedErr, err)
+
+	fileData5[len(fileData5)-1]--
+	err = decoder.LoadFileData()
+	require.NoError(t, err)
+	ok, err = decoder.VerifyAllData()
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	p03Data, err := fs.RemoveFile("file.p03")
+	require.NoError(t, err)
+	err = decoder.LoadParityData()
+	require.NoError(t, err)
+	ok, err = decoder.VerifyAllData()
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	require.NoError(t, fs.WriteFile("file.p03", p03Data))
+	_, err = fs.RemoveFile("file.p02")
+	require.NoError(t, err)
+	err = decoder.LoadParityData()
+	require.NoError(t, err)
+	_, err = decoder.VerifyAllData()
+	expectedErr = errors.New("shard sizes do not match")
+	require.Equal(t, expectedErr, err)
+}
+
+func TestVerifyAllData(t *testing.T) {
+	runOnExampleWorkingDirs(t, testVerifyAllData)
 }
 
 func TestBadFilename(t *testing.T) {

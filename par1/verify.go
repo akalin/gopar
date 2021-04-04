@@ -13,6 +13,10 @@ type DoNothingVerifyDelegate struct {
 
 // VerifyOptions holds all the options for Verify.
 type VerifyOptions struct {
+	// If VerifyAllData is true, then check whether all data and
+	// parity files contain correct data even if no missing or
+	// corrupt files are detected.
+	VerifyAllData bool
 	// The VerifyDelegate to use. If nil, DoNothingVerifyDelegate
 	// is used.
 	VerifyDelegate VerifyDelegate
@@ -20,13 +24,18 @@ type VerifyOptions struct {
 
 // VerifyResult holds the result of a Verify call.
 type VerifyResult struct {
-	// NeedsRepair holds whether the set of files needs repair.
-	NeedsRepair bool
+	// FileCounts contains file counts which can be used to deduce
+	// whether repair is necessary and/or possible.
+	FileCounts FileCounts
+	// AllDataOk contains the result of calling VerifyAllData(),
+	// when VerifyAllData is set to true in VerifyOptions and
+	// FileCounts.AllFilesUsable() returns true, and contains
+	// false otherwise.
+	AllDataOk bool
 }
 
 // Verify a par file at parPath with the given options. The returned
-// VerifyResult may be partially or not filled in if an error is
-// returned.
+// VerifyResult is not filled in if an error is returned.
 func Verify(parPath string, options VerifyOptions) (VerifyResult, error) {
 	return verify(defaultFileIO{}, parPath, options)
 }
@@ -57,6 +66,17 @@ func verify(fileIO fileIO, parPath string, options VerifyOptions) (VerifyResult,
 		return VerifyResult{}, err
 	}
 
-	needsRepair, err := decoder.Verify()
-	return VerifyResult{NeedsRepair: needsRepair}, err
+	fileCounts := decoder.FileCounts()
+
+	allDataOk := false
+	if options.VerifyAllData && fileCounts.AllFilesUsable() {
+		allDataOk, err = decoder.VerifyAllData()
+		if err != nil {
+			return VerifyResult{}, err
+		}
+	}
+	return VerifyResult{
+		FileCounts: fileCounts,
+		AllDataOk:  allDataOk,
+	}, nil
 }

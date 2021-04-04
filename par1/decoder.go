@@ -286,27 +286,94 @@ func (d *Decoder) newReedSolomon() (reedsolomon.Encoder, error) {
 	return reedsolomon.New(len(d.fileData), len(d.parityData), reedsolomon.WithPAR1Matrix())
 }
 
-// Verify checks whether repair is needed. It returns a bool for
-// needsRepair and an error; if error is non-nil, needsRepair may
-// or may not be filled in.
-func (d *Decoder) Verify() (needsRepair bool, err error) {
-	shards := d.buildShards()
+// FileCounts contains file counts which can be used to deduce whether
+// repair is necessary and/or possible.
+type FileCounts struct {
+	// UsableDataFileCount is the number of data files that are
+	// usable, i.e. not missing and not corrupt.
+	UsableDataFileCount int
+	// UnusableDataFileCount is the number of data files that are
+	// unusable, i.e. missing or corrupt.
+	UnusableDataFileCount int
 
-	needsRepair = false
+	// UsableParityFileCount is the number of parity files that
+	// exist, i.e. not missing and not corrupt.
+	UsableParityFileCount int
+	// UnusableDataFileCount is the number of parity files that
+	// are unusable, i.e. missing or corrupt.
+	//
+	// Note that we can only infer missing parity files from gaps
+	// in the counts, e.g. if we only have foo.p01 and foo.p03,
+	// then we can infer that foo.p02 is missing, but if we have
+	// foo.p01 and foo.p02, then foo.p03 might be missing or it
+	// might not have existed in the first place.
+	UnusableParityFileCount int
+}
+
+// RepairNeeded returns whether repair is needed, i.e. whether
+// UnusableDataFileCount is non-zero.
+func (fc FileCounts) RepairNeeded() bool {
+	return fc.UnusableDataFileCount > 0
+}
+
+// RepairPossible returns whether repair is possible i.e. whether
+// UsableParityFileCount >= UnusableDataFileCount.
+func (fc FileCounts) RepairPossible() bool {
+	return fc.UsableParityFileCount >= fc.UnusableDataFileCount
+}
+
+// AllFilesUsable returns whether or not all files are usable,
+// i.e. whether UnusableDataFileCount == 0 and UnusableParityFileCount
+// == 0.
+func (fc FileCounts) AllFilesUsable() bool {
+	return fc.UnusableDataFileCount == 0 && fc.UnusableParityFileCount == 0
+}
+
+// FileCounts returns a FileCounts object for the current file set.
+func (d *Decoder) FileCounts() FileCounts {
+	usableDataFileCount := 0
+	unusableDataFileCount := 0
+
 	for _, data := range d.fileData {
 		if data == nil {
-			needsRepair = true
-			break
+			unusableDataFileCount++
+		} else {
+			usableDataFileCount++
 		}
 	}
 
-	rs, err := d.newReedSolomon()
-	if err != nil {
-		return needsRepair, err
+	usableParityFileCount := 0
+	unusableParityFileCount := 0
+
+	for _, data := range d.parityData {
+		if data == nil {
+			unusableParityFileCount++
+		} else {
+			usableParityFileCount++
+		}
 	}
 
-	_, err = rs.Verify(shards)
-	return needsRepair, err
+	return FileCounts{
+		UsableDataFileCount:     usableDataFileCount,
+		UnusableDataFileCount:   unusableDataFileCount,
+		UsableParityFileCount:   usableParityFileCount,
+		UnusableParityFileCount: unusableParityFileCount,
+	}
+}
+
+// VerifyAllData checks and returns whether all data and parity files
+// contain correct data. Note that this is worth calling only when
+// there are no unusable data or parity files, since if there are,
+// then false is guaranteed to be returned for ok.
+func (d *Decoder) VerifyAllData() (ok bool, err error) {
+	rs, err := d.newReedSolomon()
+	if err != nil {
+		return false, err
+	}
+
+	shards := d.buildShards()
+
+	return rs.Verify(shards)
 }
 
 // Repair tries to repair any missing or corrupt data, using the
@@ -316,12 +383,12 @@ func (d *Decoder) Verify() (needsRepair bool, err error) {
 // error is returned. If checkParity is true, extra checking is done
 // of the reconstructed parity data.
 func (d *Decoder) Repair(checkParity bool) ([]string, error) {
-	shards := d.buildShards()
-
 	rs, err := d.newReedSolomon()
 	if err != nil {
 		return nil, err
 	}
+
+	shards := d.buildShards()
 
 	err = rs.Reconstruct(shards)
 	if err != nil {
@@ -370,7 +437,7 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 	}
 
 	// TODO: Repair missing parity volumes, too, and then make
-	// sure d.Verify() passes.
+	// sure d.VerifyAllData() passes.
 
 	return repairedPaths, nil
 }
