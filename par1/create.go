@@ -47,10 +47,18 @@ func Create(parPath string, filePaths []string, options CreateOptions) error {
 	return create(defaultFileIO{}, parPath, filePaths, options)
 }
 
-func create(fileIO fileIO, parPath string, filePaths []string, options CreateOptions) error {
+func checkExtension(parPath string) error {
 	ext := path.Ext(parPath)
 	if ext != ".par" {
 		return errors.New("parPath must have a .par extension")
+	}
+	return nil
+}
+
+func create(fileIO fileIO, parPath string, filePaths []string, options CreateOptions) error {
+	err := checkExtension(parPath)
+	if err != nil {
+		return err
 	}
 
 	if len(filePaths) == 0 {

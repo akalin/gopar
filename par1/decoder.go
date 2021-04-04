@@ -39,6 +39,30 @@ type DecoderDelegate interface {
 	OnVolumeFileLoad(i uint64, path string, storedSetHash, computedSetHash [16]byte, dataByteCount int, err error)
 }
 
+// DoNothingDecoderDelegate is an implementation of DecoderDelegate
+// that does nothing for all methods.
+type DoNothingDecoderDelegate struct{}
+
+// OnHeaderLoad implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnHeaderLoad(headerInfo string) {}
+
+// OnFileEntryLoad implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnFileEntryLoad(i, n int, filename, entryInfo string) {}
+
+// OnCommentLoad implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnCommentLoad(comment []byte) {}
+
+// OnDataFileLoad implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error) {
+}
+
+// OnDataFileWrite implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {}
+
+// OnVolumeFileLoad implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnVolumeFileLoad(i uint64, path string, storedSetHash, computedSetHash [16]byte, dataByteCount int, err error) {
+}
+
 func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexFile string) (*Decoder, error) {
 	indexVolume, err := func() (volume, error) {
 		bytes, err := fileIO.ReadFile(indexFile)
