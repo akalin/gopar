@@ -189,7 +189,7 @@ func makeDecoderMemFS(workingDir string) memfs.MemFS {
 	})
 }
 
-func testVerify(t *testing.T, workingDir string, useAbsPath bool) {
+func testDecoderVerify(t *testing.T, workingDir string, useAbsPath bool) {
 	fs := makeDecoderMemFS(workingDir)
 	r04Path := filepath.Join("dir4", "dir5", "file.r04")
 
@@ -262,8 +262,8 @@ func runOnExampleWorkingDirs(t *testing.T, testFn func(*testing.T, string, bool)
 	}
 }
 
-func TestVerify(t *testing.T) {
-	runOnExampleWorkingDirs(t, testVerify)
+func TestDecoderVerify(t *testing.T) {
+	runOnExampleWorkingDirs(t, testDecoderVerify)
 }
 
 func TestSetIDMismatch(t *testing.T) {
