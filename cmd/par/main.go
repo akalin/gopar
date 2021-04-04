@@ -308,10 +308,14 @@ func printCreateErrorAndExit(err error, exitCode int) {
 	os.Exit(exitCode)
 }
 
+func printVerifyErrorAndExit(err error, exitCode int) {
+	fmt.Printf("Verify error: %s\n", err)
+	os.Exit(exitCode)
+}
+
 type decoder interface {
 	LoadFileData() error
 	LoadParityData() error
-	Verify() (needsRepair bool, err error)
 	Repair(checkParity bool) ([]string, error)
 }
 
@@ -324,21 +328,17 @@ func newDecoder(parFile string, numGoroutines int) (decoder, error) {
 	return par1.NewDecoder(par1LogDecoderDelegate{}, parFile)
 }
 
-func processVerifyOrRepairError(needsRepair bool, err error) int {
+func processRepairError(err error) int {
 	// Match exit codes to par2cmdline.
 	if err != nil {
 		switch err.(type) {
 		case rsec16.NotEnoughParityShardsError:
-			fmt.Fprintf(os.Stderr, "Repair necessary but not possible.\n")
+			fmt.Printf("Repair necessary but not possible.\n")
 			return par2cmdline.ExitRepairNotPossible
 		default:
-			fmt.Fprintf(os.Stderr, "Error encountered: %s\n", err)
+			fmt.Printf("Error encountered: %s\n", err)
 			return par2cmdline.ExitLogicError
 		}
-	}
-	if needsRepair {
-		fmt.Fprintf(os.Stderr, "Repair necessary and possible.\n")
-		return par2cmdline.ExitRepairPossible
 	}
 	return par2cmdline.ExitSuccess
 }
@@ -448,27 +448,37 @@ func main() {
 
 		parFile := verifyFlagSet.Arg(0)
 
-		decoder, err := newDecoder(parFile, globalFlags.numGoroutines)
-		if err != nil {
-			panic(err)
-		}
+		switch ext := path.Ext(parFile); ext {
+		case ".par":
+			result, err := par1.Verify(parFile, par1.VerifyOptions{
+				VerifyDelegate: par1LogDecoderDelegate{},
+			})
+			if err != nil {
+				printVerifyErrorAndExit(err, par2cmdline.ExitLogicError)
+			}
+			if result.NeedsRepair {
+				fmt.Printf("Repair necessary and possible.\n")
+				os.Exit(par2cmdline.ExitRepairPossible)
+			}
+			os.Exit(par2cmdline.ExitSuccess)
 
-		err = decoder.LoadFileData()
-		if err != nil {
-			panic(err)
-		}
+		case ".par2":
+			result, err := par2.Verify(parFile, par2.VerifyOptions{
+				NumGoroutines:  globalFlags.numGoroutines,
+				VerifyDelegate: par2LogDecoderDelegate{},
+			})
+			if err != nil {
+				printVerifyErrorAndExit(err, par2.ExitCodeForVerifyErrorPar2CmdLine(err))
+			}
+			if result.NeedsRepair {
+				fmt.Printf("Repair necessary and possible.\n")
+				os.Exit(par2cmdline.ExitRepairPossible)
+			}
+			os.Exit(par2cmdline.ExitSuccess)
 
-		err = decoder.LoadParityData()
-		if err != nil {
-			panic(err)
+		default:
+			printVerifyErrorAndExit(fmt.Errorf("unknown extension %s", ext), par2cmdline.ExitLogicError)
 		}
-
-		needsRepair, err := decoder.Verify()
-		exitCode := processVerifyOrRepairError(needsRepair, err)
-		if exitCode == par2cmdline.ExitSuccess {
-			fmt.Printf("Repair not necessary.\n")
-		}
-		os.Exit(exitCode)
 
 	case "r":
 		fallthrough
@@ -501,8 +511,7 @@ func main() {
 
 		repairedPaths, err := decoder.Repair(repairFlags.checkParity)
 		fmt.Printf("Repaired files: %v\n", repairedPaths)
-		needsRepair := false
-		exitCode := processVerifyOrRepairError(needsRepair, err)
+		exitCode := processRepairError(err)
 		os.Exit(exitCode)
 
 	default:

@@ -1,5 +1,10 @@
 package par2
 
+import (
+	"github.com/akalin/gopar/par2cmdline"
+	"github.com/akalin/gopar/rsec16"
+)
+
 // VerifyDelegate is just DecoderDelegate for now.
 type VerifyDelegate interface {
 	DecoderDelegate
@@ -67,4 +72,19 @@ func verify(fileIO fileIO, parPath string, options VerifyOptions) (VerifyResult,
 
 	needsRepair, err := decoder.Verify()
 	return VerifyResult{NeedsRepair: needsRepair}, err
+}
+
+// ExitCodeForVerifyErrorPar2CmdLine returns the error code
+// par2cmdline would have returned for the given error returned by
+// Verify.
+func ExitCodeForVerifyErrorPar2CmdLine(err error) int {
+	if err != nil {
+		switch err.(type) {
+		case rsec16.NotEnoughParityShardsError:
+			return par2cmdline.ExitRepairNotPossible
+		default:
+			return par2cmdline.ExitLogicError
+		}
+	}
+	return par2cmdline.ExitSuccess
 }
