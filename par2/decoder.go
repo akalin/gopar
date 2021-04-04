@@ -197,6 +197,54 @@ type DecoderDelegate interface {
 	OnDataFileWrite(i, n int, path string, byteCount int, err error)
 }
 
+// DoNothingDecoderDelegate is an implementation of DecoderDelegate
+// that does nothing for all methods.
+type DoNothingDecoderDelegate struct{}
+
+// OnCreatorPacketLoad implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnCreatorPacketLoad(clientID string) {}
+
+// OnMainPacketLoad implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnMainPacketLoad(sliceByteCount, recoverySetCount, nonRecoverySetCount int) {
+}
+
+// OnFileDescriptionPacketLoad implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int) {
+}
+
+// OnIFSCPacketLoad implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnIFSCPacketLoad(fileID [16]byte) {}
+
+// OnRecoveryPacketLoad implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnRecoveryPacketLoad(exponent uint16, byteCount int) {}
+
+// OnUnknownPacketLoad implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnUnknownPacketLoad(packetType [16]byte, byteCount int) {}
+
+// OnOtherPacketSkip implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnOtherPacketSkip(setID [16]byte, packetType [16]byte, byteCount int) {
+}
+
+// OnDataFileLoad implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount, hits, misses int, err error) {
+}
+
+// OnParityFileLoad implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnParityFileLoad(i int, path string, err error) {}
+
+// OnDetectCorruptDataChunk implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnDetectCorruptDataChunk(fileID [16]byte, path string, startByteOffset, endByteOffset int) {
+}
+
+// OnDetectDataFileHashMismatch implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, path string) {}
+
+// OnDetectDataFileWrongByteCount implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnDetectDataFileWrongByteCount(fileID [16]byte, path string) {}
+
+// OnDataFileWrite implements the DecoderDelegate interface.
+func (DoNothingDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {}
+
 func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string, numGoroutines int) (*Decoder, error) {
 	indexBytes, err := fileIO.ReadFile(indexPath)
 	if err != nil {
