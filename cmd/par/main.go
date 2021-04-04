@@ -212,8 +212,9 @@ func getCreateFlags(name string) (*flag.FlagSet, *createFlags) {
 	flagSet := newFlagSet(name + " create")
 
 	var flags createFlags
-	flagSet.IntVar(&flags.sliceByteCount, "s", 2000, "block size in bytes (must be a multiple of 4)")
-	flagSet.IntVar(&flags.numParityShards, "c", 3, "number of recovery blocks to create (or files, for PAR1)")
+	flagSet.IntVar(&flags.sliceByteCount, "s", par2.SliceByteCountDefault, "block size in bytes (must be a multiple of 4) (PAR2 only)")
+	// par1.NumParityFilesDefault == par2.NumParityShardsDefault
+	flagSet.IntVar(&flags.numParityShards, "c", par2.NumParityShardsDefault, "number of recovery blocks to create (or files, for PAR1)")
 
 	return flagSet, &flags
 }
