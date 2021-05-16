@@ -87,6 +87,10 @@ func (par1LogDecoderDelegate) OnVolumeFileLoad(i uint64, path string, storedSetH
 	}
 }
 
+type par1LogVerifyDelegate struct {
+	par1LogDecoderDelegate
+}
+
 type par2LogCreateDelegate struct{}
 
 func (par2LogCreateDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {
@@ -177,6 +181,10 @@ func (par2LogDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount i
 	} else {
 		fmt.Printf("[%d/%d] Wrote data file %q (%d bytes)\n", i, n, path, byteCount)
 	}
+}
+
+type par2LogVerifyDelegate struct {
+	par2LogDecoderDelegate
 }
 
 func newFlagSet(name string) *flag.FlagSet {
@@ -331,6 +339,23 @@ func newDecoder(parFile string, numGoroutines int) (decoder, error) {
 	return par1.NewDecoder(par1LogDecoderDelegate{}, parFile)
 }
 
+type repairChecker interface {
+	RepairNeeded() bool
+	RepairPossible() bool
+}
+
+func processRepairChecker(repairChecker repairChecker) int {
+	if repairChecker.RepairNeeded() {
+		if repairChecker.RepairPossible() {
+			fmt.Printf("Repair necessary and possible.\n")
+			return par2cmdline.ExitRepairPossible
+		}
+		fmt.Printf("Repair necessary but not possible.\n")
+		return par2cmdline.ExitRepairNotPossible
+	}
+	return par2cmdline.ExitSuccess
+}
+
 func processRepairError(err error) int {
 	// Match exit codes to par2cmdline.
 	if err != nil {
@@ -455,34 +480,24 @@ func main() {
 		case ".par":
 			result, err := par1.Verify(parFile, par1.VerifyOptions{
 				VerifyAllData:  verifyFlags.verifyAllData,
-				VerifyDelegate: par1LogDecoderDelegate{},
+				VerifyDelegate: par1LogVerifyDelegate{},
 			})
 			if err != nil {
 				printVerifyErrorAndExit(err, par2cmdline.ExitLogicError)
 			}
-			if result.FileCounts.RepairNeeded() {
-				if result.FileCounts.RepairPossible() {
-					fmt.Printf("Repair necessary and possible.\n")
-					os.Exit(par2cmdline.ExitRepairPossible)
-				}
-				fmt.Printf("Repair necessary but not possible.\n")
-				os.Exit(par2cmdline.ExitRepairNotPossible)
-			}
-			os.Exit(par2cmdline.ExitSuccess)
+			exitCode := processRepairChecker(result.FileCounts)
+			os.Exit(exitCode)
 
 		case ".par2":
 			result, err := par2.Verify(parFile, par2.VerifyOptions{
 				NumGoroutines:  globalFlags.numGoroutines,
-				VerifyDelegate: par2LogDecoderDelegate{},
+				VerifyDelegate: par2LogVerifyDelegate{},
 			})
 			if err != nil {
-				printVerifyErrorAndExit(err, par2.ExitCodeForVerifyErrorPar2CmdLine(err))
+				printVerifyErrorAndExit(err, par2cmdline.ExitLogicError)
 			}
-			if result.NeedsRepair {
-				fmt.Printf("Repair necessary and possible.\n")
-				os.Exit(par2cmdline.ExitRepairPossible)
-			}
-			os.Exit(par2cmdline.ExitSuccess)
+			exitCode := processRepairChecker(result.ShardCounts)
+			os.Exit(exitCode)
 
 		default:
 			printVerifyErrorAndExit(fmt.Errorf("unknown extension %s", ext), par2cmdline.ExitLogicError)

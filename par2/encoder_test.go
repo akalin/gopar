@@ -123,9 +123,7 @@ func testWriteParity(t *testing.T, workingDir, outputPath string) {
 		err = decoder.LoadParityData()
 		require.NoError(t, err)
 
-		needsRepair, err := decoder.Verify()
-		require.NoError(t, err)
-		require.True(t, needsRepair)
+		require.True(t, decoder.ShardCounts().RepairNeeded())
 
 		// Call fs.Paths() again to pick up newly-written files.
 		for _, path := range fs.Paths() {
@@ -148,9 +146,7 @@ func testWriteParity(t *testing.T, workingDir, outputPath string) {
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
 
-	needsRepair, err := decoder.Verify()
-	require.NoError(t, err)
-	require.False(t, needsRepair)
+	require.False(t, decoder.ShardCounts().RepairNeeded())
 }
 
 func TestWriteParity(t *testing.T) {

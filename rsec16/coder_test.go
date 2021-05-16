@@ -190,10 +190,6 @@ func testCoderReconstructData(t *testing.T, newCoder func(int, int) (Coder, erro
 		nil,
 	}
 	dataToReconstruct := corruptData[:]
-	err = c.CanReconstructData(dataToReconstruct, parity)
-	require.NoError(t, err)
-	require.Equal(t, corruptData, dataToReconstruct)
-
 	err = c.ReconstructData(dataToReconstruct, parity)
 	require.NoError(t, err)
 	require.Equal(t, data, dataToReconstruct)
@@ -223,10 +219,6 @@ func testCoderReconstructDataMissingParity(t *testing.T, newCoder func(int, int)
 	}
 
 	dataToReconstruct := corruptData[:]
-	err = c.CanReconstructData(dataToReconstruct, corruptParity)
-	require.NoError(t, err)
-	require.Equal(t, corruptData, dataToReconstruct)
-
 	err = c.ReconstructData(dataToReconstruct, corruptParity)
 	require.NoError(t, err)
 	require.Equal(t, data, dataToReconstruct)
@@ -250,8 +242,6 @@ func testCoderReconstructDataNotEnough(t *testing.T, newCoder func(int, int) (Co
 		nil,
 	}
 	expectedErr := NotEnoughParityShardsError{}
-	err = c.CanReconstructData(corruptData, parity)
-	require.Equal(t, expectedErr, err)
 	err = c.ReconstructData(corruptData, parity)
 	require.Equal(t, expectedErr, err)
 
@@ -267,8 +257,6 @@ func testCoderReconstructDataNotEnough(t *testing.T, newCoder func(int, int) (Co
 		parity[1],
 		parity[2],
 	}
-	err = c.CanReconstructData(corruptData, corruptParity)
-	require.Equal(t, expectedErr, err)
 	err = c.ReconstructData(corruptData, corruptParity)
 	require.Equal(t, expectedErr, err)
 }
