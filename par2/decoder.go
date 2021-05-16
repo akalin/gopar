@@ -581,29 +581,68 @@ func (d *Decoder) newCoderAndShards() (rsec16.Coder, [][]byte, error) {
 	return coder, dataShards, err
 }
 
-// Verify checks whether repair is needed. It returns a bool for
-// needsRepair and an error; if error is non-nil, needsRepair may
-// or may not be filled in.
-func (d *Decoder) Verify() (needsRepair bool, err error) {
-	coder, dataShards, err := d.newCoderAndShards()
-	if err != nil {
-		return false, err
-	}
+// ShardCounts contains shard counts which can be used to deduce
+// whether repair is necessary and/or possible.
+type ShardCounts struct {
+	// UsableDataShardCount is the number of data shards that are
+	// usable, i.e. not missing and not corrupt.
+	UsableDataShardCount int
+	// UnusableDataShardCount is the number of data shards that
+	// are unusable, i.e. missing or corrupt.
+	UnusableDataShardCount int
 
-	needsRepair = false
-	for _, dataShard := range dataShards {
-		if dataShard == nil {
-			needsRepair = true
-			break
+	// UsableParityShardCount is the number of parity shards that
+	// exist, i.e. not missing and not corrupt.
+	UsableParityShardCount int
+	// UnusableDataShardCount is the number of parity shards that
+	// are unusable, i.e. missing or corrupt.
+	UnusableParityShardCount int
+}
+
+// RepairNeeded returns whether repair is needed, i.e. whether
+// UnusableDataShardCount is non-zero.
+func (fc ShardCounts) RepairNeeded() bool {
+	return fc.UnusableDataShardCount > 0
+}
+
+// RepairPossible returns whether repair is possible i.e. whether
+// UsableParityShardCount >= UnusableDataShardCount.
+func (fc ShardCounts) RepairPossible() bool {
+	return fc.UsableParityShardCount >= fc.UnusableDataShardCount
+}
+
+// ShardCounts returns a ShardCounts object for the current shard set.
+func (d *Decoder) ShardCounts() ShardCounts {
+	usableDataShardCount := 0
+	unusableDataShardCount := 0
+
+	for _, info := range d.fileIntegrityInfos {
+		for _, shardInfo := range info.shardInfos {
+			if shardInfo.data == nil {
+				unusableDataShardCount++
+			} else {
+				usableDataShardCount++
+			}
 		}
 	}
 
-	err = coder.CanReconstructData(dataShards, d.parityShards)
-	if err != nil {
-		return false, err
+	usableParityShardCount := 0
+	unusableParityShardCount := 0
+
+	for _, shard := range d.parityShards {
+		if shard == nil {
+			unusableParityShardCount++
+		} else {
+			usableParityShardCount++
+		}
 	}
 
-	return needsRepair, nil
+	return ShardCounts{
+		UsableDataShardCount:     usableDataShardCount,
+		UnusableDataShardCount:   unusableDataShardCount,
+		UsableParityShardCount:   usableParityShardCount,
+		UnusableParityShardCount: unusableParityShardCount,
+	}
 }
 
 // Repair tries to repair any missing or corrupt data, using the

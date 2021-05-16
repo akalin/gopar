@@ -110,7 +110,7 @@ func (io testFileIO) WriteFile(path string, data []byte) (err error) {
 	return io.fileIO.WriteFile(path, data)
 }
 
-func buildPAR2Data(t *testing.T, fs memfs.MemFS, basePath string, sliceByteCount, parityShardCount int) {
+func buildPAR2Data(t *testing.T, fs memfs.MemFS, basePath string, sliceByteCount, parityShardCount int) (dataShardCount int) {
 	var recoverySet []fileID
 	fileDescriptionPackets := make(map[fileID]fileDescriptionPacket)
 	ifscPackets := make(map[fileID]ifscPacket)
@@ -173,6 +173,8 @@ func buildPAR2Data(t *testing.T, fs memfs.MemFS, basePath string, sliceByteCount
 		filename := fmt.Sprintf("file.vol%02d+01.par2", exp)
 		require.NoError(t, fs.WriteFile(filename, recoveryFileBytes))
 	}
+
+	return len(dataShards)
 }
 
 func newDecoderForTest(t *testing.T, fs memfs.MemFS, indexPath string) (*Decoder, error) {
@@ -187,6 +189,91 @@ func makeDecoderMemFS(workingDir string) memfs.MemFS {
 		filepath.Join("dir2", "dir3", "file.r03"): {0xe, 0xf},
 		filepath.Join("dir4", "dir5", "file.r04"): {0xd},
 	})
+}
+
+func testShardCounts(t *testing.T, workingDir string, useAbsPath bool) {
+	fs := makeDecoderMemFS(workingDir)
+	r04Path := filepath.Join("dir4", "dir5", "file.r04")
+
+	parityShardCount := 3
+	dataShardCount := buildPAR2Data(t, fs, workingDir, 4, parityShardCount)
+
+	parPath := "file.par2"
+	if useAbsPath {
+		parPath = filepath.Join(workingDir, parPath)
+	}
+
+	decoder, err := newDecoderForTest(t, fs, parPath)
+	require.NoError(t, err)
+	err = decoder.LoadFileData()
+	require.NoError(t, err)
+	err = decoder.LoadParityData()
+	require.NoError(t, err)
+
+	require.Equal(t, ShardCounts{
+		UsableDataShardCount:   dataShardCount,
+		UsableParityShardCount: parityShardCount,
+	}, decoder.ShardCounts())
+
+	fileData5, err := fs.ReadFile(r04Path)
+	require.NoError(t, err)
+	fileData5[len(fileData5)-1]++
+	err = decoder.LoadFileData()
+	require.NoError(t, err)
+	require.Equal(t, ShardCounts{
+		UsableDataShardCount:   dataShardCount - 1,
+		UnusableDataShardCount: 1,
+		UsableParityShardCount: parityShardCount,
+	}, decoder.ShardCounts())
+
+	fileData5[len(fileData5)-1]--
+	err = decoder.LoadFileData()
+	require.NoError(t, err)
+	require.Equal(t, ShardCounts{
+		UsableDataShardCount:   dataShardCount,
+		UsableParityShardCount: parityShardCount,
+	}, decoder.ShardCounts())
+
+	vol2Data, err := fs.RemoveFile("file.vol02+01.par2")
+	require.NoError(t, err)
+	err = decoder.LoadParityData()
+	require.NoError(t, err)
+	require.Equal(t, ShardCounts{
+		UsableDataShardCount:   dataShardCount,
+		UsableParityShardCount: parityShardCount - 1,
+	}, decoder.ShardCounts())
+
+	require.NoError(t, fs.WriteFile("file.vol02+01.par2", vol2Data))
+	_, err = fs.RemoveFile("file.vol01+01.par2")
+	require.NoError(t, err)
+	err = decoder.LoadParityData()
+	require.NoError(t, err)
+	require.Equal(t, ShardCounts{
+		UsableDataShardCount:     dataShardCount,
+		UsableParityShardCount:   parityShardCount - 1,
+		UnusableParityShardCount: 1,
+	}, decoder.ShardCounts())
+}
+
+func runOnExampleWorkingDirs(t *testing.T, testFn func(*testing.T, string, bool)) {
+	workingDirs := []string{
+		memfs.RootDir(),
+		filepath.Join(memfs.RootDir(), "dir"),
+		filepath.Join(memfs.RootDir(), "dir1", "dir2"),
+	}
+	for _, workingDir := range workingDirs {
+		workingDir := workingDir
+		for _, useAbsPath := range []bool{false, true} {
+			useAbsPath := useAbsPath
+			t.Run(fmt.Sprintf("workingDir=%s,useAbsPath=%t", workingDir, useAbsPath), func(t *testing.T) {
+				testFn(t, workingDir, useAbsPath)
+			})
+		}
+	}
+}
+
+func TestShardCounts(t *testing.T) {
+	runOnExampleWorkingDirs(t, testShardCounts)
 }
 
 func testDecoderVerify(t *testing.T, workingDir string, useAbsPath bool) {
@@ -207,59 +294,32 @@ func testDecoderVerify(t *testing.T, workingDir string, useAbsPath bool) {
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
 
-	needsRepair, err := decoder.Verify()
-	require.NoError(t, err)
-	require.False(t, needsRepair)
+	require.False(t, decoder.ShardCounts().RepairNeeded())
 
 	fileData5, err := fs.ReadFile(r04Path)
 	require.NoError(t, err)
 	fileData5[len(fileData5)-1]++
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
-	needsRepair, err = decoder.Verify()
-	require.NoError(t, err)
-	require.True(t, needsRepair)
+	require.True(t, decoder.ShardCounts().RepairNeeded())
 
 	fileData5[len(fileData5)-1]--
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
-	needsRepair, err = decoder.Verify()
-	require.NoError(t, err)
-	require.False(t, needsRepair)
+	require.False(t, decoder.ShardCounts().RepairNeeded())
 
 	vol2Data, err := fs.RemoveFile("file.vol02+01.par2")
 	require.NoError(t, err)
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
-	needsRepair, err = decoder.Verify()
-	require.NoError(t, err)
-	require.False(t, needsRepair)
+	require.False(t, decoder.ShardCounts().RepairNeeded())
 
 	require.NoError(t, fs.WriteFile("file.vol02+01.par2", vol2Data))
 	_, err = fs.RemoveFile("file.vol01+01.par2")
 	require.NoError(t, err)
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
-	needsRepair, err = decoder.Verify()
-	require.NoError(t, err)
-	require.False(t, needsRepair)
-}
-
-func runOnExampleWorkingDirs(t *testing.T, testFn func(*testing.T, string, bool)) {
-	workingDirs := []string{
-		memfs.RootDir(),
-		filepath.Join(memfs.RootDir(), "dir"),
-		filepath.Join(memfs.RootDir(), "dir1", "dir2"),
-	}
-	for _, workingDir := range workingDirs {
-		workingDir := workingDir
-		for _, useAbsPath := range []bool{false, true} {
-			useAbsPath := useAbsPath
-			t.Run(fmt.Sprintf("workingDir=%s,useAbsPath=%t", workingDir, useAbsPath), func(t *testing.T) {
-				testFn(t, workingDir, useAbsPath)
-			})
-		}
-	}
+	require.False(t, decoder.ShardCounts().RepairNeeded())
 }
 
 func TestDecoderVerify(t *testing.T) {
@@ -287,9 +347,7 @@ func TestSetIDMismatch(t *testing.T) {
 	require.NoError(t, err)
 	err = decoder.LoadParityData()
 	require.NoError(t, err)
-	needsRepair, err := decoder.Verify()
-	require.NoError(t, err)
-	require.False(t, needsRepair)
+	require.False(t, decoder.ShardCounts().RepairNeeded())
 }
 
 func toSortedStrings(arr []string) []string {

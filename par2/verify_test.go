@@ -12,21 +12,33 @@ import (
 func testVerify(t *testing.T, workingDir string, options VerifyOptions) {
 	fs := makeDecoderMemFS(workingDir)
 	r04Path := filepath.Join("dir4", "dir5", "file.r04")
+	parityShardCount := 3
 
-	buildPAR2Data(t, fs, workingDir, 4, 3)
+	dataShardCount := buildPAR2Data(t, fs, workingDir, 4, parityShardCount)
 
 	parPath := filepath.Join(workingDir, "file.par2")
 
 	result, err := verify(testFileIO{t, fs}, parPath, options)
 	require.NoError(t, err)
-	require.Equal(t, VerifyResult{NeedsRepair: false}, result)
+	require.Equal(t, VerifyResult{
+		ShardCounts: ShardCounts{
+			UsableDataShardCount:   dataShardCount,
+			UsableParityShardCount: parityShardCount,
+		},
+	}, result)
 
 	fileData5, err := fs.ReadFile(r04Path)
 	require.NoError(t, err)
 	fileData5[len(fileData5)-1]++
 	result, err = verify(testFileIO{t, fs}, parPath, options)
 	require.NoError(t, err)
-	require.Equal(t, VerifyResult{NeedsRepair: true}, result)
+	require.Equal(t, VerifyResult{
+		ShardCounts: ShardCounts{
+			UsableDataShardCount:   dataShardCount - 1,
+			UnusableDataShardCount: 1,
+			UsableParityShardCount: parityShardCount,
+		},
+	}, result)
 }
 
 func TestVerify(t *testing.T) {
