@@ -363,7 +363,7 @@ func TestSetHashMismatch(t *testing.T) {
 	require.Equal(t, errors.New("unexpected set hash for parity volume"), err)
 }
 
-func testRepair(t *testing.T, workingDir string, useAbsPath bool) {
+func testDecoderRepair(t *testing.T, workingDir string, useAbsPath bool) {
 	fs := makeDecoderMemFS(workingDir)
 
 	buildPARData(t, fs, 3)
@@ -414,6 +414,6 @@ func testRepair(t *testing.T, workingDir string, useAbsPath bool) {
 	require.Equal(t, r04Data, repairedR04Data)
 }
 
-func TestRepair(t *testing.T) {
-	runOnExampleWorkingDirs(t, testRepair)
+func TestDecoderRepair(t *testing.T) {
+	runOnExampleWorkingDirs(t, testDecoderRepair)
 }
