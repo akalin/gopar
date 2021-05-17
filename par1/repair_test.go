@@ -26,14 +26,20 @@ func testRepair(t *testing.T, workingDir string, useAbsPath bool, options Repair
 	require.NoError(t, err)
 	require.Equal(t, RepairResult{}, result)
 
-	fileData5, err := fs.ReadFile("file.r04")
-	require.NoError(t, err)
-	fileData5[len(fileData5)-1]++
+	perturbFile(t, fs, "file.r04")
 	result, err = repair(testFileIO{t, fs}, parPath, options)
 	require.NoError(t, err)
 	require.Equal(t, RepairResult{
 		RepairedPaths: []string{r04Path},
 	}, result)
+
+	perturbFile(t, fs, "file.r04")
+	perturbFile(t, fs, "file.r02")
+	perturbFile(t, fs, "file.r01")
+	perturbFile(t, fs, "file.rar")
+	result, err = repair(testFileIO{t, fs}, parPath, options)
+	require.True(t, RepairErrorMeansRepairNecessaryButNotPossible(err))
+	require.Equal(t, RepairResult{}, result)
 }
 
 func TestRepair(t *testing.T) {
