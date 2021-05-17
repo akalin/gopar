@@ -1,5 +1,7 @@
 package par1
 
+import "github.com/klauspost/reedsolomon"
+
 // RepairDelegate is just DecoderDelegate for now.
 type RepairDelegate interface {
 	DecoderDelegate
@@ -65,4 +67,11 @@ func repair(fileIO fileIO, parPath string, options RepairOptions) (RepairResult,
 	return RepairResult{
 		RepairedPaths: repairedPaths,
 	}, err
+}
+
+// RepairErrorMeansRepairNecessaryButNotPossible returns true if the
+// error returned by Repair means that repair is necessary but not
+// possible.
+func RepairErrorMeansRepairNecessaryButNotPossible(err error) bool {
+	return err == reedsolomon.ErrTooFewShards
 }

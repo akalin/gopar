@@ -177,6 +177,18 @@ func newDecoderForTest(t *testing.T, fs memfs.MemFS, indexFile string) (*Decoder
 	return newDecoder(testFileIO{t, fs}, testDecoderDelegate{t}, indexFile)
 }
 
+func perturbFile(t *testing.T, fs memfs.MemFS, path string) {
+	data, err := fs.ReadFile(path)
+	require.NoError(t, err)
+	data[len(data)-1]++
+}
+
+func unperturbFile(t *testing.T, fs memfs.MemFS, path string) {
+	data, err := fs.ReadFile(path)
+	require.NoError(t, err)
+	data[len(data)-1]--
+}
+
 func testFileCounts(t *testing.T, workingDir string, useAbsPath bool) {
 	fs := makeDecoderMemFS(workingDir)
 	dataFileCount := fs.FileCount()
@@ -200,9 +212,7 @@ func testFileCounts(t *testing.T, workingDir string, useAbsPath bool) {
 		UsableParityFileCount: parityFileCount,
 	}, decoder.FileCounts())
 
-	fileData5, err := fs.ReadFile("file.r04")
-	require.NoError(t, err)
-	fileData5[len(fileData5)-1]++
+	perturbFile(t, fs, "file.r04")
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
 	require.Equal(t, FileCounts{
@@ -211,7 +221,7 @@ func testFileCounts(t *testing.T, workingDir string, useAbsPath bool) {
 		UsableParityFileCount: parityFileCount,
 	}, decoder.FileCounts())
 
-	fileData5[len(fileData5)-1]--
+	unperturbFile(t, fs, "file.r04")
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
 	require.Equal(t, FileCounts{
@@ -282,16 +292,14 @@ func testVerifyAllData(t *testing.T, workingDir string, useAbsPath bool) {
 	require.NoError(t, err)
 	require.True(t, ok)
 
-	fileData5, err := fs.ReadFile("file.r04")
-	require.NoError(t, err)
-	fileData5[len(fileData5)-1]++
+	perturbFile(t, fs, "file.r04")
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
 	_, err = decoder.VerifyAllData()
 	expectedErr := errors.New("shard sizes do not match")
 	require.Equal(t, expectedErr, err)
 
-	fileData5[len(fileData5)-1]--
+	unperturbFile(t, fs, "file.r04")
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
 	ok, err = decoder.VerifyAllData()
