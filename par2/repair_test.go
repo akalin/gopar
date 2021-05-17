@@ -11,8 +11,11 @@ import (
 
 func testRepair(t *testing.T, workingDir string, options RepairOptions) {
 	fs := makeDecoderMemFS(workingDir)
+	rarPath := "file.rar"
+	r01Path := filepath.Join("dir1", "file.r01")
 	r04Path := filepath.Join("dir4", "dir5", "file.r04")
-	parityShardCount := 3
+
+	parityShardCount := 2
 
 	buildPAR2Data(t, fs, workingDir, 4, parityShardCount)
 
@@ -22,14 +25,19 @@ func testRepair(t *testing.T, workingDir string, options RepairOptions) {
 	require.NoError(t, err)
 	require.Equal(t, RepairResult{}, result)
 
-	fileData5, err := fs.ReadFile(r04Path)
-	require.NoError(t, err)
-	fileData5[len(fileData5)-1]++
+	perturbFile(t, fs, r04Path)
 	result, err = repair(testFileIO{t, fs}, parPath, options)
 	require.NoError(t, err)
 	require.Equal(t, RepairResult{
 		RepairedPaths: []string{filepath.Join(workingDir, r04Path)},
 	}, result)
+
+	perturbFile(t, fs, rarPath)
+	perturbFile(t, fs, r01Path)
+	perturbFile(t, fs, r04Path)
+	result, err = repair(testFileIO{t, fs}, parPath, options)
+	require.True(t, RepairErrorMeansRepairNecessaryButNotPossible(err))
+	require.Equal(t, RepairResult{}, result)
 }
 
 func TestRepair(t *testing.T) {

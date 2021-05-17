@@ -191,6 +191,18 @@ func makeDecoderMemFS(workingDir string) memfs.MemFS {
 	})
 }
 
+func perturbFile(t *testing.T, fs memfs.MemFS, path string) {
+	data, err := fs.ReadFile(path)
+	require.NoError(t, err)
+	data[len(data)-1]++
+}
+
+func unperturbFile(t *testing.T, fs memfs.MemFS, path string) {
+	data, err := fs.ReadFile(path)
+	require.NoError(t, err)
+	data[len(data)-1]--
+}
+
 func testShardCounts(t *testing.T, workingDir string, useAbsPath bool) {
 	fs := makeDecoderMemFS(workingDir)
 	r04Path := filepath.Join("dir4", "dir5", "file.r04")
@@ -215,9 +227,7 @@ func testShardCounts(t *testing.T, workingDir string, useAbsPath bool) {
 		UsableParityShardCount: parityShardCount,
 	}, decoder.ShardCounts())
 
-	fileData5, err := fs.ReadFile(r04Path)
-	require.NoError(t, err)
-	fileData5[len(fileData5)-1]++
+	perturbFile(t, fs, r04Path)
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
 	require.Equal(t, ShardCounts{
@@ -226,7 +236,7 @@ func testShardCounts(t *testing.T, workingDir string, useAbsPath bool) {
 		UsableParityShardCount: parityShardCount,
 	}, decoder.ShardCounts())
 
-	fileData5[len(fileData5)-1]--
+	unperturbFile(t, fs, r04Path)
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
 	require.Equal(t, ShardCounts{
@@ -296,14 +306,12 @@ func testDecoderVerify(t *testing.T, workingDir string, useAbsPath bool) {
 
 	require.False(t, decoder.ShardCounts().RepairNeeded())
 
-	fileData5, err := fs.ReadFile(r04Path)
-	require.NoError(t, err)
-	fileData5[len(fileData5)-1]++
+	perturbFile(t, fs, r04Path)
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
 	require.True(t, decoder.ShardCounts().RepairNeeded())
 
-	fileData5[len(fileData5)-1]--
+	unperturbFile(t, fs, r04Path)
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
 	require.False(t, decoder.ShardCounts().RepairNeeded())
@@ -330,9 +338,7 @@ func TestSetIDMismatch(t *testing.T) {
 	workingDir := memfs.RootDir()
 	fs1 := makeDecoderMemFS(workingDir)
 	fs2 := makeDecoderMemFS(workingDir)
-	rarData, err := fs2.ReadFile("file.rar")
-	require.NoError(t, err)
-	rarData[0]++
+	perturbFile(t, fs2, "file.rar")
 
 	buildPAR2Data(t, fs1, workingDir, 4, 3)
 	buildPAR2Data(t, fs2, workingDir, 4, 3)
