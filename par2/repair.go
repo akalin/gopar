@@ -1,5 +1,9 @@
 package par2
 
+import (
+	"github.com/akalin/gopar/rsec16"
+)
+
 // RepairDelegate is just DecoderDelegate for now.
 type RepairDelegate interface {
 	DecoderDelegate
@@ -73,4 +77,12 @@ func repair(fileIO fileIO, parPath string, options RepairOptions) (RepairResult,
 	return RepairResult{
 		RepairedPaths: repairedPaths,
 	}, err
+}
+
+// RepairErrorMeansRepairNecessaryButNotPossible returns true if the
+// error returned by Repair means that repair is necessary but not
+// possible.
+func RepairErrorMeansRepairNecessaryButNotPossible(err error) bool {
+	_, ok := err.(rsec16.NotEnoughParityShardsError)
+	return ok
 }
