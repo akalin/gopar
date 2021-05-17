@@ -91,6 +91,10 @@ type par1LogVerifyDelegate struct {
 	par1LogDecoderDelegate
 }
 
+type par1LogRepairDelegate struct {
+	par1LogDecoderDelegate
+}
+
 type par2LogCreateDelegate struct{}
 
 func (par2LogCreateDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {
@@ -187,6 +191,10 @@ type par2LogVerifyDelegate struct {
 	par2LogDecoderDelegate
 }
 
+type par2LogRepairDelegate struct {
+	par2LogDecoderDelegate
+}
+
 func newFlagSet(name string) *flag.FlagSet {
 	flagSet := flag.NewFlagSet(name, flag.ContinueOnError)
 	flagSet.SetOutput(ioutil.Discard)
@@ -241,14 +249,14 @@ func getVerifyFlags(name string) (*flag.FlagSet, *verifyFlags) {
 }
 
 type repairFlags struct {
-	checkParity bool
+	doubleCheck bool
 }
 
 func getRepairFlags(name string) (*flag.FlagSet, *repairFlags) {
 	flagSet := newFlagSet(name + " repair")
 
 	var flags repairFlags
-	flagSet.BoolVar(&flags.checkParity, "checkparity", false, "check parity files before repairing")
+	flagSet.BoolVar(&flags.doubleCheck, "doublecheck", false, "whether or not to do extra checking after any repairs")
 
 	return flagSet, &flags
 }
@@ -324,19 +332,9 @@ func printVerifyErrorAndExit(err error, exitCode int) {
 	os.Exit(exitCode)
 }
 
-type decoder interface {
-	LoadFileData() error
-	LoadParityData() error
-	Repair(checkParity bool) ([]string, error)
-}
-
-func newDecoder(parFile string, numGoroutines int) (decoder, error) {
-	// TODO: Detect file type more robustly.
-	ext := path.Ext(parFile)
-	if ext == ".par2" {
-		return par2.NewDecoder(par2LogDecoderDelegate{}, parFile, numGoroutines)
-	}
-	return par1.NewDecoder(par1LogDecoderDelegate{}, parFile)
+func printRepairErrorAndExit(err error, exitCode int) {
+	fmt.Printf("Repair error: %s\n", err)
+	os.Exit(exitCode)
 }
 
 type repairChecker interface {
@@ -356,19 +354,20 @@ func processRepairChecker(repairChecker repairChecker) int {
 	return par2cmdline.ExitSuccess
 }
 
-func processRepairError(err error) int {
+func processRepairResultAndExit(
+	repairedPaths []string,
+	repairErrorMeansRepairNecessaryButNotPossible func(error) bool,
+	err error) {
+	fmt.Printf("Repaired files: %v\n", repairedPaths)
 	// Match exit codes to par2cmdline.
-	if err != nil {
-		switch err.(type) {
-		case rsec16.NotEnoughParityShardsError:
-			fmt.Printf("Repair necessary but not possible.\n")
-			return par2cmdline.ExitRepairNotPossible
-		default:
-			fmt.Printf("Error encountered: %s\n", err)
-			return par2cmdline.ExitLogicError
-		}
+	if repairErrorMeansRepairNecessaryButNotPossible(err) {
+		fmt.Printf("Repair necessary but not possible.\n")
+		os.Exit(par2cmdline.ExitRepairNotPossible)
 	}
-	return par2cmdline.ExitSuccess
+	if err != nil {
+		printRepairErrorAndExit(err, par2cmdline.ExitLogicError)
+	}
+	os.Exit(par2cmdline.ExitSuccess)
 }
 
 func main() {
@@ -517,25 +516,28 @@ func main() {
 
 		parFile := repairFlagSet.Arg(0)
 
-		decoder, err := newDecoder(parFile, globalFlags.numGoroutines)
-		if err != nil {
-			panic(err)
-		}
+		switch ext := path.Ext(parFile); ext {
+		case ".par":
+			result, err := par1.Repair(parFile, par1.RepairOptions{
+				DoubleCheck:    repairFlags.doubleCheck,
+				RepairDelegate: par1LogRepairDelegate{},
+			})
+			if err != nil {
+				printRepairErrorAndExit(err, par2cmdline.ExitLogicError)
+			}
+			processRepairResultAndExit(result.RepairedPaths, par1.RepairErrorMeansRepairNecessaryButNotPossible, err)
 
-		err = decoder.LoadFileData()
-		if err != nil {
-			panic(err)
-		}
+		case ".par2":
+			result, err := par2.Repair(parFile, par2.RepairOptions{
+				DoubleCheck:    repairFlags.doubleCheck,
+				NumGoroutines:  globalFlags.numGoroutines,
+				RepairDelegate: par2LogRepairDelegate{},
+			})
+			processRepairResultAndExit(result.RepairedPaths, par2.RepairErrorMeansRepairNecessaryButNotPossible, err)
 
-		err = decoder.LoadParityData()
-		if err != nil {
-			panic(err)
+		default:
+			printRepairErrorAndExit(fmt.Errorf("unknown extension %s", ext), par2cmdline.ExitLogicError)
 		}
-
-		repairedPaths, err := decoder.Repair(repairFlags.checkParity)
-		fmt.Printf("Repaired files: %v\n", repairedPaths)
-		exitCode := processRepairError(err)
-		os.Exit(exitCode)
 
 	default:
 		err := fmt.Errorf("unknown command '%s'", cmd)
