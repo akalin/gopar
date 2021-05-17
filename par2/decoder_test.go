@@ -357,7 +357,7 @@ func toSortedStrings(arr []string) []string {
 	return arrCopy
 }
 
-func testRepair(t *testing.T, workingDir string, useAbsPath bool) {
+func testDecoderRepair(t *testing.T, workingDir string, useAbsPath bool) {
 	fs := makeDecoderMemFS(workingDir)
 	r02Path := filepath.Join("dir1", "file.r02")
 	r03Path := filepath.Join("dir2", "dir3", "file.r03")
@@ -408,8 +408,8 @@ func testRepair(t *testing.T, workingDir string, useAbsPath bool) {
 	require.Equal(t, r04Data, repairedR04Data)
 }
 
-func TestRepair(t *testing.T) {
-	runOnExampleWorkingDirs(t, testRepair)
+func TestDecoderRepair(t *testing.T) {
+	runOnExampleWorkingDirs(t, testDecoderRepair)
 }
 
 func TestRepairAddedBytes(t *testing.T) {
