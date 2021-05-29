@@ -1,9 +1,12 @@
 package memfs
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/akalin/gopar/fs"
 )
 
 // RootDir returns a string representing a root directory. On
@@ -56,10 +59,31 @@ func MakeMemFS(workingDir string, fileData map[string][]byte) MemFS {
 // ReadFile returns the data of the file at the given path, which may
 // be absolute or relative (to the working directory). If the file
 // doesn't exist, os.ErrNotExist is returned.
-func (fs MemFS) ReadFile(path string) (data []byte, err error) {
-	absPath := toAbsPath(fs.workingDir, path)
-	if data, ok := fs.fileData[absPath]; ok {
+func (mfs MemFS) ReadFile(path string) (data []byte, err error) {
+	absPath := toAbsPath(mfs.workingDir, path)
+	if data, ok := mfs.fileData[absPath]; ok {
 		return data, nil
+	}
+	return nil, os.ErrNotExist
+}
+
+type readStream struct {
+	*bytes.Reader
+	fs.ByteCountHolder
+}
+
+func (r readStream) Close() error { return nil }
+
+// GetReadStream returns an fs.ReadStream for the file at the given
+// path, which may be absolute or relative (to the working directory),
+// as well as its size. If the file doesn't exist, os.ErrNotExist is
+// returned.
+//
+// Exactly one of the returned ReadStream and error is non-nil.
+func (mfs MemFS) GetReadStream(path string) (fs.ReadStream, error) {
+	absPath := toAbsPath(mfs.workingDir, path)
+	if data, ok := mfs.fileData[absPath]; ok {
+		return readStream{bytes.NewReader(data), fs.ByteCountHolder{Count: int64(len(data))}}, nil
 	}
 	return nil, os.ErrNotExist
 }
@@ -67,10 +91,10 @@ func (fs MemFS) ReadFile(path string) (data []byte, err error) {
 // FindWithPrefixAndSuffix returns all files whose path matches the
 // given prefix and suffix, in no particular order. The prefix may be
 // absolute or relative (to the working directory).
-func (fs MemFS) FindWithPrefixAndSuffix(prefix, suffix string) ([]string, error) {
-	absPrefix := toAbsPath(fs.workingDir, prefix)
+func (mfs MemFS) FindWithPrefixAndSuffix(prefix, suffix string) ([]string, error) {
+	absPrefix := toAbsPath(mfs.workingDir, prefix)
 	var matches []string
-	for _, filename := range fs.Paths() {
+	for _, filename := range mfs.Paths() {
 		if len(filename) >= len(absPrefix)+len(suffix) && strings.HasPrefix(filename, absPrefix) && strings.HasSuffix(filename, suffix) {
 			matches = append(matches, filename)
 		}
@@ -81,21 +105,21 @@ func (fs MemFS) FindWithPrefixAndSuffix(prefix, suffix string) ([]string, error)
 // WriteFile sets the data of the file at the given path, which may be
 // absolute or relative (to the working directory). The file may or
 // may not already exist.
-func (fs MemFS) WriteFile(path string, data []byte) error {
-	absPath := toAbsPath(fs.workingDir, path)
-	fs.fileData[absPath] = data
+func (mfs MemFS) WriteFile(path string, data []byte) error {
+	absPath := toAbsPath(mfs.workingDir, path)
+	mfs.fileData[absPath] = data
 	return nil
 }
 
 // FileCount returns the total number of files.
-func (fs MemFS) FileCount() int {
-	return len(fs.fileData)
+func (mfs MemFS) FileCount() int {
+	return len(mfs.fileData)
 }
 
 // Paths returns a list of absolute paths of files in fs in no particular order.
-func (fs MemFS) Paths() []string {
+func (mfs MemFS) Paths() []string {
 	var paths []string
-	for path := range fs.fileData {
+	for path := range mfs.fileData {
 		paths = append(paths, path)
 	}
 	return paths
@@ -104,24 +128,24 @@ func (fs MemFS) Paths() []string {
 // RemoveFile removes the file at the given path, which may be
 // absolute or relative (to the working directory). The removed data
 // is returned, or os.ErrNotExist if it doesn't exist.
-func (fs MemFS) RemoveFile(path string) ([]byte, error) {
-	absPath := toAbsPath(fs.workingDir, path)
-	data, err := fs.ReadFile(absPath)
+func (mfs MemFS) RemoveFile(path string) ([]byte, error) {
+	absPath := toAbsPath(mfs.workingDir, path)
+	data, err := mfs.ReadFile(absPath)
 	if err != nil {
 		return nil, err
 	}
-	delete(fs.fileData, absPath)
+	delete(mfs.fileData, absPath)
 	return data, nil
 }
 
 // MoveFile moves the file at oldPath to newPath. oldPath and newPath
 // may be either absolute or relative (to the working directory). If
 // the file doesn't exist at oldPath, os.ErrNotExist is returned.
-func (fs MemFS) MoveFile(oldPath, newPath string) error {
-	data, err := fs.RemoveFile(oldPath)
+func (mfs MemFS) MoveFile(oldPath, newPath string) error {
+	data, err := mfs.RemoveFile(oldPath)
 	if err != nil {
 		return err
 	}
 	// Shouldn't return an error.
-	return fs.WriteFile(newPath, data)
+	return mfs.WriteFile(newPath, data)
 }
