@@ -1,7 +1,6 @@
 package par1
 
 import (
-	"bytes"
 	"crypto/md5"
 	"errors"
 	"fmt"
@@ -52,10 +51,13 @@ func (h *sixteenKHasher) BlockSize() int {
 }
 
 type fileState struct {
-	reader io.Reader
-	md5    hash.Hash
-	md516k hash.Hash
-	size   int64
+	readStream fs.ReadStream
+	md5        hash.Hash
+	md516k     hash.Hash
+}
+
+func (state fileState) ByteCount() int64 {
+	return state.readStream.ByteCount()
 }
 
 func (state fileState) Md5Hash() [md5.Size]byte {
@@ -116,23 +118,21 @@ func (e *Encoder) LoadFileData() error {
 	maxByteCount := int64(0)
 	fileData := make([]fileState, len(e.filePaths))
 	for i, path := range e.filePaths {
-		data, err := func() ([]byte, error) {
-			readStream, err := e.fs.GetReadStream(path)
-			if err != nil {
-				return nil, err
-			}
-			return fs.ReadAndClose(readStream)
-		}()
-		e.delegate.OnDataFileLoad(i+1, len(e.filePaths), path, len(data), err)
+		readStream, err := e.fs.GetReadStream(path)
+		var byteCount int64
+		if readStream != nil {
+			byteCount = readStream.ByteCount()
+		}
+		e.delegate.OnDataFileLoad(i+1, len(e.filePaths), path, int(byteCount), err)
 		if err != nil {
 			return err
 		}
 
-		if int64(len(data)) > maxByteCount {
-			maxByteCount = int64(len(data))
+		if byteCount > maxByteCount {
+			maxByteCount = byteCount
 		}
 
-		fileData[i] = fileState{bytes.NewBuffer(data), md5.New(), &sixteenKHasher{md5.New(), 0}, int64(len(data))}
+		fileData[i] = fileState{readStream, md5.New(), &sixteenKHasher{md5.New(), 0}}
 	}
 
 	e.maxByteCount = maxByteCount
@@ -143,13 +143,14 @@ func (e *Encoder) LoadFileData() error {
 func (e *Encoder) fillDataShards(shards [][]byte, off int64, fillByteCount int) error {
 	for i, fileState := range e.fileData {
 		bytesToRead := 0
-		if off < fileState.size {
+		byteCount := fileState.ByteCount()
+		if off < byteCount {
 			bytesToRead = fillByteCount
-			if int64(bytesToRead) > fileState.size-off {
-				bytesToRead = int(fileState.size - off)
+			if int64(bytesToRead) > byteCount-off {
+				bytesToRead = int(byteCount - off)
 			}
 			shard := shards[i][:bytesToRead]
-			_, err := io.ReadFull(fileState.reader, shard)
+			_, err := io.ReadFull(fileState.readStream, shard)
 			if err != nil {
 				return err
 			}
@@ -224,7 +225,7 @@ func (e *Encoder) Write(indexPath string) error {
 		entry := fileEntry{
 			header: fileEntryHeader{
 				Status:    status,
-				FileBytes: uint64(state.size),
+				FileBytes: uint64(state.ByteCount()),
 				Hash:      hash,
 				Hash16k:   state.SixteenKHash(),
 			},
