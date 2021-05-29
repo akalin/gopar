@@ -21,9 +21,9 @@ type Encoder struct {
 	filePaths   []string
 	volumeCount int
 
-	shardByteCount int
-	fileData       [][]byte
-	parityData     [][]byte
+	maxByteCount int
+	fileData     [][]byte
+	parityData   [][]byte
 }
 
 // EncoderDelegate holds methods that are called during the encode
@@ -54,7 +54,7 @@ func NewEncoder(delegate EncoderDelegate, filePaths []string, volumeCount int) (
 
 // LoadFileData loads the file data into memory.
 func (e *Encoder) LoadFileData() error {
-	shardByteCount := 0
+	maxByteCount := 0
 	fileData := make([][]byte, len(e.filePaths))
 	for i, path := range e.filePaths {
 		data, err := func() ([]byte, error) {
@@ -70,45 +70,75 @@ func (e *Encoder) LoadFileData() error {
 		}
 
 		fileData[i] = data
-		if len(fileData[i]) > shardByteCount {
-			shardByteCount = len(fileData[i])
+		if len(fileData[i]) > maxByteCount {
+			maxByteCount = len(fileData[i])
 		}
 	}
 
-	e.shardByteCount = shardByteCount
+	e.maxByteCount = maxByteCount
 	e.fileData = fileData
 	return nil
 }
 
-func (e *Encoder) buildShards() [][]byte {
-	shards := make([][]byte, len(e.fileData)+e.volumeCount)
+func (e *Encoder) fillDataShards(shards [][]byte, off, fillByteCount int) error {
 	for i, data := range e.fileData {
-		padding := make([]byte, e.shardByteCount-len(data))
-		shards[i] = append(data, padding...)
+		bytesCopied := 0
+		end := len(data)
+		if off < end {
+			if end-off > fillByteCount {
+				end = off + fillByteCount
+			}
+			bytesCopied = copy(shards[i], data[off:end])
+		}
+		for j := bytesCopied; j < fillByteCount; j++ {
+			shards[i][j] = 0
+		}
 	}
-
-	for i := 0; i < e.volumeCount; i++ {
-		shards[len(e.fileData)+i] = make([]byte, e.shardByteCount)
-	}
-
-	return shards
+	return nil
 }
 
 // ComputeParityData computes the parity data for the files.
-func (e *Encoder) ComputeParityData() error {
-	shards := e.buildShards()
+func (e *Encoder) ComputeParityData(bufByteCount int) error {
+	if bufByteCount <= 0 {
+		return errors.New("bufByteCount must be positive")
+	}
+
+	if bufByteCount > e.maxByteCount {
+		bufByteCount = e.maxByteCount
+	}
 
 	rs, err := reedsolomon.New(len(e.fileData), e.volumeCount, reedsolomon.WithPAR1Matrix())
 	if err != nil {
 		return err
 	}
 
-	err = rs.Encode(shards)
-	if err != nil {
-		return err
+	shards := make([][]byte, len(e.fileData)+e.volumeCount)
+	for i := range shards {
+		shards[i] = make([]byte, bufByteCount)
 	}
 
-	e.parityData = shards[len(e.fileData):]
+	e.parityData = make([][]byte, e.volumeCount)
+
+	for off := 0; off < e.maxByteCount; off += bufByteCount {
+		fillByteCount := e.maxByteCount - off
+		if fillByteCount > bufByteCount {
+			fillByteCount = bufByteCount
+		}
+		err := e.fillDataShards(shards, off, fillByteCount)
+		if err != nil {
+			return err
+		}
+
+		err = rs.Encode(shards)
+		if err != nil {
+			return err
+		}
+
+		for i := range e.parityData {
+			e.parityData[i] = append(e.parityData[i], shards[len(e.fileData)+i][:fillByteCount]...)
+		}
+	}
+
 	return nil
 }
 

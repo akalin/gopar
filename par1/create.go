@@ -2,6 +2,7 @@ package par1
 
 import (
 	"errors"
+	"math"
 	"path"
 	"path/filepath"
 
@@ -99,7 +100,7 @@ func create(fs fs.FS, parPath string, filePaths []string, options CreateOptions)
 		return err
 	}
 
-	err = encoder.ComputeParityData()
+	err = encoder.ComputeParityData(math.MaxInt32)
 	if err != nil {
 		return err
 	}

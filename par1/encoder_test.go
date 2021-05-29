@@ -2,6 +2,8 @@ package par1
 
 import (
 	"errors"
+	"fmt"
+	"math"
 	"path/filepath"
 	"testing"
 
@@ -39,7 +41,17 @@ func newEncoderForTest(t *testing.T, fs memfs.MemFS, filePaths []string, volumeC
 	return newEncoder(testfs.TestFS{T: t, FS: fs}, testEncoderDelegate{t}, filePaths, volumeCount)
 }
 
-func TestEncodeParity(t *testing.T) {
+func runWithBufByteCounts(t *testing.T, testFn func(*testing.T, int)) {
+	bufByteCounts := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, math.MaxInt32}
+	for _, bufByteCount := range bufByteCounts {
+		bufByteCount := bufByteCount
+		t.Run(fmt.Sprintf("bufByteCount=%d", bufByteCount), func(t *testing.T) {
+			testFn(t, bufByteCount)
+		})
+	}
+}
+
+func testEncodeParity(t *testing.T, bufByteCount int) {
 	fs := makeEncoderMemFS(memfs.RootDir())
 
 	paths := fs.Paths()
@@ -50,7 +62,7 @@ func TestEncodeParity(t *testing.T) {
 	err = encoder.LoadFileData()
 	require.NoError(t, err)
 
-	err = encoder.ComputeParityData()
+	err = encoder.ComputeParityData(bufByteCount)
 	require.NoError(t, err)
 
 	rs, err := reedsolomon.New(len(encoder.fileData), encoder.volumeCount, reedsolomon.WithPAR1Matrix())
@@ -70,6 +82,10 @@ func TestEncodeParity(t *testing.T) {
 	require.True(t, ok)
 }
 
+func TestEncodeParity(t *testing.T) {
+	runWithBufByteCounts(t, testEncodeParity)
+}
+
 func TestEncodeParityFilenameCollision(t *testing.T) {
 	fs := makeEncoderMemFS(memfs.RootDir())
 	require.NoError(t, fs.WriteFile(filepath.Join("dir6", "file.rar"), []byte{0x5, 0x6}))
@@ -80,7 +96,7 @@ func TestEncodeParityFilenameCollision(t *testing.T) {
 	require.Equal(t, errors.New("filename collision"), err)
 }
 
-func testWriteParity(t *testing.T, workingDir string, useAbsPath bool) {
+func testWriteParity(t *testing.T, workingDir string, useAbsPath bool, bufByteCount int) {
 	fs := makeEncoderMemFS(workingDir)
 
 	paths := fs.Paths()
@@ -91,7 +107,7 @@ func testWriteParity(t *testing.T, workingDir string, useAbsPath bool) {
 	err = encoder.LoadFileData()
 	require.NoError(t, err)
 
-	err = encoder.ComputeParityData()
+	err = encoder.ComputeParityData(bufByteCount)
 	require.NoError(t, err)
 
 	parPath := "file.par"
@@ -119,5 +135,9 @@ func testWriteParity(t *testing.T, workingDir string, useAbsPath bool) {
 }
 
 func TestWriteParity(t *testing.T) {
-	runOnExampleWorkingDirs(t, testWriteParity)
+	runOnExampleWorkingDirs(t, func(t *testing.T, workingDir string, useAbsPath bool) {
+		runWithBufByteCounts(t, func(t *testing.T, bufByteCount int) {
+			testWriteParity(t, workingDir, useAbsPath, bufByteCount)
+		})
+	})
 }
