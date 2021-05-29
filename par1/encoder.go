@@ -1,15 +1,74 @@
 package par1
 
 import (
+	"bytes"
+	"crypto/md5"
 	"errors"
 	"fmt"
+	"hash"
+	"io"
 	"path"
 	"path/filepath"
 
 	"github.com/akalin/gopar/fs"
-	"github.com/akalin/gopar/hashutil"
 	"github.com/klauspost/reedsolomon"
 )
+
+type sixteenKHasher struct {
+	h       hash.Hash
+	written int
+}
+
+func (h *sixteenKHasher) Write(p []byte) (n int, err error) {
+	if h.written < 16*1024 {
+		toWrite := 16*1024 - h.written
+		if len(p) < toWrite {
+			toWrite = len(p)
+		}
+		n, err := h.h.Write(p[:toWrite])
+		if err != nil {
+			return n, err
+		}
+		h.written += toWrite
+	}
+	return len(p), nil
+}
+
+func (h *sixteenKHasher) Sum(b []byte) []byte {
+	return h.h.Sum(b)
+}
+
+func (h *sixteenKHasher) Reset() {
+	h.h.Reset()
+	h.written = 0
+}
+
+func (h *sixteenKHasher) Size() int {
+	return h.h.Size()
+}
+
+func (h *sixteenKHasher) BlockSize() int {
+	return h.h.BlockSize()
+}
+
+type fileState struct {
+	reader io.Reader
+	md5    hash.Hash
+	md516k hash.Hash
+	size   int64
+}
+
+func (state fileState) Md5Hash() [md5.Size]byte {
+	var hash [md5.Size]byte
+	copy(hash[:], state.md5.Sum(nil))
+	return hash
+}
+
+func (state fileState) SixteenKHash() [md5.Size]byte {
+	var hash [md5.Size]byte
+	copy(hash[:], state.md516k.Sum(nil))
+	return hash
+}
 
 // An Encoder keeps track of all information needed to create parity
 // volumes for a set of data files, and write them out to parity files
@@ -21,8 +80,8 @@ type Encoder struct {
 	filePaths   []string
 	volumeCount int
 
-	maxByteCount int
-	fileData     [][]byte
+	maxByteCount int64
+	fileData     []fileState
 	parityData   [][]byte
 }
 
@@ -54,8 +113,8 @@ func NewEncoder(delegate EncoderDelegate, filePaths []string, volumeCount int) (
 
 // LoadFileData loads the file data into memory.
 func (e *Encoder) LoadFileData() error {
-	maxByteCount := 0
-	fileData := make([][]byte, len(e.filePaths))
+	maxByteCount := int64(0)
+	fileData := make([]fileState, len(e.filePaths))
 	for i, path := range e.filePaths {
 		data, err := func() ([]byte, error) {
 			readStream, err := e.fs.GetReadStream(path)
@@ -69,10 +128,11 @@ func (e *Encoder) LoadFileData() error {
 			return err
 		}
 
-		fileData[i] = data
-		if len(fileData[i]) > maxByteCount {
-			maxByteCount = len(fileData[i])
+		if int64(len(data)) > maxByteCount {
+			maxByteCount = int64(len(data))
 		}
+
+		fileData[i] = fileState{bytes.NewBuffer(data), md5.New(), &sixteenKHasher{md5.New(), 0}, int64(len(data))}
 	}
 
 	e.maxByteCount = maxByteCount
@@ -80,17 +140,29 @@ func (e *Encoder) LoadFileData() error {
 	return nil
 }
 
-func (e *Encoder) fillDataShards(shards [][]byte, off, fillByteCount int) error {
-	for i, data := range e.fileData {
-		bytesCopied := 0
-		end := len(data)
-		if off < end {
-			if end-off > fillByteCount {
-				end = off + fillByteCount
+func (e *Encoder) fillDataShards(shards [][]byte, off int64, fillByteCount int) error {
+	for i, fileState := range e.fileData {
+		bytesToRead := 0
+		if off < fileState.size {
+			bytesToRead = fillByteCount
+			if int64(bytesToRead) > fileState.size-off {
+				bytesToRead = int(fileState.size - off)
 			}
-			bytesCopied = copy(shards[i], data[off:end])
+			shard := shards[i][:bytesToRead]
+			_, err := io.ReadFull(fileState.reader, shard)
+			if err != nil {
+				return err
+			}
+			_, err = fileState.md5.Write(shard)
+			if err != nil {
+				return err
+			}
+			_, err = fileState.md516k.Write(shard)
+			if err != nil {
+				return err
+			}
 		}
-		for j := bytesCopied; j < fillByteCount; j++ {
+		for j := bytesToRead; j < fillByteCount; j++ {
 			shards[i][j] = 0
 		}
 	}
@@ -103,8 +175,8 @@ func (e *Encoder) ComputeParityData(bufByteCount int) error {
 		return errors.New("bufByteCount must be positive")
 	}
 
-	if bufByteCount > e.maxByteCount {
-		bufByteCount = e.maxByteCount
+	if int64(bufByteCount) > e.maxByteCount {
+		bufByteCount = int(e.maxByteCount)
 	}
 
 	rs, err := reedsolomon.New(len(e.fileData), e.volumeCount, reedsolomon.WithPAR1Matrix())
@@ -119,10 +191,10 @@ func (e *Encoder) ComputeParityData(bufByteCount int) error {
 
 	e.parityData = make([][]byte, e.volumeCount)
 
-	for off := 0; off < e.maxByteCount; off += bufByteCount {
-		fillByteCount := e.maxByteCount - off
-		if fillByteCount > bufByteCount {
-			fillByteCount = bufByteCount
+	for off := int64(0); off < e.maxByteCount; off += int64(bufByteCount) {
+		fillByteCount := bufByteCount
+		if e.maxByteCount-off < int64(fillByteCount) {
+			fillByteCount = int(e.maxByteCount - off)
 		}
 		err := e.fillDataShards(shards, off, fillByteCount)
 		if err != nil {
@@ -145,16 +217,16 @@ func (e *Encoder) ComputeParityData(bufByteCount int) error {
 func (e *Encoder) Write(indexPath string) error {
 	var entries []fileEntry
 	for i, k := range e.filePaths {
-		data := e.fileData[i]
+		state := e.fileData[i]
 		var status fileEntryStatus
 		status.setSavedInVolumeSet(true)
-		hash, hash16k := hashutil.MD5HashWith16k(data)
+		hash := state.Md5Hash()
 		entry := fileEntry{
 			header: fileEntryHeader{
 				Status:    status,
-				FileBytes: uint64(len(data)),
+				FileBytes: uint64(state.size),
 				Hash:      hash,
-				Hash16k:   hash16k,
+				Hash16k:   state.SixteenKHash(),
 			},
 			filename: filepath.Base(k),
 		}
