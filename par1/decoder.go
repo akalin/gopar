@@ -64,9 +64,13 @@ func (DoNothingDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount
 func (DoNothingDecoderDelegate) OnVolumeFileLoad(i uint64, path string, storedSetHash, computedSetHash [16]byte, dataByteCount int, err error) {
 }
 
-func newDecoder(fs fs.FS, delegate DecoderDelegate, indexFile string) (*Decoder, error) {
+func newDecoder(filesystem fs.FS, delegate DecoderDelegate, indexFile string) (*Decoder, error) {
 	indexVolume, err := func() (volume, error) {
-		bytes, err := fs.ReadFile(indexFile)
+		readStream, err := filesystem.GetReadStream(indexFile)
+		if err != nil {
+			return volume{}, err
+		}
+		bytes, err := fs.ReadAndClose(readStream)
 		if err != nil {
 			return volume{}, err
 		}
@@ -96,7 +100,7 @@ func newDecoder(fs fs.FS, delegate DecoderDelegate, indexFile string) (*Decoder,
 	delegate.OnCommentLoad(indexVolume.data)
 
 	return &Decoder{
-		fs, delegate,
+		filesystem, delegate,
 		indexFile, indexVolume,
 		nil,
 		0, nil,
@@ -134,10 +138,14 @@ func (d *Decoder) LoadFileData() error {
 		}
 
 		data, corrupt, err := func() ([]byte, bool, error) {
-			data, err := d.fs.ReadFile(path)
+			readStream, err := d.fs.GetReadStream(path)
 			if os.IsNotExist(err) {
 				return nil, true, err
 			} else if err != nil {
+				return nil, false, err
+			}
+			data, err := fs.ReadAndClose(readStream)
+			if err != nil {
 				return nil, false, err
 			} else if err := hashutil.CheckMD5Hashes(data, entry.header.Hash16k, entry.header.Hash, false); err != nil {
 				return nil, true, err
@@ -200,10 +208,12 @@ func (d *Decoder) LoadParityData() error {
 		volumeNumber := i + 1
 		volumePath := d.volumePath(volumeNumber)
 		parityVolume, byteCount, err := func() (volume, int, error) {
-			volumeBytes, err := d.fs.ReadFile(volumePath)
-			if os.IsNotExist(err) {
+			readStream, err := d.fs.GetReadStream(volumePath)
+			if err != nil {
 				return volume{}, 0, err
-			} else if err != nil {
+			}
+			volumeBytes, err := fs.ReadAndClose(readStream)
+			if err != nil {
 				return volume{}, 0, err
 			}
 

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/akalin/gopar/fs"
 	"github.com/akalin/gopar/hashutil"
 	"github.com/akalin/gopar/memfs"
 	"github.com/akalin/gopar/testfs"
@@ -56,10 +57,12 @@ func toSortedStrings(arr []string) []string {
 	return arrCopy
 }
 
-func buildVTemplate(t *testing.T, fs memfs.MemFS, sortedPaths []string) volume {
+func buildVTemplate(t *testing.T, memFS memfs.MemFS, sortedPaths []string) volume {
 	var entries []fileEntry
 	for _, path := range sortedPaths {
-		data, err := fs.ReadFile(path)
+		readStream, err := memFS.GetReadStream(path)
+		require.NoError(t, err)
+		data, err := fs.ReadAndClose(readStream)
 		require.NoError(t, err)
 		var status fileEntryStatus
 		status.setSavedInVolumeSet(true)
