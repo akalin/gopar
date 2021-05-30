@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/akalin/gopar/testfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,7 +23,7 @@ func testVerify(t *testing.T, workingDir string, useAbsPath bool, options Verify
 	if useAbsPath {
 		parPath = filepath.Join(workingDir, parPath)
 	}
-	result, err := verify(testFileIO{t, fs}, parPath, options)
+	result, err := verify(testfs.TestFS{T: t, FS: fs}, parPath, options)
 	require.NoError(t, err)
 	require.Equal(t, VerifyResult{
 		FileCounts: FileCounts{
@@ -33,7 +34,7 @@ func testVerify(t *testing.T, workingDir string, useAbsPath bool, options Verify
 	}, result)
 
 	perturbFile(t, fs, "file.r04")
-	result, err = verify(testFileIO{t, fs}, parPath, options)
+	result, err = verify(testfs.TestFS{T: t, FS: fs}, parPath, options)
 	require.NoError(t, err)
 	require.Equal(t, VerifyResult{
 		FileCounts: FileCounts{

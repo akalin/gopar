@@ -10,32 +10,10 @@ import (
 
 	"github.com/akalin/gopar/hashutil"
 	"github.com/akalin/gopar/memfs"
+	"github.com/akalin/gopar/testfs"
 	"github.com/klauspost/reedsolomon"
 	"github.com/stretchr/testify/require"
 )
-
-type testFileIO struct {
-	t *testing.T
-	fileIO
-}
-
-func (io testFileIO) ReadFile(path string) (data []byte, err error) {
-	io.t.Helper()
-	defer func() {
-		io.t.Helper()
-		io.t.Logf("ReadFile(%s) => (%d bytes, %v)", path, len(data), err)
-	}()
-	return io.fileIO.ReadFile(path)
-}
-
-func (io testFileIO) WriteFile(path string, data []byte) (err error) {
-	io.t.Helper()
-	defer func() {
-		io.t.Helper()
-		io.t.Logf("WriteFile(%s, %d bytes) => %v", path, len(data), err)
-	}()
-	return io.fileIO.WriteFile(path, data)
-}
 
 type testDecoderDelegate struct {
 	t *testing.T
@@ -172,7 +150,7 @@ func makeDecoderMemFS(workingDir string) memfs.MemFS {
 }
 
 func newDecoderForTest(t *testing.T, fs memfs.MemFS, indexFile string) (*Decoder, error) {
-	return newDecoder(testFileIO{t, fs}, testDecoderDelegate{t}, indexFile)
+	return newDecoder(testfs.TestFS{T: t, FS: fs}, testDecoderDelegate{t}, indexFile)
 }
 
 func perturbFile(t *testing.T, fs memfs.MemFS, path string) {

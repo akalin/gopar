@@ -1,5 +1,7 @@
 package par2
 
+import "github.com/akalin/gopar/fs"
+
 // VerifyDelegate is just DecoderDelegate for now.
 type VerifyDelegate interface {
 	DecoderDelegate
@@ -31,10 +33,10 @@ type VerifyResult struct {
 // Verify a par file at parPath with the given options. The returned
 // VerifyResult is not filled in if an error is returned.
 func Verify(parPath string, options VerifyOptions) (VerifyResult, error) {
-	return verify(defaultFileIO{}, parPath, options)
+	return verify(fs.DefaultFS{}, parPath, options)
 }
 
-func verify(fileIO fileIO, parPath string, options VerifyOptions) (VerifyResult, error) {
+func verify(fs fs.FS, parPath string, options VerifyOptions) (VerifyResult, error) {
 	err := checkExtension(parPath)
 	if err != nil {
 		return VerifyResult{}, err
@@ -50,7 +52,7 @@ func verify(fileIO fileIO, parPath string, options VerifyOptions) (VerifyResult,
 		numGoroutines = NumGoroutinesDefault()
 	}
 
-	decoder, err := newDecoder(fileIO, delegate, parPath, numGoroutines)
+	decoder, err := newDecoder(fs, delegate, parPath, numGoroutines)
 	if err != nil {
 		return VerifyResult{}, err
 	}

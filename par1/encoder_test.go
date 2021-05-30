@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/akalin/gopar/memfs"
+	"github.com/akalin/gopar/testfs"
 	"github.com/klauspost/reedsolomon"
 	"github.com/stretchr/testify/require"
 )
@@ -35,7 +36,7 @@ func makeEncoderMemFS(workingDir string) memfs.MemFS {
 }
 
 func newEncoderForTest(t *testing.T, fs memfs.MemFS, filePaths []string, volumeCount int) (*Encoder, error) {
-	return newEncoder(testFileIO{t, fs}, testEncoderDelegate{t}, filePaths, volumeCount)
+	return newEncoder(testfs.TestFS{T: t, FS: fs}, testEncoderDelegate{t}, filePaths, volumeCount)
 }
 
 func TestEncodeParity(t *testing.T) {
@@ -104,7 +105,7 @@ func testWriteParity(t *testing.T, workingDir string, useAbsPath bool) {
 		require.NoError(t, fs.MoveFile(path, filepath.Base(path)))
 	}
 
-	decoder, err := newDecoder(testFileIO{t, fs}, testDecoderDelegate{t}, parPath)
+	decoder, err := newDecoder(testfs.TestFS{T: t, FS: fs}, testDecoderDelegate{t}, parPath)
 	require.NoError(t, err)
 
 	err = decoder.LoadFileData()
