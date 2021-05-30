@@ -426,7 +426,13 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 			return repairedPaths, err
 		}
 
-		err = d.fs.WriteFile(path, data)
+		err = func() error {
+			writeStream, err := d.fs.GetWriteStream(path)
+			if err != nil {
+				return err
+			}
+			return fs.WriteAndClose(writeStream, data)
+		}()
 		d.delegate.OnDataFileWrite(i+1, len(d.fileData), path, len(data), err)
 		if err != nil {
 			return repairedPaths, err
