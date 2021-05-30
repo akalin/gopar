@@ -5,10 +5,10 @@ import (
 	"fmt"
 )
 
-// MD5Hash16k returns the MD5 hash of the first 16k bytes of the
+// md5Hash16k returns the MD5 hash of the first 16k bytes of the
 // input, or the MD5 hash of the full input if it has fewer than 16k
 // bytes.
-func MD5Hash16k(data []byte) [md5.Size]byte {
+func md5Hash16k(data []byte) [md5.Size]byte {
 	if len(data) < 16*1024 {
 		return md5.Sum(data)
 	}
@@ -34,7 +34,7 @@ func CheckMD5Hashes(data []byte, expectedHash16k, expectedHash [md5.Size]byte, i
 	if isReconstructedData {
 		suffix = " in reconstructed data"
 	}
-	if hash16k := MD5Hash16k(data); hash16k != expectedHash16k {
+	if hash16k := md5Hash16k(data); hash16k != expectedHash16k {
 		return fmt.Errorf("hash mismatch (16k)%s: expected=%x, actual=%x", suffix, expectedHash16k, hash16k)
 	} else if hash := md5.Sum(data); hash != expectedHash {
 		return fmt.Errorf("hash mismatch%s: expected=%x, actual=%x", suffix, expectedHash, hash)

@@ -19,7 +19,7 @@ var testInputs = [][]byte{
 
 func TestMD5Hash16k(t *testing.T) {
 	for _, input := range testInputs {
-		hash16k := MD5Hash16k(input)
+		hash16k := md5Hash16k(input)
 		if len(input) < 16*1024 {
 			require.Equal(t, md5.Sum(input), hash16k)
 		} else {
@@ -32,7 +32,7 @@ func TestMD5HashWith16k(t *testing.T) {
 	for _, input := range testInputs {
 		hash, hash16k := MD5HashWith16k(input)
 		require.Equal(t, md5.Sum(input), hash)
-		require.Equal(t, MD5Hash16k(input), hash16k)
+		require.Equal(t, md5Hash16k(input), hash16k)
 	}
 }
 
