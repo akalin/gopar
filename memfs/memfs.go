@@ -115,6 +115,35 @@ func (mfs MemFS) WriteFile(path string, data []byte) error {
 	return nil
 }
 
+type writeStream struct {
+	*bytes.Buffer
+	fileData map[string][]byte
+	absPath  string
+}
+
+func (w writeStream) Close() error {
+	w.fileData[w.absPath] = w.Buffer.Bytes()
+	return nil
+}
+
+func (mfs MemFS) getWriteStream(path string) (fs.WriteStream, error) {
+	absPath := toAbsPath(mfs.workingDir, path)
+	// Make the data only visible on close.
+	mfs.fileData[absPath] = nil
+	// Use []byte{} instead of nil for consistency, and because
+	// some tests expect it.
+	return writeStream{bytes.NewBuffer([]byte{}), mfs.fileData, absPath}, nil
+}
+
+// GetWriteStream truncates the file at the given path, which may be
+// absolute or relative (to the working directory), if it exists, and
+// returns a fs.WriteStream for the file.
+//
+// Exactly one of the returned WriteStream and error is non-nil.
+func (mfs MemFS) GetWriteStream(path string) (fs.WriteStream, error) {
+	return mfs.ofm.GetWriteStream(path, mfs.getWriteStream)
+}
+
 // FileCount returns the total number of files.
 func (mfs MemFS) FileCount() int {
 	return len(mfs.fileData)
