@@ -45,6 +45,34 @@ func (trs testReadStream) String() string {
 	return fmt.Sprintf("testReadStream{%q}", trs.path)
 }
 
+type testWriteStream struct {
+	t    *testing.T
+	path string
+	w    fs.WriteStream
+}
+
+func (tws testWriteStream) Write(p []byte) (n int, err error) {
+	tws.t.Helper()
+	defer func() {
+		tws.t.Helper()
+		tws.t.Logf("Write(%q, %d bytes) => (%d bytes, %v)", tws.path, len(p), n, err)
+	}()
+	return tws.w.Write(p)
+}
+
+func (tws testWriteStream) Close() (err error) {
+	tws.t.Helper()
+	defer func() {
+		tws.t.Helper()
+		tws.t.Logf("Close(%q) => (%v)", tws.path, err)
+	}()
+	return tws.w.Close()
+}
+
+func (tws testWriteStream) String() string {
+	return fmt.Sprintf("testWriteStream{%q}", tws.path)
+}
+
 type testFS struct {
 	t   *testing.T
 	fs  fs.FS
@@ -102,6 +130,24 @@ func (fs testFS) WriteFile(path string, data []byte) (err error) {
 		fs.t.Logf("WriteFile(%q, %d bytes) => %v", path, len(data), err)
 	}()
 	return fs.fs.WriteFile(path, data)
+}
+
+func (fs testFS) getWriteStream(path string) (writeStream fs.WriteStream, err error) {
+	fs.t.Helper()
+	defer func() {
+		fs.t.Helper()
+		fs.t.Logf("GetWriteStream(%q) => (%v, %v)", path, writeStream, err)
+	}()
+	writeStream, err = fs.fs.GetWriteStream(path)
+	if writeStream != nil {
+		writeStream = testWriteStream{fs.t, path, writeStream}
+	}
+	return writeStream, err
+}
+
+func (fs testFS) GetWriteStream(path string) (writeStream fs.WriteStream, err error) {
+	fs.t.Helper()
+	return fs.ofm.GetWriteStream(path, fs.getWriteStream)
 }
 
 func (fs testFS) requireNoOpenFiles() {
