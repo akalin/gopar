@@ -152,7 +152,13 @@ func (e *Encoder) Write(indexPath string) error {
 	base := indexPath[:len(indexPath)-len(ext)]
 
 	realIndexPath := base + ".par"
-	err = e.fs.WriteFile(realIndexPath, indexVolumeBytes)
+	err = func() error {
+		writeStream, err := e.fs.GetWriteStream(realIndexPath)
+		if err != nil {
+			return err
+		}
+		return fs.WriteAndClose(writeStream, indexVolumeBytes)
+	}()
 	e.delegate.OnVolumeFileWrite(0, len(e.parityData), realIndexPath, len(indexVolume.data), len(indexVolumeBytes), err)
 	if err != nil {
 		return err
@@ -169,7 +175,13 @@ func (e *Encoder) Write(indexPath string) error {
 
 		// TODO: Handle more than 99 parity files.
 		volumePath := fmt.Sprintf("%s.p%02d", base, i+1)
-		err = e.fs.WriteFile(volumePath, volBytes)
+		err = func() error {
+			writeStream, err := e.fs.GetWriteStream(volumePath)
+			if err != nil {
+				return err
+			}
+			return fs.WriteAndClose(writeStream, volBytes)
+		}()
 		e.delegate.OnVolumeFileWrite(i+1, len(e.parityData), volumePath, len(vol.data), len(volBytes), err)
 		if err != nil {
 			return err

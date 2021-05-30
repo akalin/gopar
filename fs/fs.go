@@ -70,6 +70,13 @@ type FS interface {
 	GetWriteStream(path string) (WriteStream, error)
 }
 
+func closeCloser(closer io.Closer, err *error) {
+	closeErr := closer.Close()
+	if *err == nil {
+		*err = closeErr
+	}
+}
+
 // readStrict checks that len(buf) != 0, calls r.Read(buf), and checks
 // that the return value isn't 0, nil.
 func readStrict(r io.Reader, buf []byte) (n int, err error) {
@@ -134,12 +141,7 @@ func readFullEOF(r io.Reader, buf []byte) (n int, err error) {
 //
 // TODO: Make this function unnecessary.
 func ReadAndClose(readStream ReadStream) (data []byte, err error) {
-	defer func() {
-		closeErr := readStream.Close()
-		if err == nil {
-			err = closeErr
-		}
-	}()
+	defer closeCloser(readStream, &err)
 	byteCount := readStream.ByteCount()
 	if int64(int(byteCount)) != byteCount {
 		return nil, errors.New("file too big to read into memory")
@@ -152,4 +154,14 @@ func ReadAndClose(readStream ReadStream) (data []byte, err error) {
 		}
 	}
 	return data, nil
+}
+
+// WriteAndClose write all the data in the given buffer to the given
+// WriteStream, closing it in all cases.
+//
+// TODO: Make this function unnecessary.
+func WriteAndClose(writeStream WriteStream, p []byte) (err error) {
+	defer closeCloser(writeStream, &err)
+	_, err = writeStream.Write(p)
+	return err
 }
