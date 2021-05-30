@@ -57,13 +57,19 @@ func (e *Encoder) LoadFileData() error {
 	shardByteCount := 0
 	fileData := make([][]byte, len(e.filePaths))
 	for i, path := range e.filePaths {
-		var err error
-		fileData[i], err = e.fs.ReadFile(path)
-		e.delegate.OnDataFileLoad(i+1, len(e.filePaths), path, len(fileData[i]), err)
+		data, err := func() ([]byte, error) {
+			readStream, err := e.fs.GetReadStream(path)
+			if err != nil {
+				return nil, err
+			}
+			return fs.ReadAndClose(readStream)
+		}()
+		e.delegate.OnDataFileLoad(i+1, len(e.filePaths), path, len(data), err)
 		if err != nil {
 			return err
 		}
 
+		fileData[i] = data
 		if len(fileData[i]) > shardByteCount {
 			shardByteCount = len(fileData[i])
 		}
