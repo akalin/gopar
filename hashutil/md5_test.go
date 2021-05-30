@@ -39,7 +39,10 @@ func TestMD5HashWith16k(t *testing.T) {
 func TestCheckMD5Hashes(t *testing.T) {
 	input := bytes.Repeat([]byte{0x5}, 17*1024)
 	hash, hash16k := MD5HashWith16k(input)
-	require.NoError(t, CheckMD5Hashes(input, hash16k, hash))
-	require.EqualError(t, CheckMD5Hashes(input, hash, hash), fmt.Sprintf("hash mismatch (16k): expected=%x, actual=%x", hash, hash16k))
-	require.EqualError(t, CheckMD5Hashes(input, hash16k, hash16k), fmt.Sprintf("hash mismatch: expected=%x, actual=%x", hash16k, hash))
+	require.NoError(t, CheckMD5Hashes(input, hash16k, hash, false))
+	require.NoError(t, CheckMD5Hashes(input, hash16k, hash, true))
+	require.EqualError(t, CheckMD5Hashes(input, hash, hash, false), fmt.Sprintf("hash mismatch (16k): expected=%x, actual=%x", hash, hash16k))
+	require.EqualError(t, CheckMD5Hashes(input, hash16k, hash16k, false), fmt.Sprintf("hash mismatch: expected=%x, actual=%x", hash16k, hash))
+	require.EqualError(t, CheckMD5Hashes(input, hash, hash, true), fmt.Sprintf("hash mismatch (16k) in reconstructed data: expected=%x, actual=%x", hash, hash16k))
+	require.EqualError(t, CheckMD5Hashes(input, hash16k, hash16k, true), fmt.Sprintf("hash mismatch in reconstructed data: expected=%x, actual=%x", hash16k, hash))
 }
