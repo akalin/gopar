@@ -44,6 +44,34 @@ func (trs testReadStream) String() string {
 	return fmt.Sprintf("testReadStream{%q}", trs.path)
 }
 
+type testWriteStream struct {
+	t    *testing.T
+	path string
+	w    fs.WriteStream
+}
+
+func (tw testWriteStream) Write(p []byte) (n int, err error) {
+	tw.t.Helper()
+	defer func() {
+		tw.t.Helper()
+		tw.t.Logf("Write(%q, %d bytes) => (%d bytes, %v)", tw.path, len(p), n, err)
+	}()
+	return tw.w.Write(p)
+}
+
+func (tw testWriteStream) Close() (err error) {
+	tw.t.Helper()
+	defer func() {
+		tw.t.Helper()
+		tw.t.Logf("Close(%q) => (%v)", tw.path, err)
+	}()
+	return tw.w.Close()
+}
+
+func (tw testWriteStream) String() string {
+	return fmt.Sprintf("testWriteStream{%q}", tw.path)
+}
+
 // TestFS is an implementation of fs.FS that wraps an existing
 // implementation and logs it.
 type TestFS struct {
@@ -93,4 +121,18 @@ func (io TestFS) WriteFile(path string, data []byte) (err error) {
 		io.T.Logf("WriteFile(%q, %d bytes) => %v", path, len(data), err)
 	}()
 	return io.FS.WriteFile(path, data)
+}
+
+// GetWriteStream implements the fs.FS interface.
+func (io TestFS) GetWriteStream(path string) (writeStream fs.WriteStream, err error) {
+	io.T.Helper()
+	defer func() {
+		io.T.Helper()
+		io.T.Logf("GetFileWriteStream(%q) => (%v, %v)", path, writeStream, err)
+	}()
+	writeStream, err = io.FS.GetWriteStream(path)
+	if writeStream != nil {
+		writeStream = testWriteStream{io.T, path, writeStream}
+	}
+	return writeStream, err
 }

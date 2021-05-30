@@ -27,6 +27,14 @@ func (h ByteCountHolder) ByteCount() int64 {
 	return h.Count
 }
 
+// WriteStream defines the interface for streaming file writes. This
+// is usually implemented by *os.File, but there might be other
+// implementations for testing.
+type WriteStream interface {
+	io.Writer
+	io.Closer
+}
+
 // FS is the interface used by the par1 and par2 packages to the
 // filesystem. Most code uses DefaultFS, but tests may use other
 // implementations.
@@ -44,6 +52,12 @@ type FS interface {
 	FindWithPrefixAndSuffix(prefix, suffix string) ([]string, error)
 	// WriteFile should behave like ioutil.WriteFile.
 	WriteFile(path string, data []byte) error
+	// GetFileReadSeekCloser returns a WriteStream to write to the
+	// file at the given path.
+	//
+	// Implementations must guarantee that exactly one of the
+	// returned WriteStream and error is non-nil.
+	GetWriteStream(path string) (WriteStream, error)
 }
 
 // readStrict checks that len(buf) != 0, calls r.Read(buf), and checks
