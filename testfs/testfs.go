@@ -79,16 +79,6 @@ type TestFS struct {
 	FS fs.FS
 }
 
-// ReadFile implements the fs.FS interface.
-func (io TestFS) ReadFile(path string) (data []byte, err error) {
-	io.T.Helper()
-	defer func() {
-		io.T.Helper()
-		io.T.Logf("ReadFile(%q) => (%d bytes, %v)", path, len(data), err)
-	}()
-	return io.FS.ReadFile(path)
-}
-
 // GetReadStream implements the fs.FS interface.
 func (io TestFS) GetReadStream(path string) (readStream fs.ReadStream, err error) {
 	io.T.Helper()
@@ -111,16 +101,6 @@ func (io TestFS) FindWithPrefixAndSuffix(prefix, suffix string) (matches []strin
 		io.T.Logf("FindWithPrefixAndSuffix(%q, %q) => (%d files, %v)", prefix, suffix, len(matches), err)
 	}()
 	return io.FS.FindWithPrefixAndSuffix(prefix, suffix)
-}
-
-// WriteFile implements the fs.FS interface.
-func (io TestFS) WriteFile(path string, data []byte) (err error) {
-	io.T.Helper()
-	defer func() {
-		io.T.Helper()
-		io.T.Logf("WriteFile(%q, %d bytes) => %v", path, len(data), err)
-	}()
-	return io.FS.WriteFile(path, data)
 }
 
 // GetWriteStream implements the fs.FS interface.

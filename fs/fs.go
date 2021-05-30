@@ -39,8 +39,6 @@ type WriteStream interface {
 // filesystem. Most code uses DefaultFS, but tests may use other
 // implementations.
 type FS interface {
-	// ReadFile should behave like ioutil.ReadFile.
-	ReadFile(path string) ([]byte, error)
 	// GetReadStream returns a ReadStream to read the file at the
 	// given path.
 	//
@@ -50,8 +48,6 @@ type FS interface {
 	// FindWithPrefixAndSuffix should behave like calling
 	// filepath.Glob with prefix + "*" + suffix.
 	FindWithPrefixAndSuffix(prefix, suffix string) ([]string, error)
-	// WriteFile should behave like ioutil.WriteFile.
-	WriteFile(path string, data []byte) error
 	// GetFileReadSeekCloser returns a WriteStream to write to the
 	// file at the given path.
 	//
