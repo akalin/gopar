@@ -193,7 +193,7 @@ type DecoderDelegate interface {
 	OnDataFileLoad(i, n int, path string, byteCount, hits, misses int, err error)
 	OnParityFileLoad(i int, path string, err error)
 	OnDetectCorruptDataChunk(fileID [16]byte, path string, startByteOffset, endByteOffset int)
-	OnDetectDataFileHashMismatch(fileID [16]byte, path string)
+	OnDetectDataFileHashMismatch(fileID [16]byte, path string, err error)
 	OnDetectDataFileWrongByteCount(fileID [16]byte, path string)
 	OnDataFileWrite(i, n int, path string, byteCount int, err error)
 }
@@ -238,7 +238,8 @@ func (DoNothingDecoderDelegate) OnDetectCorruptDataChunk(fileID [16]byte, path s
 }
 
 // OnDetectDataFileHashMismatch implements the DecoderDelegate interface.
-func (DoNothingDecoderDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, path string) {}
+func (DoNothingDecoderDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, path string, err error) {
+}
 
 // OnDetectDataFileWrongByteCount implements the DecoderDelegate interface.
 func (DoNothingDecoderDelegate) OnDetectDataFileWrongByteCount(fileID [16]byte, path string) {}
@@ -368,7 +369,7 @@ func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocatio
 	hashMismatch := hashErr != nil
 	fileIntegrityInfos[i].hashMismatch = hashMismatch
 	if hashMismatch {
-		d.delegate.OnDetectDataFileHashMismatch(info.fileID, path)
+		d.delegate.OnDetectDataFileHashMismatch(info.fileID, path, hashErr)
 	}
 
 	hasWrongByteCount := len(data) != info.byteCount
@@ -480,7 +481,7 @@ func (recoveryDelegate) OnParityFileLoad(i int, path string, err error) {}
 func (recoveryDelegate) OnDetectCorruptDataChunk(fileID [16]byte, path string, startByteOffset, endByteOffset int) {
 }
 
-func (recoveryDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, path string) {}
+func (recoveryDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, path string, err error) {}
 
 func (recoveryDelegate) OnDetectDataFileWrongByteCount(fileID [16]byte, path string) {}
 

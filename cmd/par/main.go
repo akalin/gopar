@@ -171,8 +171,8 @@ func (par2LogDecoderDelegate) OnDetectCorruptDataChunk(fileID [16]byte, path str
 	fmt.Printf("Corrupt data chunk: %q (ID %x), bytes %d to %d\n", path, fileID, startByteOffset, endByteOffset-1)
 }
 
-func (par2LogDecoderDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, path string) {
-	fmt.Printf("Hash mismatch for %q (ID %x)\n", path, fileID)
+func (par2LogDecoderDelegate) OnDetectDataFileHashMismatch(fileID [16]byte, path string, err error) {
+	fmt.Printf("Hash mismatch for %q (ID %x): %+v\n", path, fileID, err)
 }
 
 func (par2LogDecoderDelegate) OnDetectDataFileWrongByteCount(fileID [16]byte, path string) {
