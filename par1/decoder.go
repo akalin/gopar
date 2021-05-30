@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/akalin/gopar/hashutil"
 	"github.com/klauspost/reedsolomon"
 )
 
@@ -108,13 +109,6 @@ func NewDecoder(delegate DecoderDelegate, indexFile string) (*Decoder, error) {
 	return newDecoder(defaultFileIO{}, delegate, indexFile)
 }
 
-func hash16k(data []byte) [md5.Size]byte {
-	if len(data) < 16*1024 {
-		return md5.Sum(data)
-	}
-	return md5.Sum(data[:16*1024])
-}
-
 func (d *Decoder) getFilePath(entry fileEntry) (string, error) {
 	filename := entry.filename
 	if filepath.Base(filename) != filename {
@@ -145,7 +139,7 @@ func (d *Decoder) LoadFileData() error {
 				return nil, true, err
 			} else if err != nil {
 				return nil, false, err
-			} else if hash16k(data) != entry.header.Hash16k {
+			} else if hashutil.MD5Hash16k(data) != entry.header.Hash16k {
 				return nil, true, errors.New("hash mismatch (16k)")
 			} else if md5.Sum(data) != entry.header.Hash {
 				return nil, true, errors.New("hash mismatch")
@@ -415,7 +409,7 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 
 		entry := d.indexVolume.entries[i]
 		data = shards[i][:entry.header.FileBytes]
-		if hash16k(data) != entry.header.Hash16k {
+		if hashutil.MD5Hash16k(data) != entry.header.Hash16k {
 			return repairedPaths, errors.New("hash mismatch (16k) in reconstructed data")
 		} else if md5.Sum(data) != entry.header.Hash {
 			return repairedPaths, errors.New("hash mismatch in reconstructed data")

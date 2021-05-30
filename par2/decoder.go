@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 
+	"github.com/akalin/gopar/hashutil"
 	"github.com/akalin/gopar/rsec16"
 )
 
@@ -289,13 +290,6 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string, numGo
 	}, nil
 }
 
-func hash16k(data []byte) [md5.Size]byte {
-	if len(data) < 16*1024 {
-		return md5.Sum(data)
-	}
-	return md5.Sum(data[:16*1024])
-}
-
 func sliceAndPadByteArray(bs []byte, start, end int) []byte {
 	padLength := 0
 	if end > len(bs) {
@@ -370,7 +364,7 @@ func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocatio
 
 	hits, misses := fillShardInfos(d.sliceByteCount, data, checksumToLocation, info.fileID, fileIntegrityInfos, fileIDIndices)
 
-	hashMismatch := hash16k(data) != info.hash16k || md5.Sum(data) != info.hash
+	hashMismatch := hashutil.MD5Hash16k(data) != info.hash16k || md5.Sum(data) != info.hash
 	fileIntegrityInfos[i].hashMismatch = hashMismatch
 	if hashMismatch {
 		d.delegate.OnDetectDataFileHashMismatch(info.fileID, path)
@@ -709,7 +703,7 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 		}
 
 		data := buf.Bytes()[:decoderInputFileInfo.byteCount]
-		if hash16k(data) != decoderInputFileInfo.hash16k {
+		if hashutil.MD5Hash16k(data) != decoderInputFileInfo.hash16k {
 			return repairedPaths, errors.New("hash mismatch (16k) in reconstructed data")
 		} else if md5.Sum(data) != decoderInputFileInfo.hash {
 			return repairedPaths, errors.New("hash mismatch in reconstructed data")

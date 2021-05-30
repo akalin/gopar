@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/akalin/gopar/hashutil"
 	"github.com/klauspost/reedsolomon"
 )
 
@@ -118,7 +119,7 @@ func (e *Encoder) Write(indexPath string) error {
 				Status:    status,
 				FileBytes: uint64(len(data)),
 				Hash:      hash,
-				Hash16k:   hash16k(data),
+				Hash16k:   hashutil.MD5Hash16k(data),
 			},
 			filename: filepath.Base(k),
 		}

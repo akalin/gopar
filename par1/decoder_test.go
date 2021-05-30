@@ -9,6 +9,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/akalin/gopar/hashutil"
 	"github.com/akalin/gopar/memfs"
 	"github.com/klauspost/reedsolomon"
 	"github.com/stretchr/testify/require"
@@ -92,7 +93,7 @@ func buildVTemplate(t *testing.T, fs memfs.MemFS, sortedPaths []string) volume {
 				Status:    status,
 				FileBytes: uint64(len(data)),
 				Hash:      hash,
-				Hash16k:   hash16k(data),
+				Hash16k:   hashutil.MD5Hash16k(data),
 			},
 			filename: filepath.Base(path),
 		}

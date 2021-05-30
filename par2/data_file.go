@@ -4,11 +4,13 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"hash/crc32"
+
+	"github.com/akalin/gopar/hashutil"
 )
 
 func computeDataFileInfo(sliceByteCount int, filename string, data []byte) (fileID, fileDescriptionPacket, ifscPacket, [][]byte) {
 	hash := md5.Sum(data)
-	hash16k := hash16k(data)
+	hash16k := hashutil.MD5Hash16k(data)
 	fileID := computeFileID(hash16k, uint64(len(data)), []byte(filename))
 	fileDescriptionPacket := fileDescriptionPacket{
 		hash:      hash,
