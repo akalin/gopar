@@ -87,15 +87,6 @@ func MakeTestFS(t *testing.T, delegateFS fs.FS) fs.FS {
 	return testFS
 }
 
-func (fs testFS) ReadFile(path string) (data []byte, err error) {
-	fs.t.Helper()
-	defer func() {
-		fs.t.Helper()
-		fs.t.Logf("ReadFile(%q) => (%d bytes, %v)", path, len(data), err)
-	}()
-	return fs.fs.ReadFile(path)
-}
-
 func (fs testFS) getReadStream(path string) (readStream fs.ReadStream, err error) {
 	fs.t.Helper()
 	defer func() {
@@ -121,15 +112,6 @@ func (fs testFS) FindWithPrefixAndSuffix(prefix, suffix string) (matches []strin
 		fs.t.Logf("FindWithPrefixAndSuffix(%q, %q) => (%d files, %v)", prefix, suffix, len(matches), err)
 	}()
 	return fs.fs.FindWithPrefixAndSuffix(prefix, suffix)
-}
-
-func (fs testFS) WriteFile(path string, data []byte) (err error) {
-	fs.t.Helper()
-	defer func() {
-		fs.t.Helper()
-		fs.t.Logf("WriteFile(%q, %d bytes) => %v", path, len(data), err)
-	}()
-	return fs.fs.WriteFile(path, data)
 }
 
 func (fs testFS) getWriteStream(path string) (writeStream fs.WriteStream, err error) {

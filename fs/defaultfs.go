@@ -1,7 +1,6 @@
 package fs
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 )
@@ -15,11 +14,6 @@ type defaultFS struct {
 // MakeDefaultFS returns an FS object that uses the underlying OS's
 // I/O functions.
 func MakeDefaultFS() FS { return defaultFS{MakeOpenFileManager()} }
-
-// ReadFile simply calls ioutil.ReadFile.
-func (fs defaultFS) ReadFile(path string) ([]byte, error) {
-	return ioutil.ReadFile(path)
-}
 
 // closeOnError closes f if it and err is non-nil.
 func closeOnError(f *os.File, err error) {
@@ -53,11 +47,6 @@ func (fs defaultFS) GetReadStream(path string) (ReadStream, error) {
 // given prefix and suffix.
 func (fs defaultFS) FindWithPrefixAndSuffix(prefix, suffix string) ([]string, error) {
 	return filepath.Glob(prefix + "*" + suffix)
-}
-
-// WriteFile simply calls ioutil.WriteFile.
-func (fs defaultFS) WriteFile(path string, data []byte) error {
-	return ioutil.WriteFile(path, data, 0600)
 }
 
 func (fs defaultFS) getWriteStream(path string) (WriteStream, error) {
