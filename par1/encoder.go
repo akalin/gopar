@@ -113,13 +113,13 @@ func (e *Encoder) Write(indexPath string) error {
 		data := e.fileData[i]
 		var status fileEntryStatus
 		status.setSavedInVolumeSet(true)
-		hash := md5.Sum(data)
+		hash, hash16k := hashutil.MD5HashWith16k(data)
 		entry := fileEntry{
 			header: fileEntryHeader{
 				Status:    status,
 				FileBytes: uint64(len(data)),
 				Hash:      hash,
-				Hash16k:   hashutil.MD5Hash16k(data),
+				Hash16k:   hash16k,
 			},
 			filename: filepath.Base(k),
 		}

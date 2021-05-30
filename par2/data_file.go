@@ -9,8 +9,7 @@ import (
 )
 
 func computeDataFileInfo(sliceByteCount int, filename string, data []byte) (fileID, fileDescriptionPacket, ifscPacket, [][]byte) {
-	hash := md5.Sum(data)
-	hash16k := hashutil.MD5Hash16k(data)
+	hash, hash16k := hashutil.MD5HashWith16k(data)
 	fileID := computeFileID(hash16k, uint64(len(data)), []byte(filename))
 	fileDescriptionPacket := fileDescriptionPacket{
 		hash:      hash,
