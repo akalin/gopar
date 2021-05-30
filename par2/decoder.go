@@ -364,7 +364,8 @@ func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocatio
 
 	hits, misses := fillShardInfos(d.sliceByteCount, data, checksumToLocation, info.fileID, fileIntegrityInfos, fileIDIndices)
 
-	hashMismatch := hashutil.MD5Hash16k(data) != info.hash16k || md5.Sum(data) != info.hash
+	hashErr := hashutil.CheckMD5Hashes(data, info.hash16k, info.hash, false)
+	hashMismatch := hashErr != nil
 	fileIntegrityInfos[i].hashMismatch = hashMismatch
 	if hashMismatch {
 		d.delegate.OnDetectDataFileHashMismatch(info.fileID, path)
@@ -703,10 +704,8 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 		}
 
 		data := buf.Bytes()[:decoderInputFileInfo.byteCount]
-		if hashutil.MD5Hash16k(data) != decoderInputFileInfo.hash16k {
-			return repairedPaths, errors.New("hash mismatch (16k) in reconstructed data")
-		} else if md5.Sum(data) != decoderInputFileInfo.hash {
-			return repairedPaths, errors.New("hash mismatch in reconstructed data")
+		if err := hashutil.CheckMD5Hashes(data, decoderInputFileInfo.hash16k, decoderInputFileInfo.hash, true); err != nil {
+			return repairedPaths, err
 		}
 
 		path := d.getFilePath(decoderInputFileInfo)

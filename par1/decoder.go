@@ -1,7 +1,6 @@
 package par1
 
 import (
-	"crypto/md5"
 	"errors"
 	"fmt"
 	"os"
@@ -139,10 +138,8 @@ func (d *Decoder) LoadFileData() error {
 				return nil, true, err
 			} else if err != nil {
 				return nil, false, err
-			} else if hashutil.MD5Hash16k(data) != entry.header.Hash16k {
-				return nil, true, errors.New("hash mismatch (16k)")
-			} else if md5.Sum(data) != entry.header.Hash {
-				return nil, true, errors.New("hash mismatch")
+			} else if err := hashutil.CheckMD5Hashes(data, entry.header.Hash16k, entry.header.Hash, false); err != nil {
+				return nil, true, err
 			}
 			return data, false, nil
 		}()
@@ -409,10 +406,8 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 
 		entry := d.indexVolume.entries[i]
 		data = shards[i][:entry.header.FileBytes]
-		if hashutil.MD5Hash16k(data) != entry.header.Hash16k {
-			return repairedPaths, errors.New("hash mismatch (16k) in reconstructed data")
-		} else if md5.Sum(data) != entry.header.Hash {
-			return repairedPaths, errors.New("hash mismatch in reconstructed data")
+		if err := hashutil.CheckMD5Hashes(data, entry.header.Hash16k, entry.header.Hash, true); err != nil {
+			return repairedPaths, err
 		}
 
 		path, err := d.getFilePath(entry)
