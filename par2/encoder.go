@@ -89,7 +89,13 @@ func (e *Encoder) LoadFileData() error {
 
 	for i, relPath := range e.relFilePaths {
 		path := filepath.Join(e.basePath, relPath)
-		data, err := e.fs.ReadFile(path)
+		data, err := func() ([]byte, error) {
+			readStream, err := e.fs.GetReadStream(path)
+			if err != nil {
+				return nil, err
+			}
+			return fs.ReadAndClose(readStream)
+		}()
 		e.delegate.OnDataFileLoad(i+1, len(e.relFilePaths), path, len(data), err)
 		if err != nil {
 			return err
@@ -159,7 +165,13 @@ func (e *Encoder) Write(indexPath string) error {
 	base = indexPath[:len(indexPath)-len(ext)]
 
 	filename := base + ".par2"
-	err = e.fs.WriteFile(filename, parityFileBytes)
+	err = func() error {
+		writeStream, err := e.fs.GetWriteStream(filename)
+		if err != nil {
+			return err
+		}
+		return fs.WriteAndClose(writeStream, parityFileBytes)
+	}()
 	e.delegate.OnIndexFileWrite(filename, len(parityFileBytes), err)
 	if err != nil {
 		return err
@@ -184,7 +196,13 @@ func (e *Encoder) Write(indexPath string) error {
 		// TODO: Figure out how to handle when either i or
 		// volumeCount is >= 100.
 		filename := fmt.Sprintf("%s.vol%02d+%02d.par2", base, i, volumeCount)
-		err = e.fs.WriteFile(filename, recoveryFileBytes)
+		err = func() error {
+			writeStream, err := e.fs.GetWriteStream(filename)
+			if err != nil {
+				return err
+			}
+			return fs.WriteAndClose(writeStream, recoveryFileBytes)
+		}()
 		e.delegate.OnRecoveryFileWrite(i, volumeCount, e.parityShardCount, filename, len(recoveryFileBytes)-len(parityFileBytes), len(recoveryFileBytes), err)
 		if err != nil {
 			return err
