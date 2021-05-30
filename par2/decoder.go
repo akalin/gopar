@@ -6,35 +6,15 @@ import (
 	"encoding/binary"
 	"errors"
 	"hash/crc32"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"reflect"
 
+	"github.com/akalin/gopar/fs"
 	"github.com/akalin/gopar/hashutil"
 	"github.com/akalin/gopar/rsec16"
 )
-
-type fileIO interface {
-	ReadFile(path string) ([]byte, error)
-	FindWithPrefixAndSuffix(prefix, suffix string) ([]string, error)
-	WriteFile(path string, data []byte) error
-}
-
-type defaultFileIO struct{}
-
-func (io defaultFileIO) ReadFile(path string) ([]byte, error) {
-	return ioutil.ReadFile(path)
-}
-
-func (io defaultFileIO) FindWithPrefixAndSuffix(prefix, suffix string) ([]string, error) {
-	return filepath.Glob(prefix + "*" + suffix)
-}
-
-func (io defaultFileIO) WriteFile(path string, data []byte) error {
-	return ioutil.WriteFile(path, data, 0600)
-}
 
 type decoderInputFileInfo struct {
 	fileID        fileID
@@ -159,7 +139,7 @@ func (info fileIntegrityInfo) ok(sliceByteCount int) bool {
 // missing/corrupt data files from the parity files (that usually end
 // in .par2).
 type Decoder struct {
-	fileIO   fileIO
+	fs       fs.FS
 	delegate DecoderDelegate
 
 	indexPath string
@@ -247,8 +227,8 @@ func (DoNothingDecoderDelegate) OnDetectDataFileWrongByteCount(fileID [16]byte, 
 // OnDataFileWrite implements the DecoderDelegate interface.
 func (DoNothingDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {}
 
-func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string, numGoroutines int) (*Decoder, error) {
-	indexBytes, err := fileIO.ReadFile(indexPath)
+func newDecoder(fs fs.FS, delegate DecoderDelegate, indexPath string, numGoroutines int) (*Decoder, error) {
+	indexBytes, err := fs.ReadFile(indexPath)
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +259,7 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string, numGo
 	}
 
 	return &Decoder{
-		fileIO, delegate,
+		fs, delegate,
 		indexPath,
 		setID,
 		indexFile.clientID, indexFile.mainPacket.sliceByteCount,
@@ -355,7 +335,7 @@ func (d *Decoder) getFilePath(info decoderInputFileInfo) string {
 
 func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocationMap, fileIntegrityInfos []fileIntegrityInfo, fileIDIndices map[fileID]int, i int, info decoderInputFileInfo) (int, int, int, error) {
 	path := d.getFilePath(info)
-	data, err := d.fileIO.ReadFile(path)
+	data, err := d.fs.ReadFile(path)
 	if os.IsNotExist(err) {
 		fileIntegrityInfos[i].missing = true
 		return 0, 0, 0, nil
@@ -492,7 +472,7 @@ func (recoveryDelegate) OnDataFileWrite(i, n int, path string, byteCount int, er
 func (d *Decoder) LoadParityData() error {
 	ext := path.Ext(d.indexPath)
 	base := d.indexPath[:len(d.indexPath)-len(ext)]
-	matches, err := d.fileIO.FindWithPrefixAndSuffix(base+".", ext)
+	matches, err := d.fs.FindWithPrefixAndSuffix(base+".", ext)
 	if err != nil {
 		return err
 	}
@@ -500,7 +480,7 @@ func (d *Decoder) LoadParityData() error {
 	var parityFiles []file
 	for i, match := range matches {
 		parityFile, err := func() (*file, error) {
-			volumeBytes, err := d.fileIO.ReadFile(match)
+			volumeBytes, err := d.fs.ReadFile(match)
 			if err != nil {
 				return nil, err
 			}
@@ -710,7 +690,7 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 		}
 
 		path := d.getFilePath(decoderInputFileInfo)
-		err = d.fileIO.WriteFile(path, data)
+		err = d.fs.WriteFile(path, data)
 		d.delegate.OnDataFileWrite(i+1, len(d.recoverySet), path, len(data), err)
 		if err != nil {
 			return repairedPaths, err
@@ -728,5 +708,5 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 // NewDecoder reads the given index file, which usually has a .par2
 // extension.
 func NewDecoder(delegate DecoderDelegate, indexFile string, numGoroutines int) (*Decoder, error) {
-	return newDecoder(defaultFileIO{}, delegate, indexFile, numGoroutines)
+	return newDecoder(fs.MakeDefaultFS(), delegate, indexFile, numGoroutines)
 }

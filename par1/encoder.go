@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/akalin/gopar/fs"
 	"github.com/akalin/gopar/hashutil"
 	"github.com/klauspost/reedsolomon"
 )
@@ -14,7 +15,7 @@ import (
 // volumes for a set of data files, and write them out to parity files
 // (.PAR, .P00, .P01, etc.).
 type Encoder struct {
-	fileIO   fileIO
+	fs       fs.FS
 	delegate EncoderDelegate
 
 	filePaths   []string
@@ -32,7 +33,7 @@ type EncoderDelegate interface {
 	OnVolumeFileWrite(i, n int, path string, dataByteCount, byteCount int, err error)
 }
 
-func newEncoder(fileIO fileIO, delegate EncoderDelegate, filePaths []string, volumeCount int) (*Encoder, error) {
+func newEncoder(fs fs.FS, delegate EncoderDelegate, filePaths []string, volumeCount int) (*Encoder, error) {
 	filenames := make(map[string]bool)
 	for _, p := range filePaths {
 		filename := filepath.Base(p)
@@ -42,13 +43,13 @@ func newEncoder(fileIO fileIO, delegate EncoderDelegate, filePaths []string, vol
 		filenames[filename] = true
 	}
 	// TODO: Check len(filePaths) and volumeCount.
-	return &Encoder{fileIO, delegate, filePaths, volumeCount, 0, nil, nil}, nil
+	return &Encoder{fs, delegate, filePaths, volumeCount, 0, nil, nil}, nil
 }
 
 // NewEncoder creates an encoder with the given list of file paths,
 // and with the given number of intended parity volumes.
 func NewEncoder(delegate EncoderDelegate, filePaths []string, volumeCount int) (*Encoder, error) {
-	return newEncoder(defaultFileIO{}, delegate, filePaths, volumeCount)
+	return newEncoder(fs.MakeDefaultFS(), delegate, filePaths, volumeCount)
 }
 
 // LoadFileData loads the file data into memory.
@@ -57,7 +58,7 @@ func (e *Encoder) LoadFileData() error {
 	fileData := make([][]byte, len(e.filePaths))
 	for i, path := range e.filePaths {
 		var err error
-		fileData[i], err = e.fileIO.ReadFile(path)
+		fileData[i], err = e.fs.ReadFile(path)
 		e.delegate.OnDataFileLoad(i+1, len(e.filePaths), path, len(fileData[i]), err)
 		if err != nil {
 			return err
@@ -145,7 +146,7 @@ func (e *Encoder) Write(indexPath string) error {
 	base := indexPath[:len(indexPath)-len(ext)]
 
 	realIndexPath := base + ".par"
-	err = e.fileIO.WriteFile(realIndexPath, indexVolumeBytes)
+	err = e.fs.WriteFile(realIndexPath, indexVolumeBytes)
 	e.delegate.OnVolumeFileWrite(0, len(e.parityData), realIndexPath, len(indexVolume.data), len(indexVolumeBytes), err)
 	if err != nil {
 		return err
@@ -162,7 +163,7 @@ func (e *Encoder) Write(indexPath string) error {
 
 		// TODO: Handle more than 99 parity files.
 		volumePath := fmt.Sprintf("%s.p%02d", base, i+1)
-		err = e.fileIO.WriteFile(volumePath, volBytes)
+		err = e.fs.WriteFile(volumePath, volBytes)
 		e.delegate.OnVolumeFileWrite(i+1, len(e.parityData), volumePath, len(vol.data), len(volBytes), err)
 		if err != nil {
 			return err

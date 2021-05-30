@@ -10,6 +10,7 @@ import (
 
 	"github.com/akalin/gopar/memfs"
 	"github.com/akalin/gopar/rsec16"
+	"github.com/akalin/gopar/testfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,7 +34,7 @@ func (d testEncoderDelegate) OnRecoveryFileWrite(start, count, total int, path s
 }
 
 func newEncoderForTest(t *testing.T, fs memfs.MemFS, basePath string, paths []string, sliceByteCount, parityShardCount int) (*Encoder, error) {
-	return newEncoder(testFileIO{t, fs}, testEncoderDelegate{t}, basePath, paths, sliceByteCount, parityShardCount, rsec16.DefaultNumGoroutines())
+	return newEncoder(testfs.MakeTestFS(t, fs), testEncoderDelegate{t}, basePath, paths, sliceByteCount, parityShardCount, rsec16.DefaultNumGoroutines())
 }
 
 func makeEncoderMemFS(workingDir string) memfs.MemFS {

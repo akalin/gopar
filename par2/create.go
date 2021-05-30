@@ -5,6 +5,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/akalin/gopar/fs"
 	"github.com/akalin/gopar/par2cmdline"
 	"github.com/akalin/gopar/rsec16"
 )
@@ -63,7 +64,7 @@ type CreateOptions struct {
 // Create a par file for the given file paths at parPath with the
 // given options.
 func Create(parPath string, filePaths []string, options CreateOptions) error {
-	return create(defaultFileIO{}, parPath, filePaths, options)
+	return create(fs.MakeDefaultFS(), parPath, filePaths, options)
 }
 
 func checkExtension(parPath string) error {
@@ -74,7 +75,7 @@ func checkExtension(parPath string) error {
 	return nil
 }
 
-func create(fileIO fileIO, parPath string, filePaths []string, options CreateOptions) error {
+func create(fs fs.FS, parPath string, filePaths []string, options CreateOptions) error {
 	err := checkExtension(parPath)
 	if err != nil {
 		return err
@@ -118,7 +119,7 @@ func create(fileIO fileIO, parPath string, filePaths []string, options CreateOpt
 		absFilePaths[i] = absPath
 	}
 
-	encoder, err := newEncoder(fileIO, delegate, basePath, absFilePaths, sliceByteCount, numParityShards, numGoroutines)
+	encoder, err := newEncoder(fs, delegate, basePath, absFilePaths, sliceByteCount, numParityShards, numGoroutines)
 	if err != nil {
 		return err
 	}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/akalin/gopar/memfs"
 	"github.com/akalin/gopar/rsec16"
+	"github.com/akalin/gopar/testfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -76,38 +77,6 @@ func BenchmarkFillShardInfos(b *testing.B) {
 			fillShardInfos(sliceByteCount, unrelatedData, checksumToLocation, id, fileIntegrityInfos, fileIDIndices)
 		}
 	})
-}
-
-type testFileIO struct {
-	t *testing.T
-	fileIO
-}
-
-func (io testFileIO) ReadFile(path string) (data []byte, err error) {
-	io.t.Helper()
-	defer func() {
-		io.t.Helper()
-		io.t.Logf("ReadFile(%s) => (%d bytes, %v)", path, len(data), err)
-	}()
-	return io.fileIO.ReadFile(path)
-}
-
-func (io testFileIO) FindWithPrefixAndSuffix(prefix, suffix string) (matches []string, err error) {
-	io.t.Helper()
-	defer func() {
-		io.t.Helper()
-		io.t.Logf("FindWithPrefixAndSuffix(%s, %s) => (%d files, %v)", prefix, suffix, len(matches), err)
-	}()
-	return io.fileIO.FindWithPrefixAndSuffix(prefix, suffix)
-}
-
-func (io testFileIO) WriteFile(path string, data []byte) (err error) {
-	io.t.Helper()
-	defer func() {
-		io.t.Helper()
-		io.t.Logf("WriteFile(%s, %d bytes) => %v", path, len(data), err)
-	}()
-	return io.fileIO.WriteFile(path, data)
 }
 
 func buildPAR2Data(t *testing.T, fs memfs.MemFS, basePath string, sliceByteCount, parityShardCount int) (dataShardCount int) {
@@ -178,7 +147,7 @@ func buildPAR2Data(t *testing.T, fs memfs.MemFS, basePath string, sliceByteCount
 }
 
 func newDecoderForTest(t *testing.T, fs memfs.MemFS, indexPath string) (*Decoder, error) {
-	return newDecoder(testFileIO{t, fs}, testDecoderDelegate{t}, indexPath, rsec16.DefaultNumGoroutines())
+	return newDecoder(testfs.MakeTestFS(t, fs), testDecoderDelegate{t}, indexPath, rsec16.DefaultNumGoroutines())
 }
 
 func makeDecoderMemFS(workingDir string) memfs.MemFS {

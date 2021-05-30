@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/akalin/gopar/memfs"
+	"github.com/akalin/gopar/testfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,7 +19,7 @@ func testVerify(t *testing.T, workingDir string, options VerifyOptions) {
 
 	parPath := filepath.Join(workingDir, "file.par2")
 
-	result, err := verify(testFileIO{t, fs}, parPath, options)
+	result, err := verify(testfs.MakeTestFS(t, fs), parPath, options)
 	require.NoError(t, err)
 	require.Equal(t, VerifyResult{
 		ShardCounts: ShardCounts{
@@ -30,7 +31,7 @@ func testVerify(t *testing.T, workingDir string, options VerifyOptions) {
 	fileData5, err := fs.ReadFile(r04Path)
 	require.NoError(t, err)
 	fileData5[len(fileData5)-1]++
-	result, err = verify(testFileIO{t, fs}, parPath, options)
+	result, err = verify(testfs.MakeTestFS(t, fs), parPath, options)
 	require.NoError(t, err)
 	require.Equal(t, VerifyResult{
 		ShardCounts: ShardCounts{

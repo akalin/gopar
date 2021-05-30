@@ -4,6 +4,8 @@ import (
 	"errors"
 	"path"
 	"path/filepath"
+
+	"github.com/akalin/gopar/fs"
 )
 
 // NumParityFilesDefault is the default value used for
@@ -44,7 +46,7 @@ type CreateOptions struct {
 // Create a par file for the given file paths at parPath with the
 // given options.
 func Create(parPath string, filePaths []string, options CreateOptions) error {
-	return create(defaultFileIO{}, parPath, filePaths, options)
+	return create(fs.MakeDefaultFS(), parPath, filePaths, options)
 }
 
 func checkExtension(parPath string) error {
@@ -55,7 +57,7 @@ func checkExtension(parPath string) error {
 	return nil
 }
 
-func create(fileIO fileIO, parPath string, filePaths []string, options CreateOptions) error {
+func create(fs fs.FS, parPath string, filePaths []string, options CreateOptions) error {
 	err := checkExtension(parPath)
 	if err != nil {
 		return err
@@ -87,7 +89,7 @@ func create(fileIO fileIO, parPath string, filePaths []string, options CreateOpt
 		delegate.OnFilesNotAllInSameDir()
 	}
 
-	encoder, err := newEncoder(fileIO, delegate, filePaths, numParityFiles)
+	encoder, err := newEncoder(fs, delegate, filePaths, numParityFiles)
 	if err != nil {
 		return err
 	}
