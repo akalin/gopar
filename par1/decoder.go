@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/akalin/gopar/fs"
 	"github.com/akalin/gopar/hashutil"
 	"github.com/klauspost/reedsolomon"
 )
@@ -16,7 +17,7 @@ import (
 // missing/corrupt data files from the parity files (.P00, .P01,
 // etc.).
 type Decoder struct {
-	fileIO   fileIO
+	fs       fs.FS
 	delegate DecoderDelegate
 
 	indexFile   string
@@ -63,9 +64,9 @@ func (DoNothingDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount
 func (DoNothingDecoderDelegate) OnVolumeFileLoad(i uint64, path string, storedSetHash, computedSetHash [16]byte, dataByteCount int, err error) {
 }
 
-func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexFile string) (*Decoder, error) {
+func newDecoder(fs fs.FS, delegate DecoderDelegate, indexFile string) (*Decoder, error) {
 	indexVolume, err := func() (volume, error) {
-		bytes, err := fileIO.ReadFile(indexFile)
+		bytes, err := fs.ReadFile(indexFile)
 		if err != nil {
 			return volume{}, err
 		}
@@ -95,7 +96,7 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexFile string) (*Dec
 	delegate.OnCommentLoad(indexVolume.data)
 
 	return &Decoder{
-		fileIO, delegate,
+		fs, delegate,
 		indexFile, indexVolume,
 		nil,
 		0, nil,
@@ -105,7 +106,7 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexFile string) (*Dec
 // NewDecoder reads the given index file, which usually has a .PAR
 // extension.
 func NewDecoder(delegate DecoderDelegate, indexFile string) (*Decoder, error) {
-	return newDecoder(defaultFileIO{}, delegate, indexFile)
+	return newDecoder(fs.MakeDefaultFS(), delegate, indexFile)
 }
 
 func (d *Decoder) getFilePath(entry fileEntry) (string, error) {
@@ -133,7 +134,7 @@ func (d *Decoder) LoadFileData() error {
 		}
 
 		data, corrupt, err := func() ([]byte, bool, error) {
-			data, err := d.fileIO.ReadFile(path)
+			data, err := d.fs.ReadFile(path)
 			if os.IsNotExist(err) {
 				return nil, true, err
 			} else if err != nil {
@@ -199,7 +200,7 @@ func (d *Decoder) LoadParityData() error {
 		volumeNumber := i + 1
 		volumePath := d.volumePath(volumeNumber)
 		parityVolume, byteCount, err := func() (volume, int, error) {
-			volumeBytes, err := d.fileIO.ReadFile(volumePath)
+			volumeBytes, err := d.fs.ReadFile(volumePath)
 			if os.IsNotExist(err) {
 				return volume{}, 0, err
 			} else if err != nil {
@@ -415,7 +416,7 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 			return repairedPaths, err
 		}
 
-		err = d.fileIO.WriteFile(path, data)
+		err = d.fs.WriteFile(path, data)
 		d.delegate.OnDataFileWrite(i+1, len(d.fileData), path, len(data), err)
 		if err != nil {
 			return repairedPaths, err

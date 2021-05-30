@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/akalin/gopar/memfs"
+	"github.com/akalin/gopar/testfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,12 +22,12 @@ func testRepair(t *testing.T, workingDir string, options RepairOptions) {
 
 	parPath := filepath.Join(workingDir, "file.par2")
 
-	result, err := repair(testFileIO{t, fs}, parPath, options)
+	result, err := repair(testfs.MakeTestFS(t, fs), parPath, options)
 	require.NoError(t, err)
 	require.Equal(t, RepairResult{}, result)
 
 	perturbFile(t, fs, r04Path)
-	result, err = repair(testFileIO{t, fs}, parPath, options)
+	result, err = repair(testfs.MakeTestFS(t, fs), parPath, options)
 	require.NoError(t, err)
 	require.Equal(t, RepairResult{
 		RepairedPaths: []string{filepath.Join(workingDir, r04Path)},
@@ -35,7 +36,7 @@ func testRepair(t *testing.T, workingDir string, options RepairOptions) {
 	perturbFile(t, fs, rarPath)
 	perturbFile(t, fs, r01Path)
 	perturbFile(t, fs, r04Path)
-	result, err = repair(testFileIO{t, fs}, parPath, options)
+	result, err = repair(testfs.MakeTestFS(t, fs), parPath, options)
 	require.True(t, RepairErrorMeansRepairNecessaryButNotPossible(err))
 	require.Equal(t, RepairResult{}, result)
 }

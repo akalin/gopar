@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/akalin/gopar/testfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,14 +23,14 @@ func testCreate(t *testing.T, workingDir string, useAbsPath bool, options Create
 	paths := fs.Paths()
 
 	parPath := "file.par"
-	err := create(testFileIO{t, fs}, parPath, paths, options)
+	err := create(testfs.MakeTestFS(t, fs), parPath, paths, options)
 	require.NoError(t, err)
 
 	for _, path := range paths {
 		require.NoError(t, fs.MoveFile(path, filepath.Base(path)))
 	}
 
-	decoder, err := newDecoder(testFileIO{t, fs}, testDecoderDelegate{t}, parPath)
+	decoder, err := newDecoderForTest(t, fs, parPath)
 	require.NoError(t, err)
 
 	err = decoder.LoadFileData()

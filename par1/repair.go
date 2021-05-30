@@ -1,6 +1,9 @@
 package par1
 
-import "github.com/klauspost/reedsolomon"
+import (
+	"github.com/akalin/gopar/fs"
+	"github.com/klauspost/reedsolomon"
+)
 
 // RepairDelegate is just DecoderDelegate for now.
 type RepairDelegate interface {
@@ -34,10 +37,10 @@ type RepairResult struct {
 // RepairResult may be partially or not filled in if an error is
 // returned.
 func Repair(parPath string, options RepairOptions) (RepairResult, error) {
-	return repair(defaultFileIO{}, parPath, options)
+	return repair(fs.MakeDefaultFS(), parPath, options)
 }
 
-func repair(fileIO fileIO, parPath string, options RepairOptions) (RepairResult, error) {
+func repair(fs fs.FS, parPath string, options RepairOptions) (RepairResult, error) {
 	err := checkExtension(parPath)
 	if err != nil {
 		return RepairResult{}, err
@@ -48,7 +51,7 @@ func repair(fileIO fileIO, parPath string, options RepairOptions) (RepairResult,
 		delegate = DoNothingRepairDelegate{}
 	}
 
-	decoder, err := newDecoder(fileIO, delegate, parPath)
+	decoder, err := newDecoder(fs, delegate, parPath)
 	if err != nil {
 		return RepairResult{}, err
 	}

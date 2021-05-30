@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/akalin/gopar/memfs"
+	"github.com/akalin/gopar/testfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,7 +17,7 @@ func testCreate(t *testing.T, workingDir string, options CreateOptions) {
 
 	parPath := filepath.Join(workingDir, "parity.par2")
 
-	err := create(testFileIO{t, fs}, parPath, paths, options)
+	err := create(testfs.MakeTestFS(t, fs), parPath, paths, options)
 	require.NoError(t, err)
 
 	decoder, err := newDecoderForTest(t, fs, parPath)
