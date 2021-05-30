@@ -227,8 +227,12 @@ func (DoNothingDecoderDelegate) OnDetectDataFileWrongByteCount(fileID [16]byte, 
 // OnDataFileWrite implements the DecoderDelegate interface.
 func (DoNothingDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {}
 
-func newDecoder(fs fs.FS, delegate DecoderDelegate, indexPath string, numGoroutines int) (*Decoder, error) {
-	indexBytes, err := fs.ReadFile(indexPath)
+func newDecoder(filesystem fs.FS, delegate DecoderDelegate, indexPath string, numGoroutines int) (*Decoder, error) {
+	readStream, err := filesystem.GetReadStream(indexPath)
+	if err != nil {
+		return nil, err
+	}
+	indexBytes, err := fs.ReadAndClose(readStream)
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +263,7 @@ func newDecoder(fs fs.FS, delegate DecoderDelegate, indexPath string, numGorouti
 	}
 
 	return &Decoder{
-		fs, delegate,
+		filesystem, delegate,
 		indexPath,
 		setID,
 		indexFile.clientID, indexFile.mainPacket.sliceByteCount,
@@ -335,12 +339,16 @@ func (d *Decoder) getFilePath(info decoderInputFileInfo) string {
 
 func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocationMap, fileIntegrityInfos []fileIntegrityInfo, fileIDIndices map[fileID]int, i int, info decoderInputFileInfo) (int, int, int, error) {
 	path := d.getFilePath(info)
-	data, err := d.fs.ReadFile(path)
+	readStream, err := d.fs.GetReadStream(path)
 	if os.IsNotExist(err) {
 		fileIntegrityInfos[i].missing = true
 		return 0, 0, 0, nil
 	} else if err != nil {
-		return len(data), 0, 0, err
+		return 0, 0, 0, err
+	}
+	data, err := fs.ReadAndClose(readStream)
+	if err != nil {
+		return len(data), 0, 0, nil
 	}
 
 	hits, misses := fillShardInfos(d.sliceByteCount, data, checksumToLocation, info.fileID, fileIntegrityInfos, fileIDIndices)
@@ -480,7 +488,11 @@ func (d *Decoder) LoadParityData() error {
 	var parityFiles []file
 	for i, match := range matches {
 		parityFile, err := func() (*file, error) {
-			volumeBytes, err := d.fs.ReadFile(match)
+			readStream, err := d.fs.GetReadStream(match)
+			if err != nil {
+				return nil, err
+			}
+			volumeBytes, err := fs.ReadAndClose(readStream)
 			if err != nil {
 				return nil, err
 			}
@@ -690,7 +702,13 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 		}
 
 		path := d.getFilePath(decoderInputFileInfo)
-		err = d.fs.WriteFile(path, data)
+		err = func() error {
+			writeStream, err := d.fs.GetWriteStream(path)
+			if err != nil {
+				return err
+			}
+			return fs.WriteAndClose(writeStream, data)
+		}()
 		d.delegate.OnDataFileWrite(i+1, len(d.recoverySet), path, len(data), err)
 		if err != nil {
 			return repairedPaths, err
