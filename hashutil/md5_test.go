@@ -3,6 +3,7 @@ package hashutil
 import (
 	"bytes"
 	"crypto/md5"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -33,4 +34,12 @@ func TestMD5HashWith16k(t *testing.T) {
 		require.Equal(t, md5.Sum(input), hash)
 		require.Equal(t, MD5Hash16k(input), hash16k)
 	}
+}
+
+func TestCheckMD5Hashes(t *testing.T) {
+	input := bytes.Repeat([]byte{0x5}, 17*1024)
+	hash, hash16k := MD5HashWith16k(input)
+	require.NoError(t, CheckMD5Hashes(input, hash16k, hash))
+	require.EqualError(t, CheckMD5Hashes(input, hash, hash), fmt.Sprintf("hash mismatch (16k): expected=%x, actual=%x", hash, hash16k))
+	require.EqualError(t, CheckMD5Hashes(input, hash16k, hash16k), fmt.Sprintf("hash mismatch: expected=%x, actual=%x", hash16k, hash))
 }
