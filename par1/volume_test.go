@@ -22,19 +22,19 @@ func TestVolumeRoundTrip(t *testing.T) {
 		entries: []fileEntry{
 			{
 				header: fileEntryHeader{
-					Status:       10,
-					FileBytes:    10,
-					Hash:         hash1,
-					SixteenKHash: [16]byte{0x5, 0x6},
+					Status:    10,
+					FileBytes: 10,
+					Hash:      hash1,
+					Hash16k:   [16]byte{0x5, 0x6},
 				},
 				filename: "filename世界.r01",
 			},
 			{
 				header: fileEntryHeader{
-					Status:       11,
-					FileBytes:    10,
-					Hash:         hash2,
-					SixteenKHash: [16]byte{0x7, 0x8},
+					Status:    11,
+					FileBytes: 10,
+					Hash:      hash2,
+					Hash16k:   [16]byte{0x7, 0x8},
 				},
 				filename: "filename世界.r02",
 			},

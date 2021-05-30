@@ -108,7 +108,7 @@ func NewDecoder(delegate DecoderDelegate, indexFile string) (*Decoder, error) {
 	return newDecoder(defaultFileIO{}, delegate, indexFile)
 }
 
-func sixteenKHash(data []byte) [md5.Size]byte {
+func hash16k(data []byte) [md5.Size]byte {
 	if len(data) < 16*1024 {
 		return md5.Sum(data)
 	}
@@ -145,7 +145,7 @@ func (d *Decoder) LoadFileData() error {
 				return nil, true, err
 			} else if err != nil {
 				return nil, false, err
-			} else if sixteenKHash(data) != entry.header.SixteenKHash {
+			} else if hash16k(data) != entry.header.Hash16k {
 				return nil, true, errors.New("hash mismatch (16k)")
 			} else if md5.Sum(data) != entry.header.Hash {
 				return nil, true, errors.New("hash mismatch")
@@ -415,7 +415,7 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 
 		entry := d.indexVolume.entries[i]
 		data = shards[i][:entry.header.FileBytes]
-		if sixteenKHash(data) != entry.header.SixteenKHash {
+		if hash16k(data) != entry.header.Hash16k {
 			return repairedPaths, errors.New("hash mismatch (16k) in reconstructed data")
 		} else if md5.Sum(data) != entry.header.Hash {
 			return repairedPaths, errors.New("hash mismatch in reconstructed data")

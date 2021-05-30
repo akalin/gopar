@@ -24,10 +24,10 @@ func TestFileEntryRoundTrip(t *testing.T) {
 	filename := "filename世界.r01"
 	entry := fileEntry{
 		header: fileEntryHeader{
-			Status:       10,
-			FileBytes:    10,
-			Hash:         [16]byte{0x1, 0x2},
-			SixteenKHash: [16]byte{0x3, 0x4},
+			Status:    10,
+			FileBytes: 10,
+			Hash:      [16]byte{0x1, 0x2},
+			Hash16k:   [16]byte{0x3, 0x4},
 		},
 		filename: filename,
 	}

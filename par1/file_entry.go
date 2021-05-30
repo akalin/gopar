@@ -43,16 +43,16 @@ func (s fileEntryStatus) String() string {
 }
 
 type fileEntryHeader struct {
-	EntryBytes   uint64
-	Status       fileEntryStatus
-	FileBytes    uint64
-	Hash         [16]byte
-	SixteenKHash [16]byte
+	EntryBytes uint64
+	Status     fileEntryStatus
+	FileBytes  uint64
+	Hash       [16]byte
+	Hash16k    [16]byte
 }
 
 func (h fileEntryHeader) String() string {
 	return fmt.Sprintf("fileEntryHeader{EntryBytes:%d, Status: %s, FileBytes:%d, Hash:%x, 16KHash: %x}",
-		h.EntryBytes, h.Status, h.FileBytes, h.Hash, h.SixteenKHash)
+		h.EntryBytes, h.Status, h.FileBytes, h.Hash, h.Hash16k)
 }
 
 func sizeOfFileEntryHeader() uint64 {

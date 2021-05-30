@@ -115,10 +115,10 @@ func (e *Encoder) Write(indexPath string) error {
 		hash := md5.Sum(data)
 		entry := fileEntry{
 			header: fileEntryHeader{
-				Status:       status,
-				FileBytes:    uint64(len(data)),
-				Hash:         hash,
-				SixteenKHash: sixteenKHash(data),
+				Status:    status,
+				FileBytes: uint64(len(data)),
+				Hash:      hash,
+				Hash16k:   hash16k(data),
 			},
 			filename: filepath.Base(k),
 		}

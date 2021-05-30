@@ -39,7 +39,7 @@ type decoderInputFileInfo struct {
 	fileID        fileID
 	filename      string
 	byteCount     int
-	sixteenKHash  [md5.Size]byte
+	hash16k       [md5.Size]byte
 	hash          [md5.Size]byte
 	checksumPairs []checksumPair
 }
@@ -67,7 +67,7 @@ func makeDecoderInputFileInfos(fileIDs []fileID, fileDescriptionPackets map[file
 			fileID,
 			descriptionPacket.filename,
 			descriptionPacket.byteCount,
-			descriptionPacket.sixteenKHash,
+			descriptionPacket.hash16k,
 			descriptionPacket.hash,
 			ifscPacket.checksumPairs,
 		})
@@ -289,7 +289,7 @@ func newDecoder(fileIO fileIO, delegate DecoderDelegate, indexPath string, numGo
 	}, nil
 }
 
-func sixteenKHash(data []byte) [md5.Size]byte {
+func hash16k(data []byte) [md5.Size]byte {
 	if len(data) < 16*1024 {
 		return md5.Sum(data)
 	}
@@ -370,7 +370,7 @@ func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocatio
 
 	hits, misses := fillShardInfos(d.sliceByteCount, data, checksumToLocation, info.fileID, fileIntegrityInfos, fileIDIndices)
 
-	hashMismatch := sixteenKHash(data) != info.sixteenKHash || md5.Sum(data) != info.hash
+	hashMismatch := hash16k(data) != info.hash16k || md5.Sum(data) != info.hash
 	fileIntegrityInfos[i].hashMismatch = hashMismatch
 	if hashMismatch {
 		d.delegate.OnDetectDataFileHashMismatch(info.fileID, path)
@@ -709,7 +709,7 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 		}
 
 		data := buf.Bytes()[:decoderInputFileInfo.byteCount]
-		if sixteenKHash(data) != decoderInputFileInfo.sixteenKHash {
+		if hash16k(data) != decoderInputFileInfo.hash16k {
 			return repairedPaths, errors.New("hash mismatch (16k) in reconstructed data")
 		} else if md5.Sum(data) != decoderInputFileInfo.hash {
 			return repairedPaths, errors.New("hash mismatch in reconstructed data")

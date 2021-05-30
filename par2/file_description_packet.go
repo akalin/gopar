@@ -11,22 +11,22 @@ import (
 var fileDescriptionPacketType = packetType{'P', 'A', 'R', ' ', '2', '.', '0', '\x00', 'F', 'i', 'l', 'e', 'D', 'e', 's', 'c'}
 
 type fileDescriptionPacketHeader struct {
-	FileID       [16]byte
-	Hash         [16]byte
-	SixteenKHash [16]byte
-	Length       uint64
+	FileID  [16]byte
+	Hash    [16]byte
+	Hash16k [16]byte
+	Length  uint64
 }
 
 type fileDescriptionPacket struct {
-	hash         [md5.Size]byte
-	sixteenKHash [md5.Size]byte
-	byteCount    int
-	filename     string
+	hash      [md5.Size]byte
+	hash16k   [md5.Size]byte
+	byteCount int
+	filename  string
 }
 
-func computeFileID(sixteenKHash [md5.Size]byte, byteCount uint64, filenameBytes []byte) fileID {
+func computeFileID(hash16k [md5.Size]byte, byteCount uint64, filenameBytes []byte) fileID {
 	var hashInput []byte
-	hashInput = append(hashInput, sixteenKHash[:]...)
+	hashInput = append(hashInput, hash16k[:]...)
 	var byteCountBytes [8]byte
 	binary.LittleEndian.PutUint64(byteCountBytes[:], byteCount)
 	hashInput = append(hashInput, byteCountBytes[:]...)
@@ -61,7 +61,7 @@ func readFileDescriptionPacket(body []byte) (fileID, fileDescriptionPacket, erro
 	}
 
 	filenameBytes := buf.Bytes()
-	computedFileID := computeFileID(h.SixteenKHash, h.Length, nullTerminate(filenameBytes))
+	computedFileID := computeFileID(h.Hash16k, h.Length, nullTerminate(filenameBytes))
 	if computedFileID != h.FileID {
 		return fileID{}, fileDescriptionPacket{}, errors.New("file ID mismatch")
 	}
@@ -91,7 +91,7 @@ func readFileDescriptionPacket(body []byte) (fileID, fileDescriptionPacket, erro
 	}
 
 	byteCount := int(h.Length)
-	return h.FileID, fileDescriptionPacket{h.Hash, h.SixteenKHash, byteCount, filename}, nil
+	return h.FileID, fileDescriptionPacket{h.Hash, h.Hash16k, byteCount, filename}, nil
 }
 
 func writeFileDescriptionPacket(fileID fileID, packet fileDescriptionPacket) ([]byte, error) {
@@ -110,7 +110,7 @@ func writeFileDescriptionPacket(fileID fileID, packet fileDescriptionPacket) ([]
 	}
 
 	byteCount := uint64(packet.byteCount)
-	computedFileID := computeFileID(packet.sixteenKHash, byteCount, filenameBytes)
+	computedFileID := computeFileID(packet.hash16k, byteCount, filenameBytes)
 	if computedFileID != fileID {
 		return nil, errors.New("file ID mismatch")
 	}
@@ -118,10 +118,10 @@ func writeFileDescriptionPacket(fileID fileID, packet fileDescriptionPacket) ([]
 	buf := bytes.NewBuffer(nil)
 
 	h := fileDescriptionPacketHeader{
-		FileID:       fileID,
-		Hash:         packet.hash,
-		SixteenKHash: packet.sixteenKHash,
-		Length:       byteCount,
+		FileID:  fileID,
+		Hash:    packet.hash,
+		Hash16k: packet.hash16k,
+		Length:  byteCount,
 	}
 	err = binary.Write(buf, binary.LittleEndian, h)
 	if err != nil {
