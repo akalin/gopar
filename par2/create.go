@@ -34,7 +34,7 @@ type CreateDelegate interface {
 type DoNothingCreateDelegate struct{}
 
 // OnDataFileLoad implements the CreateDelegate interface.
-func (DoNothingCreateDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {
+func (DoNothingCreateDelegate) OnDataFileLoad(i, n int, path string, byteCount int64, err error) {
 }
 
 // OnIndexFileWrite implements the CreateDelegate interface.
