@@ -97,7 +97,7 @@ type par1LogRepairDelegate struct {
 
 type par2LogCreateDelegate struct{}
 
-func (par2LogCreateDelegate) OnDataFileLoad(i, n int, path string, byteCount int, err error) {
+func (par2LogCreateDelegate) OnDataFileLoad(i, n int, path string, byteCount int64, err error) {
 	if err != nil {
 		fmt.Printf("[%d/%d] Loading data file %q failed: %+v\n", i, n, path, err)
 	} else {
@@ -131,7 +131,7 @@ func (par2LogDecoderDelegate) OnMainPacketLoad(sliceByteCount, recoverySetCount,
 	fmt.Printf("Loaded main packet: slice byte count=%d, recovery set size=%d, non-recovery set size=%d\n", sliceByteCount, recoverySetCount, nonRecoverySetCount)
 }
 
-func (par2LogDecoderDelegate) OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int) {
+func (par2LogDecoderDelegate) OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int64) {
 	fmt.Printf("Loaded file description packet for %q (ID=%x, %d bytes)\n", filename, fileID, byteCount)
 }
 

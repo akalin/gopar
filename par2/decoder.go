@@ -44,10 +44,14 @@ func makeDecoderInputFileInfos(fileIDs []fileID, fileDescriptionPackets map[file
 		if !ok {
 			return nil, errors.New("input file slice checksum packet not found")
 		}
+		// TODO: Once we're not loading entire files in
+		// memory, make decoderInputFileInfo.byteCount to an
+		// int64.
+		byteCount := int(descriptionPacket.byteCount)
 		decoderInputFileInfos = append(decoderInputFileInfos, decoderInputFileInfo{
 			fileID,
 			descriptionPacket.filename,
-			descriptionPacket.byteCount,
+			byteCount,
 			descriptionPacket.hash16k,
 			descriptionPacket.hash,
 			ifscPacket.checksumPairs,
@@ -165,7 +169,7 @@ type Decoder struct {
 type DecoderDelegate interface {
 	OnCreatorPacketLoad(clientID string)
 	OnMainPacketLoad(sliceByteCount, recoverySetCount, nonRecoverySetCount int)
-	OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int)
+	OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int64)
 	OnIFSCPacketLoad(fileID [16]byte)
 	OnRecoveryPacketLoad(exponent uint16, byteCount int)
 	OnUnknownPacketLoad(packetType [16]byte, byteCount int)
@@ -190,7 +194,7 @@ func (DoNothingDecoderDelegate) OnMainPacketLoad(sliceByteCount, recoverySetCoun
 }
 
 // OnFileDescriptionPacketLoad implements the DecoderDelegate interface.
-func (DoNothingDecoderDelegate) OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int) {
+func (DoNothingDecoderDelegate) OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int64) {
 }
 
 // OnIFSCPacketLoad implements the DecoderDelegate interface.
@@ -446,7 +450,7 @@ func (recoveryDelegate) OnCreatorPacketLoad(clientID string) {}
 
 func (recoveryDelegate) OnMainPacketLoad(sliceByteCount, recoverySetCount, nonRecoverySetCount int) {}
 
-func (recoveryDelegate) OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int) {
+func (recoveryDelegate) OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int64) {
 }
 
 func (recoveryDelegate) OnIFSCPacketLoad(fileID [16]byte) {}

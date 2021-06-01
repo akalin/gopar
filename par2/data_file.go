@@ -5,21 +5,29 @@ import (
 	"encoding/binary"
 	"hash/crc32"
 
+	"github.com/akalin/gopar/fs"
 	"github.com/akalin/gopar/hashutil"
 )
 
-func computeDataFileInfo(sliceByteCount int, filename string, data []byte) (fileID, fileDescriptionPacket, ifscPacket, [][]byte) {
-	hash, hash16k := hashutil.MD5HashWith16k(data)
-	fileID := computeFileID(hash16k, uint64(len(data)), []byte(filename))
+func computeDataFileInfo(sliceByteCount int, filename string, readStream fs.ReadStream) (fileID, fileDescriptionPacket, ifscPacket, [][]byte, int64, error) {
+	h := hashutil.MakeMD5HasherWith16k()
+	data, err := fs.ReadAndClose(hashutil.TeeReadStream(readStream, h))
+	if err != nil {
+		return fileID{}, fileDescriptionPacket{}, ifscPacket{}, nil, 0, err
+	}
+
+	size := len(data)
+	hash, hash16k := h.Hashes()
+	fileID := computeFileID(hash16k, uint64(size), []byte(filename))
 	fileDescriptionPacket := fileDescriptionPacket{
 		hash:      hash,
 		hash16k:   hash16k,
-		byteCount: len(data),
+		byteCount: int64(size),
 		filename:  filename,
 	}
 	var dataShards [][]byte
 	var checksumPairs []checksumPair
-	for i := 0; i < len(data); i += sliceByteCount {
+	for i := 0; i < size; i += sliceByteCount {
 		slice := sliceAndPadByteArray(data, i, i+sliceByteCount)
 		dataShards = append(dataShards, slice)
 		crc32 := crc32.ChecksumIEEE(slice)
@@ -30,5 +38,5 @@ func computeDataFileInfo(sliceByteCount int, filename string, data []byte) (file
 			CRC32: crc32Bytes,
 		})
 	}
-	return fileID, fileDescriptionPacket, ifscPacket{checksumPairs}, dataShards
+	return fileID, fileDescriptionPacket, ifscPacket{checksumPairs}, dataShards, int64(size), nil
 }

@@ -41,7 +41,7 @@ type Encoder struct {
 // EncoderDelegate holds methods that are called during the encode
 // process.
 type EncoderDelegate interface {
-	OnDataFileLoad(i, n int, path string, byteCount int, err error)
+	OnDataFileLoad(i, n int, path string, byteCount int64, err error)
 	OnIndexFileWrite(path string, byteCount int, err error)
 	OnRecoveryFileWrite(start, count, total int, path string, dataByteCount, byteCount int, err error)
 }
@@ -89,22 +89,27 @@ func (e *Encoder) LoadFileData() error {
 
 	for i, relPath := range e.relFilePaths {
 		path := filepath.Join(e.basePath, relPath)
-		data, err := func() ([]byte, error) {
+		byteCount, err := func() (int64, error) {
 			readStream, err := e.fs.GetReadStream(path)
 			if err != nil {
-				return nil, err
+				return 0, err
 			}
-			return fs.ReadAndClose(readStream)
+
+			// computeDataFileInfo will close readStream.
+			fileID, fileDescriptionPacket, ifscPacket, dataShards, byteCount, err := computeDataFileInfo(e.sliceByteCount, relPath, readStream)
+			if err != nil {
+				return 0, err
+			}
+
+			recoverySet = append(recoverySet, fileID)
+			recoverySetInfos[fileID] = encoderInputFileInfo{
+				fileDescriptionPacket, ifscPacket, dataShards,
+			}
+			return byteCount, err
 		}()
-		e.delegate.OnDataFileLoad(i+1, len(e.relFilePaths), path, len(data), err)
+		e.delegate.OnDataFileLoad(i+1, len(e.relFilePaths), path, byteCount, err)
 		if err != nil {
 			return err
-		}
-
-		fileID, fileDescriptionPacket, ifscPacket, dataShards := computeDataFileInfo(e.sliceByteCount, relPath, data)
-		recoverySet = append(recoverySet, fileID)
-		recoverySetInfos[fileID] = encoderInputFileInfo{
-			fileDescriptionPacket, ifscPacket, dataShards,
 		}
 	}
 
