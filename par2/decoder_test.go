@@ -86,11 +86,12 @@ func buildPAR2Data(t *testing.T, fs memfs.MemFS, basePath string, sliceByteCount
 	dataShardsByID := make(map[fileID][][]byte)
 	paths := fs.Paths()
 	for _, path := range paths {
-		data, err := fs.ReadFile(path)
+		readStream, err := fs.GetReadStream(path)
 		require.NoError(t, err)
 		relPath, err := filepath.Rel(basePath, path)
 		require.NoError(t, err)
-		fileID, fileDescriptionPacket, ifscPacket, fileDataShards := computeDataFileInfo(sliceByteCount, relPath, data)
+		fileID, fileDescriptionPacket, ifscPacket, fileDataShards, _, err := computeDataFileInfo(sliceByteCount, relPath, readStream)
+		require.NoError(t, err)
 		recoverySet = append(recoverySet, fileID)
 		fileDescriptionPackets[fileID] = fileDescriptionPacket
 		ifscPackets[fileID] = ifscPacket

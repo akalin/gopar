@@ -20,7 +20,7 @@ type fileDescriptionPacketHeader struct {
 type fileDescriptionPacket struct {
 	hash      [md5.Size]byte
 	hash16k   [md5.Size]byte
-	byteCount int
+	byteCount int64
 	filename  string
 }
 
@@ -90,7 +90,7 @@ func readFileDescriptionPacket(body []byte) (fileID, fileDescriptionPacket, erro
 		return fileID{}, fileDescriptionPacket{}, errors.New("file length too big")
 	}
 
-	byteCount := int(h.Length)
+	byteCount := int64(h.Length)
 	return h.FileID, fileDescriptionPacket{h.Hash, h.Hash16k, byteCount, filename}, nil
 }
 

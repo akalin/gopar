@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"testing"
 
+	"github.com/akalin/gopar/memfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,7 +22,7 @@ func (d testDecoderDelegate) OnMainPacketLoad(sliceByteCount, recoverySetCount, 
 	d.t.Logf("OnMainPacketLoad(sliceByteCount=%d, recoverySetCount=%d, nonRecoverySetCount=%d)", sliceByteCount, recoverySetCount, nonRecoverySetCount)
 }
 
-func (d testDecoderDelegate) OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int) {
+func (d testDecoderDelegate) OnFileDescriptionPacketLoad(fileID [16]byte, filename string, byteCount int64) {
 	d.t.Helper()
 	d.t.Logf("OnFileDescriptionPacketLoad(%x, %s, %d)", fileID, filename, byteCount)
 }
@@ -78,9 +79,18 @@ func (d testDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount in
 
 func TestFileRoundTrip(t *testing.T) {
 	sliceByteCount := 8
-	fileID1, fileDescriptionPacket1, ifscPacket1, _ := computeDataFileInfo(sliceByteCount, "file1.txt", []byte("contents 1"))
-	fileID2, fileDescriptionPacket2, ifscPacket2, _ := computeDataFileInfo(sliceByteCount, "file2.txt", []byte("contents 2"))
-	fileID3, fileDescriptionPacket3, ifscPacket3, _ := computeDataFileInfo(sliceByteCount, "file3.txt", []byte("contents 3"))
+	s1 := []byte("contents 1")
+	s2 := []byte("contents 2")
+	s3 := []byte("contents 3")
+	fileID1, fileDescriptionPacket1, ifscPacket1, _, byteCount1, err := computeDataFileInfo(sliceByteCount, "file1.txt", memfs.MakeReadStream(s1))
+	require.NoError(t, err)
+	require.Equal(t, int64(len(s1)), byteCount1)
+	fileID2, fileDescriptionPacket2, ifscPacket2, _, byteCount2, err := computeDataFileInfo(sliceByteCount, "file2.txt", memfs.MakeReadStream(s2))
+	require.NoError(t, err)
+	require.Equal(t, int64(len(s2)), byteCount2)
+	fileID3, fileDescriptionPacket3, ifscPacket3, _, byteCount3, err := computeDataFileInfo(sliceByteCount, "file3.txt", memfs.MakeReadStream(s3))
+	require.NoError(t, err)
+	require.Equal(t, int64(len(s3)), byteCount3)
 
 	mainPacket := mainPacket{
 		sliceByteCount: sliceByteCount,
