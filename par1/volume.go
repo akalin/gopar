@@ -25,13 +25,17 @@ type volume struct {
 const controlHashOffset = 0x20
 
 func computeSetHash(entries []fileEntry) [md5.Size]byte {
-	var setHashInput []byte
+	h := md5.New()
 	for _, entry := range entries {
 		if entry.header.Status.savedInVolumeSet() {
-			setHashInput = append(setHashInput, entry.header.Hash[:]...)
+			// hash.Hash.Write is guaranteed to never
+			// return an error.
+			h.Write(entry.header.Hash[:])
 		}
 	}
-	return md5.Sum(setHashInput)
+	var hash [md5.Size]byte
+	h.Sum(hash[:0])
+	return hash
 }
 
 func readVolume(volumeBytes []byte) (volume, error) {
