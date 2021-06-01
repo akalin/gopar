@@ -86,7 +86,7 @@ func readStrict(r io.Reader, buf []byte) (n int, err error) {
 	return n, err
 }
 
-// readFullEOF is like io.ReadFull, except that it:
+// ReadFullEOF is like io.ReadFull, except that it:
 //
 //   - requires len(buf) to be non-zero,
 //   - calls readStrict instead,
@@ -94,9 +94,9 @@ func readStrict(r io.Reader, buf []byte) (n int, err error) {
 //     except when the error is EOF,
 //   - if the buffer is completely filled, checks that the next read from
 //     the reader triggers an EOF.
-func readFullEOF(r io.Reader, buf []byte) (n int, err error) {
+func ReadFullEOF(r io.Reader, buf []byte) (n int, err error) {
 	if len(buf) == 0 {
-		return 0, errors.New("len(buf) == 0 unexpectedly in readFullEOF")
+		return 0, errors.New("len(buf) == 0 unexpectedly in ReadFullEOF")
 	}
 	for n < len(buf) && err == nil {
 		var nn int
@@ -144,7 +144,7 @@ func ReadAndClose(readStream ReadStream) (data []byte, err error) {
 	}
 	data = make([]byte, byteCount)
 	if len(data) > 0 {
-		_, err = readFullEOF(readStream, data)
+		_, err = ReadFullEOF(readStream, data)
 		if err != nil {
 			return nil, err
 		}
