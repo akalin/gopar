@@ -3,7 +3,8 @@ package hashutil
 import (
 	"bytes"
 	"crypto/md5"
-	"fmt"
+	"errors"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -29,7 +30,11 @@ func TestMD5HasherWith16k(t *testing.T) {
 		hash, hash16k := md5HashWith16k(t, input)
 		require.Equal(t, md5.Sum(input), hash)
 		expectedHash16k, _ := md5Hash16k(input)
-		require.Equal(t, expectedHash16k, hash16k)
+		foo := input
+		if len(foo) > 5 {
+			foo = foo[:5]
+		}
+		require.Equal(t, expectedHash16k, hash16k, "input is %x %d", foo, len(input))
 	}
 }
 
@@ -54,13 +59,46 @@ func TestMD5HashWith16k(t *testing.T) {
 	}
 }
 
+func TestCheckReaderMD5Hashes(t *testing.T) {
+	input := bytes.Repeat([]byte{0x5}, 17*1024)
+	hash, hash16k := md5HashWith16k(t, input)
+	require.NoError(t, checkReaderMD5Hashes(bytes.NewReader(input), hash16k, hash, false))
+	require.NoError(t, checkReaderMD5Hashes(bytes.NewReader(input), hash16k, hash, true))
+	require.Equal(t, HashMismatchError{hash, hash16k, true, false}, checkReaderMD5Hashes(bytes.NewReader(input), hash, hash, false))
+	require.Equal(t, HashMismatchError{hash16k, hash, false, false}, checkReaderMD5Hashes(bytes.NewReader(input), hash16k, hash16k, false))
+	require.Equal(t, HashMismatchError{hash, hash16k, true, true}, checkReaderMD5Hashes(bytes.NewReader(input), hash, hash, true))
+	require.Equal(t, HashMismatchError{hash16k, hash, false, true}, checkReaderMD5Hashes(bytes.NewReader(input), hash16k, hash16k, true))
+}
+
+// TODO: Remove this once we stop supporting go 1.15 and earlier.
+type errReader struct {
+	err error
+}
+
+func (r errReader) Read(p []byte) (int, error) {
+	return 0, r.err
+}
+
+func TestCheckReaderMD5HashesReaderFailure(t *testing.T) {
+	input := bytes.Repeat([]byte{0x5}, 17*1024)
+	hash, hash16k := md5HashWith16k(t, input)
+	err := errors.New("test error")
+	for _, isReconstructedData := range []bool{true, false} {
+		require.Equal(t, err, checkReaderMD5Hashes(errReader{err}, hash16k, hash, isReconstructedData))
+	}
+
+	for _, isReconstructedData := range []bool{true, false} {
+		require.Equal(t, err, checkReaderMD5Hashes(io.MultiReader(bytes.NewReader(input), errReader{err}), hash16k, hash, isReconstructedData))
+	}
+}
+
 func TestCheckMD5Hashes(t *testing.T) {
 	input := bytes.Repeat([]byte{0x5}, 17*1024)
 	hash, hash16k := md5HashWith16k(t, input)
 	require.NoError(t, CheckMD5Hashes(input, hash16k, hash, false))
 	require.NoError(t, CheckMD5Hashes(input, hash16k, hash, true))
-	require.EqualError(t, CheckMD5Hashes(input, hash, hash, false), fmt.Sprintf("hash mismatch (16k): expected=%x, actual=%x", hash, hash16k))
-	require.EqualError(t, CheckMD5Hashes(input, hash16k, hash16k, false), fmt.Sprintf("hash mismatch: expected=%x, actual=%x", hash16k, hash))
-	require.EqualError(t, CheckMD5Hashes(input, hash, hash, true), fmt.Sprintf("hash mismatch (16k) in reconstructed data: expected=%x, actual=%x", hash, hash16k))
-	require.EqualError(t, CheckMD5Hashes(input, hash16k, hash16k, true), fmt.Sprintf("hash mismatch in reconstructed data: expected=%x, actual=%x", hash16k, hash))
+	require.Equal(t, HashMismatchError{hash, hash16k, true, false}, CheckMD5Hashes(input, hash, hash, false))
+	require.Equal(t, HashMismatchError{hash16k, hash, false, false}, CheckMD5Hashes(input, hash16k, hash16k, false))
+	require.Equal(t, HashMismatchError{hash, hash16k, true, true}, CheckMD5Hashes(input, hash, hash, true))
+	require.Equal(t, HashMismatchError{hash16k, hash, false, true}, CheckMD5Hashes(input, hash16k, hash16k, true))
 }
