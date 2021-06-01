@@ -144,11 +144,12 @@ func (d *Decoder) LoadFileData() error {
 			} else if err != nil {
 				return nil, false, err
 			}
-			data, err := fs.ReadAndClose(readStream)
-			if err != nil {
-				return nil, false, err
-			} else if err := hashutil.CheckMD5Hashes(data, entry.header.Hash16k, entry.header.Hash, false); err != nil {
+			hasher := hashutil.MakeMD5HashCheckerWith16k(entry.header.Hash16k, entry.header.Hash, false)
+			data, err := fs.ReadAndClose(hashutil.TeeReadStream(readStream, hasher))
+			if _, ok := err.(hashutil.HashMismatchError); ok {
 				return nil, true, err
+			} else if err != nil {
+				return nil, false, err
 			}
 			return data, false, nil
 		}()
