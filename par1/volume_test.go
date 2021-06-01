@@ -7,11 +7,37 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestVolumeRoundTrip(t *testing.T) {
-	hash1 := [16]byte{0x1, 0x2}
-	hash2 := [16]byte{0x3, 0x4}
+var fileEntries = []fileEntry{
+	{
+		header: fileEntryHeader{
+			// Not included in volume set.
+			Status:    10,
+			FileBytes: 10,
+			Hash:      [16]byte{0x1, 0x2},
+			Hash16k:   [16]byte{0x5, 0x6},
+		},
+		filename: "filename世界.r01",
+	},
+	{
+		header: fileEntryHeader{
+			// Included in volume set.
+			Status:    11,
+			FileBytes: 10,
+			Hash:      [16]byte{0x3, 0x4},
+			Hash16k:   [16]byte{0x7, 0x8},
+		},
+		filename: "filename世界.r02",
+	},
+}
+
+func TestComputeSetHash(t *testing.T) {
 	// Only the second file is included in the volume set.
-	setHash := md5.Sum(hash2[:])
+	expectedSetHash := md5.Sum(fileEntries[1].header.Hash[:])
+	require.Equal(t, expectedSetHash, computeSetHash(fileEntries))
+}
+
+func TestVolumeRoundTrip(t *testing.T) {
+	setHash := computeSetHash(fileEntries)
 	v := volume{
 		header: header{
 			ID:            expectedID,
@@ -19,26 +45,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 			SetHash:       setHash,
 			VolumeNumber:  5,
 		},
-		entries: []fileEntry{
-			{
-				header: fileEntryHeader{
-					Status:    10,
-					FileBytes: 10,
-					Hash:      hash1,
-					Hash16k:   [16]byte{0x5, 0x6},
-				},
-				filename: "filename世界.r01",
-			},
-			{
-				header: fileEntryHeader{
-					Status:    11,
-					FileBytes: 10,
-					Hash:      hash2,
-					Hash16k:   [16]byte{0x7, 0x8},
-				},
-				filename: "filename世界.r02",
-			},
-		},
+		entries: fileEntries,
 		setHash: setHash,
 		data:    []byte{0x1, 0x2},
 	}

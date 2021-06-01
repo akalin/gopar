@@ -1,7 +1,6 @@
 package par1
 
 import (
-	"crypto/md5"
 	"errors"
 	"fmt"
 	"path"
@@ -81,7 +80,6 @@ func toSortedStrings(arr []string) []string {
 
 func buildVTemplate(t *testing.T, fs memfs.MemFS, sortedPaths []string) volume {
 	var entries []fileEntry
-	var setHashInput []byte
 	for _, path := range sortedPaths {
 		data, err := fs.ReadFile(path)
 		require.NoError(t, err)
@@ -98,14 +96,13 @@ func buildVTemplate(t *testing.T, fs memfs.MemFS, sortedPaths []string) volume {
 			filename: filepath.Base(path),
 		}
 		entries = append(entries, entry)
-		setHashInput = append(setHashInput, hash[:]...)
 	}
 
 	return volume{
 		header: header{
 			ID:            expectedID,
 			VersionNumber: makeVersionNumber(expectedVersion),
-			SetHash:       md5.Sum(setHashInput),
+			SetHash:       computeSetHash(entries),
 		},
 		entries: entries,
 	}

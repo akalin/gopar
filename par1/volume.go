@@ -24,6 +24,16 @@ type volume struct {
 
 const controlHashOffset = 0x20
 
+func computeSetHash(entries []fileEntry) [md5.Size]byte {
+	var setHashInput []byte
+	for _, entry := range entries {
+		if entry.header.Status.savedInVolumeSet() {
+			setHashInput = append(setHashInput, entry.header.Hash[:]...)
+		}
+	}
+	return md5.Sum(setHashInput)
+}
+
 func readVolume(volumeBytes []byte) (volume, error) {
 	buf := bytes.NewBuffer(volumeBytes)
 
@@ -41,19 +51,14 @@ func readVolume(volumeBytes []byte) (volume, error) {
 	// offsets and bytes.
 
 	entries := make([]fileEntry, header.FileCount)
-	var setHashInput []byte
 	for i := uint64(0); i < header.FileCount; i++ {
 		var err error
 		entries[i], err = readFileEntry(buf)
 		if err != nil {
 			return volume{}, err
 		}
-
-		if entries[i].header.Status.savedInVolumeSet() {
-			setHashInput = append(setHashInput, entries[i].header.Hash[:]...)
-		}
 	}
-	setHash := md5.Sum(setHashInput)
+	setHash := computeSetHash(entries)
 
 	data, err := ioutil.ReadAll(buf)
 	if err != nil {

@@ -1,7 +1,6 @@
 package par1
 
 import (
-	"crypto/md5"
 	"errors"
 	"fmt"
 	"path"
@@ -108,7 +107,6 @@ func (e *Encoder) ComputeParityData() error {
 
 func (e *Encoder) Write(indexPath string) error {
 	var entries []fileEntry
-	var setHashInput []byte
 	for i, k := range e.filePaths {
 		data := e.fileData[i]
 		var status fileEntryStatus
@@ -124,14 +122,13 @@ func (e *Encoder) Write(indexPath string) error {
 			filename: filepath.Base(k),
 		}
 		entries = append(entries, entry)
-		setHashInput = append(setHashInput, hash[:]...)
 	}
 
 	vTemplate := volume{
 		header: header{
 			ID:            expectedID,
 			VersionNumber: makeVersionNumber(expectedVersion),
-			SetHash:       md5.Sum(setHashInput),
+			SetHash:       computeSetHash(entries),
 		},
 		entries: entries,
 	}
