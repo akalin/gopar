@@ -17,6 +17,22 @@ var testInputs = [][]byte{
 	bytes.Repeat([]byte{0x4}, 16*1024+1),
 }
 
+func md5HashWith16k(t *testing.T, data []byte) (hash [md5.Size]byte, hash16k [md5.Size]byte) {
+	md5Hasher := MakeMD5HasherWith16k()
+	_, err := md5Hasher.Write(data)
+	require.NoError(t, err)
+	return md5Hasher.Hashes()
+}
+
+func TestMD5HasherWith16k(t *testing.T) {
+	for _, input := range testInputs {
+		hash, hash16k := md5HashWith16k(t, input)
+		require.Equal(t, md5.Sum(input), hash)
+		expectedHash16k, _ := md5Hash16k(input)
+		require.Equal(t, expectedHash16k, hash16k)
+	}
+}
+
 func TestMD5Hash16k(t *testing.T) {
 	for _, input := range testInputs {
 		hash16k, h := md5Hash16k(input)
@@ -40,7 +56,7 @@ func TestMD5HashWith16k(t *testing.T) {
 
 func TestCheckMD5Hashes(t *testing.T) {
 	input := bytes.Repeat([]byte{0x5}, 17*1024)
-	hash, hash16k := MD5HashWith16k(input)
+	hash, hash16k := md5HashWith16k(t, input)
 	require.NoError(t, CheckMD5Hashes(input, hash16k, hash, false))
 	require.NoError(t, CheckMD5Hashes(input, hash16k, hash, true))
 	require.EqualError(t, CheckMD5Hashes(input, hash, hash, false), fmt.Sprintf("hash mismatch (16k): expected=%x, actual=%x", hash, hash16k))
