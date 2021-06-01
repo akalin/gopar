@@ -11,6 +11,12 @@ import (
 	"github.com/klauspost/reedsolomon"
 )
 
+type fileInfo struct {
+	data      []byte
+	byteCount int
+	hasher    *hashutil.MD5HasherWith16k
+}
+
 // An Encoder keeps track of all information needed to create parity
 // volumes for a set of data files, and write them out to parity files
 // (.PAR, .P00, .P01, etc.).
@@ -22,7 +28,7 @@ type Encoder struct {
 	volumeCount int
 
 	shardByteCount int
-	fileData       [][]byte
+	fileData       []fileInfo
 	parityData     [][]byte
 }
 
@@ -55,23 +61,24 @@ func NewEncoder(delegate EncoderDelegate, filePaths []string, volumeCount int) (
 // LoadFileData loads the file data into memory.
 func (e *Encoder) LoadFileData() error {
 	shardByteCount := 0
-	fileData := make([][]byte, len(e.filePaths))
+	fileData := make([]fileInfo, len(e.filePaths))
 	for i, path := range e.filePaths {
+		hasher := hashutil.MakeMD5HasherWith16k()
 		data, err := func() ([]byte, error) {
 			readStream, err := e.fs.GetReadStream(path)
 			if err != nil {
 				return nil, err
 			}
-			return fs.ReadAndClose(readStream)
+			return fs.ReadAndClose(hashutil.TeeReadStream(readStream, hasher))
 		}()
 		e.delegate.OnDataFileLoad(i+1, len(e.filePaths), path, len(data), err)
 		if err != nil {
 			return err
 		}
 
-		fileData[i] = data
-		if len(fileData[i]) > shardByteCount {
-			shardByteCount = len(fileData[i])
+		fileData[i] = fileInfo{data, len(data), hasher}
+		if len(data) > shardByteCount {
+			shardByteCount = len(data)
 		}
 	}
 
@@ -82,9 +89,9 @@ func (e *Encoder) LoadFileData() error {
 
 func (e *Encoder) buildShards() [][]byte {
 	shards := make([][]byte, len(e.fileData)+e.volumeCount)
-	for i, data := range e.fileData {
-		padding := make([]byte, e.shardByteCount-len(data))
-		shards[i] = append(data, padding...)
+	for i, info := range e.fileData {
+		padding := make([]byte, e.shardByteCount-info.byteCount)
+		shards[i] = append(info.data, padding...)
 	}
 
 	for i := 0; i < e.volumeCount; i++ {
@@ -115,14 +122,14 @@ func (e *Encoder) ComputeParityData() error {
 func (e *Encoder) Write(indexPath string) error {
 	var entries []fileEntry
 	for i, k := range e.filePaths {
-		data := e.fileData[i]
+		info := e.fileData[i]
 		var status fileEntryStatus
 		status.setSavedInVolumeSet(true)
-		hash, hash16k := hashutil.MD5HashWith16k(data)
+		hash, hash16k := info.hasher.Hashes()
 		entry := fileEntry{
 			header: fileEntryHeader{
 				Status:    status,
-				FileBytes: uint64(len(data)),
+				FileBytes: uint64(info.byteCount),
 				Hash:      hash,
 				Hash16k:   hash16k,
 			},

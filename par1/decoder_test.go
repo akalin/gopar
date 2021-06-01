@@ -60,13 +60,14 @@ func toSortedStrings(arr []string) []string {
 func buildVTemplate(t *testing.T, memFS memfs.MemFS, sortedPaths []string) volume {
 	var entries []fileEntry
 	for _, path := range sortedPaths {
+		hasher := hashutil.MakeMD5HasherWith16k()
 		readStream, err := memFS.GetReadStream(path)
 		require.NoError(t, err)
-		data, err := fs.ReadAndClose(readStream)
+		data, err := fs.ReadAndClose(hashutil.TeeReadStream(readStream, hasher))
 		require.NoError(t, err)
 		var status fileEntryStatus
 		status.setSavedInVolumeSet(true)
-		hash, hash16k := hashutil.MD5HashWith16k(data)
+		hash, hash16k := hasher.Hashes()
 		entry := fileEntry{
 			header: fileEntryHeader{
 				Status:    status,
