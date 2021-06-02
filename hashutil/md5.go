@@ -116,16 +116,6 @@ func md5Hash16k(data []byte) (hash16k [md5.Size]byte, h hash.Hash) {
 	return hash16k, h
 }
 
-// MD5HashWith16k returns the MD5 hash of the input, as well as the
-// MD5 hash of the first 16k bytes of the input, or the MD5 hash of
-// the full input again if it has fewer than 16k bytes.
-func MD5HashWith16k(data []byte) (hash [md5.Size]byte, hash16k [md5.Size]byte) {
-	h := MakeMD5HasherWith16k()
-	// Assign to _ to silence errcheck.
-	_, _ = h.Write(data)
-	return h.Hashes()
-}
-
 // A HashMismatchError is an error returned when a hash check fails in
 // the io.WriteCloser given by MakeMD5HashCheckerWith16k.
 type HashMismatchError struct {
