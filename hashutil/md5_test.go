@@ -50,15 +50,6 @@ func TestMD5Hash16k(t *testing.T) {
 	}
 }
 
-func TestMD5HashWith16k(t *testing.T) {
-	for _, input := range testInputs {
-		hash, hash16k := MD5HashWith16k(input)
-		require.Equal(t, md5.Sum(input), hash)
-		expectedHash16k, _ := md5Hash16k(input)
-		require.Equal(t, expectedHash16k, hash16k)
-	}
-}
-
 func TestCheckReaderMD5Hashes(t *testing.T) {
 	input := bytes.Repeat([]byte{0x5}, 17*1024)
 	hash, hash16k := md5HashWith16k(t, input)
