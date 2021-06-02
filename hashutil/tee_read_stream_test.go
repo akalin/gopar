@@ -2,7 +2,7 @@ package hashutil
 
 import (
 	"bytes"
-	"errors"
+	"fmt"
 	"io"
 	"testing"
 
@@ -13,13 +13,16 @@ import (
 
 type closeChecker struct {
 	closed bool
+	name   string
 }
 
-var errClosedTwice error = errors.New("closed twice")
+func (c closeChecker) errClosedTwice() error {
+	return fmt.Errorf("closed twice (name=%s)", c.name)
+}
 
 func (c *closeChecker) Close() error {
 	if c.closed {
-		return errClosedTwice
+		return c.errClosedTwice()
 	}
 	c.closed = true
 	return nil
@@ -35,7 +38,7 @@ func (trs *testReadStream) Close() error {
 }
 
 func newTestReadStream(buf []byte) *testReadStream {
-	return &testReadStream{memfs.MakeReadStream(buf), closeChecker{}}
+	return &testReadStream{memfs.MakeReadStream(buf), closeChecker{name: "testReadStream"}}
 }
 
 func TestTeeReadStream(t *testing.T) {
@@ -62,7 +65,7 @@ func TestTeeReadStream(t *testing.T) {
 	require.NoError(t, r.Close())
 	require.True(t, trs.closed)
 
-	require.Equal(t, errClosedTwice, r.Close())
+	require.Equal(t, trs.errClosedTwice(), r.Close())
 	require.True(t, trs.closed)
 }
 
@@ -80,4 +83,67 @@ func TestTeeReadStreamWriterError(t *testing.T) {
 
 	require.NoError(t, r.Close())
 	require.True(t, trs.closed)
+}
+
+type testWriteCloser struct {
+	io.Writer
+	closeChecker
+}
+
+func newTestWriteCloser() testWriteCloser {
+	return testWriteCloser{new(bytes.Buffer), closeChecker{name: "testWriteCloser"}}
+}
+
+func TestTeeReadStreamWriteCloser(t *testing.T) {
+	src := []byte("hello, world")
+	dst := make([]byte, len(src))
+	trs := newTestReadStream(src)
+	twc := newTestWriteCloser()
+	r := TeeReadStream(trs, &twc)
+
+	n, err := fs.ReadFullEOF(r, dst)
+	require.NoError(t, err)
+	require.Equal(t, len(src), n)
+	require.Equal(t, src, dst)
+	require.False(t, trs.closed)
+	require.False(t, twc.closed)
+
+	require.NoError(t, r.Close())
+	require.True(t, trs.closed)
+	require.True(t, twc.closed)
+
+	require.Equal(t, trs.errClosedTwice(), r.Close())
+	require.True(t, trs.closed)
+	require.True(t, twc.closed)
+}
+
+func TestTeeReadStreamWriteCloserClose(t *testing.T) {
+	src := []byte("hello, world")
+	trs := newTestReadStream(src)
+	twc := newTestWriteCloser()
+	r := TeeReadStream(trs, &twc)
+
+	trs.closed = true
+	twc.closed = true
+	require.Equal(t, trs.errClosedTwice(), r.Close())
+	require.True(t, trs.closed)
+	require.True(t, twc.closed)
+
+	trs.closed = true
+	twc.closed = false
+	require.Equal(t, trs.errClosedTwice(), r.Close())
+	require.True(t, trs.closed)
+	require.True(t, twc.closed)
+
+	trs.closed = false
+	twc.closed = true
+	require.Equal(t, twc.errClosedTwice(), r.Close())
+	require.True(t, trs.closed)
+	require.True(t, twc.closed)
+
+	trs.closed = false
+	twc.closed = false
+	require.NoError(t, r.Close())
+	require.True(t, trs.closed)
+	require.True(t, twc.closed)
 }

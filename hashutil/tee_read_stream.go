@@ -22,7 +22,15 @@ func (t teeReadStream) Read(p []byte) (n int, err error) {
 }
 
 func (t teeReadStream) Close() error {
-	return t.r.Close()
+	rErr := t.r.Close()
+	var wErr error
+	if writeCloser, ok := t.w.(io.Closer); ok {
+		wErr = writeCloser.Close()
+	}
+	if rErr != nil {
+		return rErr
+	}
+	return wErr
 }
 
 func (t teeReadStream) ByteCount() int64 {
