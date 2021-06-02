@@ -350,19 +350,23 @@ func (d *Decoder) fillFileIntegrityInfos(checksumToLocation checksumShardLocatio
 	} else if err != nil {
 		return 0, 0, 0, err
 	}
-	data, err := fs.ReadAndClose(readStream)
-	if err != nil {
+	hasher := hashutil.MakeMD5HashCheckerWith16k(info.hash16k, info.hash, false)
+	data, err := fs.ReadAndClose(hashutil.TeeReadStream(readStream, hasher))
+	hashErr, ok := err.(hashutil.HashMismatchError)
+	if ok {
+		err = nil
+	} else if err != nil {
 		return len(data), 0, 0, nil
 	}
 
-	hits, misses := fillShardInfos(d.sliceByteCount, data, checksumToLocation, info.fileID, fileIntegrityInfos, fileIDIndices)
-
-	hashErr := hashutil.CheckMD5Hashes(data, info.hash16k, info.hash, false)
-	hashMismatch := hashErr != nil
-	fileIntegrityInfos[i].hashMismatch = hashMismatch
-	if hashMismatch {
+	if ok {
+		fileIntegrityInfos[i].hashMismatch = true
 		d.delegate.OnDetectDataFileHashMismatch(info.fileID, path, hashErr)
+	} else {
+		fileIntegrityInfos[i].hashMismatch = false
 	}
+
+	hits, misses := fillShardInfos(d.sliceByteCount, data, checksumToLocation, info.fileID, fileIntegrityInfos, fileIDIndices)
 
 	hasWrongByteCount := len(data) != info.byteCount
 	fileIntegrityInfos[i].hasWrongByteCount = hasWrongByteCount
