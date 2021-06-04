@@ -149,7 +149,7 @@ func (e *Encoder) Write(indexPath string) error {
 
 	indexVolume := vTemplate
 	indexVolume.header.VolumeNumber = 0
-	indexVolumeBytes, err := writeVolume(indexVolume)
+	indexVolumeBytes, err := writeVolume(indexVolume, nil)
 	if err != nil {
 		return err
 	}
@@ -166,7 +166,7 @@ func (e *Encoder) Write(indexPath string) error {
 		}
 		return fs.WriteAndClose(writeStream, indexVolumeBytes)
 	}()
-	e.delegate.OnVolumeFileWrite(0, len(e.parityData), realIndexPath, len(indexVolume.data), len(indexVolumeBytes), err)
+	e.delegate.OnVolumeFileWrite(0, len(e.parityData), realIndexPath, 0, len(indexVolumeBytes), err)
 	if err != nil {
 		return err
 	}
@@ -174,8 +174,7 @@ func (e *Encoder) Write(indexPath string) error {
 	for i, parityShard := range e.parityData {
 		vol := vTemplate
 		vol.header.VolumeNumber = uint64(i + 1)
-		vol.data = parityShard
-		volBytes, err := writeVolume(vol)
+		volBytes, err := writeVolume(vol, parityShard)
 		if err != nil {
 			return err
 		}
@@ -189,7 +188,7 @@ func (e *Encoder) Write(indexPath string) error {
 			}
 			return fs.WriteAndClose(writeStream, volBytes)
 		}()
-		e.delegate.OnVolumeFileWrite(i+1, len(e.parityData), volumePath, len(vol.data), len(volBytes), err)
+		e.delegate.OnVolumeFileWrite(i+1, len(e.parityData), volumePath, len(parityShard), len(volBytes), err)
 		if err != nil {
 			return err
 		}

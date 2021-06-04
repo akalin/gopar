@@ -19,7 +19,6 @@ import (
 type volume struct {
 	header  header
 	entries []fileEntry
-	data    []byte
 }
 
 const controlHashOffset = 0x20
@@ -44,19 +43,9 @@ func bytesRemaining(readStream fs.ReadStream) int64 {
 
 const maxVolumeCount = 256
 
+// When readVolume returns successfully, readStream is at the data
+// portion.
 func readVolume(readStream fs.ReadStream) (v volume, err error) {
-	defer func() {
-		if readStream != nil {
-			closeErr := readStream.Close()
-			if err == nil {
-				err = closeErr
-				if err != nil {
-					v = volume{}
-				}
-			}
-		}
-	}()
-
 	var headerBytes [headerByteCount]byte
 	_, err = fs.ReadFull(readStream, headerBytes[:])
 	if err != nil {
@@ -124,16 +113,10 @@ func readVolume(readStream fs.ReadStream) (v volume, err error) {
 		return volume{}, fmt.Errorf("have %d remaining data bytes, expected %d", remainingBytes, headerRemainingBytes)
 	}
 
-	data, err := fs.ReadAndClose(readStream)
-	readStream = nil
-	if err != nil {
-		return volume{}, err
-	}
-
-	return volume{header, entries, data}, nil
+	return volume{header, entries}, nil
 }
 
-func writeVolume(v volume) ([]byte, error) {
+func writeVolume(v volume, data []byte) ([]byte, error) {
 	var restData []byte
 	for _, entry := range v.entries {
 		fileEntryData, err := writeFileEntry(entry)
@@ -142,16 +125,16 @@ func writeVolume(v volume) ([]byte, error) {
 		}
 		restData = append(restData, fileEntryData...)
 	}
-	restData = append(restData, v.data...)
+	restData = append(restData, data...)
 
 	header := v.header
 	header.FileCount = uint64(len(v.entries))
 	header.FileListOffset = expectedFileListOffset
-	header.FileListBytes = uint64(len(restData) - len(v.data))
+	header.FileListBytes = uint64(len(restData) - len(data))
 	// We'll run out of memory in building restData well before
 	// the calculation below can overflow.
 	header.DataOffset = header.FileListOffset + header.FileListBytes
-	header.DataBytes = uint64(len(v.data))
+	header.DataBytes = uint64(len(data))
 
 	headerData, err := writeHeader(header)
 	if err != nil {

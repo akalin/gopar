@@ -123,8 +123,7 @@ func buildPARData(t *testing.T, fs memfs.MemFS, parityShardCount int) {
 
 	indexVolume := vTemplate
 	indexVolume.header.VolumeNumber = 0
-	indexVolume.data = []byte{0x1, 0x2}
-	indexVolumeBytes, err := writeVolume(indexVolume)
+	indexVolumeBytes, err := writeVolume(indexVolume, []byte{0x1, 0x2})
 	require.NoError(t, err)
 
 	firstPath := sortedPaths[0]
@@ -136,8 +135,7 @@ func buildPARData(t *testing.T, fs memfs.MemFS, parityShardCount int) {
 	for i, parityShard := range shards[dataShardCount:] {
 		vol := vTemplate
 		vol.header.VolumeNumber = uint64(i + 1)
-		vol.data = parityShard
-		volBytes, err := writeVolume(vol)
+		volBytes, err := writeVolume(vol, parityShard)
 		require.NoError(t, err)
 		require.NoError(t, fs.WriteFile(fmt.Sprintf("%s.p%02d", base, i+1), volBytes))
 	}
@@ -316,9 +314,8 @@ func TestBadFilename(t *testing.T) {
 
 	indexVolume := buildVTemplate(t, fs, []string{"file.rar"})
 	indexVolume.header.VolumeNumber = 0
-	indexVolume.data = []byte{0x1, 0x2}
 	indexVolume.entries[0].filename = filepath.Join("dir", "file.rar")
-	indexVolumeBytes, err := writeVolume(indexVolume)
+	indexVolumeBytes, err := writeVolume(indexVolume, []byte{0x1, 0x2})
 	require.NoError(t, err)
 
 	require.NoError(t, fs.WriteFile("file.par", indexVolumeBytes))

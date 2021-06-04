@@ -2,6 +2,7 @@ package par1
 
 import (
 	"crypto/md5"
+	"io/ioutil"
 	"testing"
 
 	"github.com/akalin/gopar/memfs"
@@ -39,6 +40,7 @@ func TestComputeSetHash(t *testing.T) {
 
 func TestVolumeRoundTrip(t *testing.T) {
 	setHash := computeSetHash(fileEntries)
+	expectedData := []byte{0x1, 0x2}
 	v := volume{
 		header: header{
 			ID:            expectedID,
@@ -47,21 +49,23 @@ func TestVolumeRoundTrip(t *testing.T) {
 			VolumeNumber:  5,
 		},
 		entries: fileEntries,
-		data:    []byte{0x1, 0x2},
 	}
 
-	volumeBytes, err := writeVolume(v)
+	volumeBytes, err := writeVolume(v, expectedData)
 	require.NoError(t, err)
 
-	roundTripVolume, err := readVolume(memfs.MakeReadStream(volumeBytes))
+	readStream := memfs.MakeReadStream(volumeBytes)
+	roundTripVolume, err := readVolume(readStream)
+	require.NoError(t, err)
+	data, err := ioutil.ReadAll(readStream)
 	require.NoError(t, err)
 
 	v.header.ControlHash = md5.Sum(volumeBytes[controlHashOffset:])
 	v.header.FileCount = uint64(len(v.entries))
 	v.header.FileListOffset = expectedFileListOffset
-	v.header.FileListBytes = uint64(len(volumeBytes)) - expectedFileListOffset - uint64(len(v.data))
+	v.header.FileListBytes = uint64(len(volumeBytes)) - expectedFileListOffset - uint64(len(data))
 	v.header.DataOffset = v.header.FileListOffset + v.header.FileListBytes
-	v.header.DataBytes = uint64(len(v.data))
+	v.header.DataBytes = uint64(len(data))
 	for i, entry := range v.entries {
 		entryBytes, err := writeFileEntry(entry)
 		require.NoError(t, err)

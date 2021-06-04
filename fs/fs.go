@@ -89,7 +89,9 @@ type FS interface {
 	GetWriteStream(path string) (WriteStream, error)
 }
 
-func closeCloser(closer io.Closer, err *error) {
+// CloseCloser is a utility function that closes the given closer, and
+// if *err is nil, sets it to the close error.
+func CloseCloser(closer io.Closer, err *error) {
 	closeErr := closer.Close()
 	if *err == nil {
 		*err = closeErr
@@ -167,7 +169,7 @@ func ReadFullEOF(r io.Reader, buf []byte) (n int, err error) {
 //
 // TODO: Make this function unnecessary.
 func ReadAndClose(readStream ReadStream) (data []byte, err error) {
-	defer closeCloser(readStream, &err)
+	defer CloseCloser(readStream, &err)
 	bytesRemaining := readStream.ByteCount() - readStream.Offset()
 	if int64(int(bytesRemaining)) != bytesRemaining {
 		return nil, errors.New("file too big to read into memory")
@@ -187,7 +189,7 @@ func ReadAndClose(readStream ReadStream) (data []byte, err error) {
 //
 // TODO: Make this function unnecessary.
 func WriteAndClose(writeStream WriteStream, p []byte) (err error) {
-	defer closeCloser(writeStream, &err)
+	defer CloseCloser(writeStream, &err)
 	_, err = writeStream.Write(p)
 	return err
 }
