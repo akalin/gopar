@@ -1,9 +1,9 @@
 package par1
 
 import (
-	"bytes"
 	"testing"
 
+	"github.com/akalin/gopar/memfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,7 +35,8 @@ func TestFileEntryRoundTrip(t *testing.T) {
 	entryBytes, err := writeFileEntry(entry)
 	require.NoError(t, err)
 
-	roundTripEntry, err := readFileEntry(bytes.NewBuffer(entryBytes))
+	byteCount := len(entryBytes)
+	roundTripEntry, err := readFileEntry(memfs.MakeReadStream(entryBytes), byteCount)
 	require.NoError(t, err)
 
 	entry.header.EntryBytes = uint64(len(entryBytes))

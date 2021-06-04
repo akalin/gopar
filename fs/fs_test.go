@@ -23,22 +23,48 @@ func TestReadStrict(t *testing.T) {
 	require.Equal(t, 0, n)
 }
 
-func TestReadFullEOFZeroBuf(t *testing.T) {
+type readFullFunction func(io.Reader, []byte) (int, error)
+
+func runWithReadFullFunctions(t *testing.T, testFn func(*testing.T, readFullFunction)) {
+	readFullFns := []struct {
+		name string
+		fn   readFullFunction
+	}{
+		{"ReadFull", ReadFull},
+		{"ReadFullEOF", ReadFullEOF},
+	}
+	for _, pair := range readFullFns {
+		pair := pair
+		t.Run(pair.name, func(t *testing.T) {
+			testFn(t, pair.fn)
+		})
+	}
+}
+
+func testReadFullZeroBuf(t *testing.T, fn readFullFunction) {
 	r := bytes.NewReader([]byte{0x1, 0x2, 0x3})
 	buf := []byte{}
 
-	n, err := ReadFullEOF(r, buf)
-	require.EqualError(t, err, "len(buf) == 0 unexpectedly in ReadFullEOF")
+	n, err := fn(r, buf)
+	require.EqualError(t, err, "len(buf) == 0 unexpectedly in ReadFull")
 	require.Equal(t, 0, n)
 }
 
-func TestReadFullEOFUnexpectedEOF(t *testing.T) {
+func TestReadFullZeroBuf(t *testing.T) {
+	runWithReadFullFunctions(t, testReadFullZeroBuf)
+}
+
+func testReadFullUnexpectedEOF(t *testing.T, fn readFullFunction) {
 	r := bytes.NewReader([]byte{0x1, 0x2, 0x3})
 	buf := make([]byte, 4)
 
-	n, err := ReadFullEOF(r, buf)
+	n, err := fn(r, buf)
 	require.Equal(t, io.ErrUnexpectedEOF, err)
 	require.Equal(t, 3, n)
+}
+
+func TestReadFullUnexpectedEOF(t *testing.T) {
+	runWithReadFullFunctions(t, testReadFullUnexpectedEOF)
 }
 
 // TODO: Remove this and use iotest.ErrReader instead once we stop
@@ -51,23 +77,42 @@ func (r errReader) Read(p []byte) (int, error) {
 	return 0, r.err
 }
 
-func TestReadFullEOFUnexpectedEOFWithError(t *testing.T) {
+func testReadFullUnexpectedEOFWithError(t *testing.T, fn readFullFunction) {
 	r := bytes.NewReader([]byte{0x1, 0x2, 0x3})
 	buf := make([]byte, 4)
 
 	expectedErr := errors.New("test error")
-	n, err := ReadFullEOF(io.MultiReader(r, errReader{expectedErr}), buf)
+	n, err := fn(io.MultiReader(r, errReader{expectedErr}), buf)
 	require.Equal(t, expectedErr, err)
 	require.Equal(t, 3, n)
 }
 
-func TestReadFullEOFImmediateEOF(t *testing.T) {
+func TestReadFullUnexpectedEOFWithError(t *testing.T) {
+	runWithReadFullFunctions(t, testReadFullUnexpectedEOFWithError)
+}
+
+func testReadFullImmediateEOF(t *testing.T, fn readFullFunction) {
 	r := bytes.NewReader([]byte{0x1, 0x2, 0x3})
 	buf := make([]byte, 3)
 
 	// Normal behavior of r is to return 0, io.EOF from the first
 	// Read call after the last piece of data is read.
-	n, err := ReadFullEOF(iotest.DataErrReader(r), buf)
+	n, err := fn(iotest.DataErrReader(r), buf)
+	require.NoError(t, err)
+	require.Equal(t, 3, n)
+}
+
+func TestReadFullImmediateEOF(t *testing.T) {
+	runWithReadFullFunctions(t, testReadFullImmediateEOF)
+}
+
+func TestReadFullImmediateEOFWithError(t *testing.T) {
+	r := bytes.NewReader([]byte{0x1, 0x2, 0x3})
+	buf := make([]byte, 3)
+
+	expectedErr := errors.New("test error")
+	n, err := ReadFull(io.MultiReader(iotest.DataErrReader(r), errReader{expectedErr}), buf)
+	// Shouldn't reach the errReader.
 	require.NoError(t, err)
 	require.Equal(t, 3, n)
 }
@@ -82,13 +127,28 @@ func TestReadFullEOFImmediateEOFWithError(t *testing.T) {
 	require.Equal(t, 3, n)
 }
 
-func TestReadFullEOFDelayedEOF(t *testing.T) {
+func testReadFullDelayedEOF(t *testing.T, fn readFullFunction) {
 	r := bytes.NewReader([]byte{0x1, 0x2, 0x3})
 	buf := make([]byte, 3)
 
 	// Normal behavior of r is to return 0, io.EOF from the first
 	// Read call after the last piece of data is read.
-	n, err := ReadFullEOF(r, buf)
+	n, err := fn(r, buf)
+	require.NoError(t, err)
+	require.Equal(t, 3, n)
+}
+
+func TestReadFullDelayedEOF(t *testing.T) {
+	runWithReadFullFunctions(t, testReadFullDelayedEOF)
+}
+
+func TestReadFullDelayedEOFWithError(t *testing.T) {
+	r := bytes.NewReader([]byte{0x1, 0x2, 0x3})
+	buf := make([]byte, 3)
+
+	expectedErr := errors.New("test error")
+	n, err := ReadFull(io.MultiReader(r, errReader{expectedErr}), buf)
+	// Shouldn't reach the errReader.
 	require.NoError(t, err)
 	require.Equal(t, 3, n)
 }

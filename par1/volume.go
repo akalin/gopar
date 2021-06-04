@@ -5,6 +5,8 @@ import (
 	"crypto/md5"
 	"errors"
 	"io/ioutil"
+
+	"github.com/akalin/gopar/fs"
 )
 
 // A volume contains information about the volume set, and a data
@@ -38,8 +40,16 @@ func computeSetHash(entries []fileEntry) [md5.Size]byte {
 	return hash
 }
 
+// TODO: Remove this once we plumb through the fs.ReadStream to
+// readVolume.
+type readerCloser struct {
+	*bytes.Reader
+}
+
+func (r readerCloser) Close() error { return nil }
+
 func readVolume(volumeBytes []byte) (volume, error) {
-	buf := bytes.NewBuffer(volumeBytes)
+	buf := bytes.NewReader(volumeBytes)
 
 	header, err := readHeader(buf)
 	if err != nil {
@@ -57,7 +67,9 @@ func readVolume(volumeBytes []byte) (volume, error) {
 	entries := make([]fileEntry, header.FileCount)
 	for i := uint64(0); i < header.FileCount; i++ {
 		var err error
-		entries[i], err = readFileEntry(buf)
+		// TODO: Pass down a better bound.
+		maxFilenameByteCount := buf.Len()
+		entries[i], err = readFileEntry(fs.ReadReadAtCloserToStream(readerCloser{buf}, int64(buf.Len())), maxFilenameByteCount)
 		if err != nil {
 			return volume{}, err
 		}
