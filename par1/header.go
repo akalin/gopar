@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 )
 
 type versionNumber uint64
@@ -50,9 +51,9 @@ const expectedVersion uint32 = 0x00010000
 
 const expectedFileListOffset uint64 = 0x00000060
 
-func readHeader(buf *bytes.Buffer) (header, error) {
+func readHeader(r io.Reader) (header, error) {
 	var h header
-	err := binary.Read(buf, binary.LittleEndian, &h)
+	err := binary.Read(r, binary.LittleEndian, &h)
 	if err != nil {
 		return header{}, err
 	}
