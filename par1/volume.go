@@ -1,10 +1,11 @@
 package par1
 
 import (
-	"bytes"
 	"crypto/md5"
 	"errors"
-	"io/ioutil"
+	"fmt"
+
+	"io"
 
 	"github.com/akalin/gopar/fs"
 )
@@ -40,43 +41,91 @@ func computeSetHash(entries []fileEntry) [md5.Size]byte {
 	return hash
 }
 
-// TODO: Remove this once we plumb through the fs.ReadStream to
-// readVolume.
-type readerCloser struct {
-	*bytes.Reader
+func bytesRemaining(readStream fs.ReadStream) int64 {
+	return readStream.ByteCount() - readStream.Offset()
 }
 
-func (r readerCloser) Close() error { return nil }
+const maxVolumeCount = 256
 
-func readVolume(volumeBytes []byte) (volume, error) {
-	buf := bytes.NewReader(volumeBytes)
+func readVolume(readStream fs.ReadStream) (v volume, err error) {
+	defer func() {
+		if readStream != nil {
+			closeErr := readStream.Close()
+			if err == nil {
+				err = closeErr
+				if err != nil {
+					v = volume{}
+				}
+			}
+		}
+	}()
 
-	header, err := readHeader(buf)
+	var headerBytes [headerByteCount]byte
+	_, err = fs.ReadFull(readStream, headerBytes[:])
 	if err != nil {
 		return volume{}, err
 	}
 
-	controlHash := md5.Sum(volumeBytes[controlHashOffset:])
+	header, err := readHeader(headerBytes)
+	if err != nil {
+		return volume{}, err
+	}
+
+	if uint64(readStream.Offset()) != header.FileListOffset {
+		return volume{}, fmt.Errorf("at file list offset %d, expected %d", readStream.Offset(), header.FileListOffset)
+	}
+
+	remainingBytes := bytesRemaining(readStream)
+	headerRemainingBytes := header.FileListBytes + header.DataBytes
+	if uint64(remainingBytes) != headerRemainingBytes {
+		return volume{}, fmt.Errorf("have %d remaining file list + data bytes, expected %d", remainingBytes, headerRemainingBytes)
+	}
+
+	if header.FileCount > maxVolumeCount {
+		return volume{}, fmt.Errorf("file count=%d which is greater than the maximum=%d", header.FileCount, maxVolumeCount)
+	}
+
+	h := md5.New()
+	h.Write(headerBytes[controlHashOffset:])
+	// Use Copy instead of CopyN because we don't want to drop
+	// non-EOF errors even if we copy enough bytes.
+	written, err := io.Copy(h, io.NewSectionReader(readStream, readStream.Offset(), remainingBytes))
+	if err != nil {
+		return volume{}, err
+	}
+	if written < remainingBytes {
+		return volume{}, io.EOF
+	}
+	var controlHash [md5.Size]byte
+	h.Sum(controlHash[:0])
 	if controlHash != header.ControlHash {
 		return volume{}, errors.New("invalid control hash")
 	}
 
-	// TODO: Check count of files saved in volume set, and other
-	// offsets and bytes.
-
 	entries := make([]fileEntry, header.FileCount)
-	for i := uint64(0); i < header.FileCount; i++ {
+	for i := 0; i < int(header.FileCount); i++ {
 		var err error
 		// TODO: Pass down a better bound.
-		maxFilenameByteCount := buf.Len()
-		entries[i], err = readFileEntry(fs.ReadReadAtCloserToStream(readerCloser{buf}, int64(buf.Len())), maxFilenameByteCount)
+		maxFilenameByteCount := int(bytesRemaining(readStream))
+		entries[i], err = readFileEntry(readStream, maxFilenameByteCount)
 		if err != nil {
 			return volume{}, err
 		}
 	}
 	setHash := computeSetHash(entries)
 
-	data, err := ioutil.ReadAll(buf)
+	if uint64(readStream.Offset()) != header.DataOffset {
+		return volume{}, fmt.Errorf("a data offset %d, expected %d", readStream.Offset(), header.FileListOffset)
+	}
+
+	remainingBytes = bytesRemaining(readStream)
+	headerRemainingBytes = header.DataBytes
+	if uint64(remainingBytes) != headerRemainingBytes {
+		return volume{}, fmt.Errorf("have %d remaining data bytes, expected %d", remainingBytes, headerRemainingBytes)
+	}
+
+	data, err := fs.ReadAndClose(readStream)
+	readStream = nil
 	if err != nil {
 		return volume{}, err
 	}
@@ -116,5 +165,5 @@ func writeVolume(v volume) ([]byte, error) {
 		return nil, err
 	}
 
-	return append(headerData, restData...), nil
+	return append(headerData[:], restData...), nil
 }

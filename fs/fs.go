@@ -168,11 +168,11 @@ func ReadFullEOF(r io.Reader, buf []byte) (n int, err error) {
 // TODO: Make this function unnecessary.
 func ReadAndClose(readStream ReadStream) (data []byte, err error) {
 	defer closeCloser(readStream, &err)
-	byteCount := readStream.ByteCount()
-	if int64(int(byteCount)) != byteCount {
+	bytesRemaining := readStream.ByteCount() - readStream.Offset()
+	if int64(int(bytesRemaining)) != bytesRemaining {
 		return nil, errors.New("file too big to read into memory")
 	}
-	data = make([]byte, byteCount)
+	data = make([]byte, bytesRemaining)
 	if len(data) > 0 {
 		_, err = ReadFullEOF(readStream, data)
 		if err != nil {

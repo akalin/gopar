@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"testing"
 
+	"github.com/akalin/gopar/memfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,7 +54,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 	volumeBytes, err := writeVolume(v)
 	require.NoError(t, err)
 
-	roundTripVolume, err := readVolume(volumeBytes)
+	roundTripVolume, err := readVolume(memfs.MakeReadStream(volumeBytes))
 	require.NoError(t, err)
 
 	v.header.ControlHash = md5.Sum(volumeBytes[controlHashOffset:])
