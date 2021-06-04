@@ -70,12 +70,8 @@ func newDecoder(filesystem fs.FS, delegate DecoderDelegate, indexFile string) (*
 		if err != nil {
 			return volume{}, err
 		}
-		bytes, err := fs.ReadAndClose(readStream)
-		if err != nil {
-			return volume{}, err
-		}
-
-		indexVolume, err := readVolume(bytes)
+		// readVolume will close readStream.
+		indexVolume, err := readVolume(readStream)
 		if err != nil {
 			return volume{}, err
 		}
@@ -189,7 +185,7 @@ func (d *Decoder) LoadParityData() error {
 
 	// TODO: Count only files saved in volume set.
 	fileCount := d.indexVolume.header.FileCount
-	maxParityVolumeCount := 256 - fileCount
+	maxParityVolumeCount := maxVolumeCount - fileCount
 	// TODO: Support more than 99 parity volumes.
 	if maxParityVolumeCount > 99 {
 		maxParityVolumeCount = 99
@@ -207,12 +203,8 @@ func (d *Decoder) LoadParityData() error {
 			if err != nil {
 				return volume{}, 0, err
 			}
-			volumeBytes, err := fs.ReadAndClose(readStream)
-			if err != nil {
-				return volume{}, 0, err
-			}
-
-			parityVolume, err := readVolume(volumeBytes)
+			// readVolume will close readStream.
+			parityVolume, err := readVolume(readStream)
 			// TODO: Check set hash.
 			if err != nil {
 				// TODO: Relax this check.

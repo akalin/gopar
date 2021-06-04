@@ -1,11 +1,19 @@
 package par1
 
 import (
-	"bytes"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func sizeOfHeader() uint64 {
+	return uint64(reflect.TypeOf(header{}).Size())
+}
+
+func TestHeaderByteCount(t *testing.T) {
+	require.Equal(t, sizeOfHeader(), uint64(headerByteCount))
+}
 
 func TestHeaderRoundTrip(t *testing.T) {
 	h := header{
@@ -23,7 +31,7 @@ func TestHeaderRoundTrip(t *testing.T) {
 
 	headerBytes, err := writeHeader(h)
 	require.NoError(t, err)
-	roundTripHeader, err := readHeader(bytes.NewBuffer(headerBytes))
+	roundTripHeader, err := readHeader(headerBytes)
 	require.NoError(t, err)
 	require.Equal(t, h, roundTripHeader)
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 )
 
 type versionNumber uint64
@@ -39,6 +38,10 @@ type header struct {
 	DataBytes      uint64
 }
 
+const (
+	headerByteCount = 96
+)
+
 func (h header) String() string {
 	return fmt.Sprintf("header{VersionNumber:%s, ControlHash:%x, SetHash:%x, VolumeNumber:%d, FileCount:%d, FileListOffset:%d, FileListBytes:%d, DataOffset:%d, DataBytes:%d}",
 		h.VersionNumber, h.ControlHash, h.SetHash, h.VolumeNumber,
@@ -51,11 +54,15 @@ const expectedVersion uint32 = 0x00010000
 
 const expectedFileListOffset uint64 = 0x00000060
 
-func readHeader(r io.Reader) (header, error) {
+func readHeader(headerBytes [headerByteCount]byte) (header, error) {
+	r := bytes.NewReader(headerBytes[:])
 	var h header
 	err := binary.Read(r, binary.LittleEndian, &h)
 	if err != nil {
 		return header{}, err
+	}
+	if r.Len() != 0 {
+		return header{}, errors.New("headerBytes reader unexpectedly non-empty")
 	}
 
 	if h.ID != expectedID {
@@ -73,11 +80,16 @@ func readHeader(r io.Reader) (header, error) {
 	return h, nil
 }
 
-func writeHeader(h header) ([]byte, error) {
+func writeHeader(h header) ([headerByteCount]byte, error) {
 	buf := bytes.NewBuffer(nil)
 	err := binary.Write(buf, binary.LittleEndian, h)
 	if err != nil {
-		return nil, err
+		return [headerByteCount]byte{}, err
 	}
-	return buf.Bytes(), nil
+	if buf.Len() != headerByteCount {
+		return [headerByteCount]byte{}, errors.New("unexpected buf length")
+	}
+	var headerBytes [headerByteCount]byte
+	copy(headerBytes[:], buf.Bytes())
+	return headerBytes, nil
 }
