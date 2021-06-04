@@ -3,11 +3,12 @@ package par1
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"reflect"
 	"unicode/utf16"
 	"unicode/utf8"
+
+	"github.com/akalin/gopar/fs"
 )
 
 type fileEntryStatus uint64
@@ -98,22 +99,34 @@ func encodeUTF16LEString(s string) []byte {
 	return bs
 }
 
-func readFileEntry(buf *bytes.Buffer) (fileEntry, error) {
+func readFileEntry(readStream fs.ReadStream, maxFilenameByteCount int) (fileEntry, error) {
 	var header fileEntryHeader
-	err := binary.Read(buf, binary.LittleEndian, &header)
+	err := binary.Read(readStream, binary.LittleEndian, &header)
 	if err != nil {
 		return fileEntry{}, err
 	}
 
-	filenameByteCount := header.EntryBytes - sizeOfFileEntryHeader()
-	if filenameByteCount <= 0 || filenameByteCount%2 != 0 {
-		return fileEntry{}, errors.New("invalid entry byte count")
+	if header.EntryBytes <= sizeOfFileEntryHeader() {
+		return fileEntry{}, fmt.Errorf("entry byte count=%d too small", header.EntryBytes)
 	}
-	if filenameByteCount > uint64(buf.Len()) {
-		return fileEntry{}, errors.New("byte count mismatch")
+	filenameByteCount := header.EntryBytes - sizeOfFileEntryHeader()
+	if filenameByteCount%2 != 0 {
+		return fileEntry{}, fmt.Errorf("filename byte count=%d not even", filenameByteCount)
+	}
+	bytesRemaining := readStream.ByteCount() - readStream.Offset()
+	if filenameByteCount > uint64(bytesRemaining) {
+		return fileEntry{}, fmt.Errorf("filename byte count=%d larger than bytes remaining=%d", filenameByteCount, bytesRemaining)
+	}
+	if filenameByteCount > uint64(maxFilenameByteCount) {
+		return fileEntry{}, fmt.Errorf("filename byte count=%d larger than maximum=%d", filenameByteCount, maxFilenameByteCount)
 	}
 
-	filename := decodeUTF16LEString(buf.Next(int(filenameByteCount)))
+	buf := make([]byte, int(filenameByteCount))
+	_, err = fs.ReadFull(readStream, buf)
+	if err != nil {
+		return fileEntry{}, err
+	}
+	filename := decodeUTF16LEString(buf)
 
 	return fileEntry{header, filename}, nil
 }
