@@ -21,6 +21,10 @@ func (t teeReadStream) Read(p []byte) (n int, err error) {
 	return n, err
 }
 
+func (t teeReadStream) ReadAt(p []byte, off int64) (n int, err error) {
+	return t.r.ReadAt(p, off)
+}
+
 func (t teeReadStream) Close() error {
 	rErr := t.r.Close()
 	var wErr error
@@ -33,12 +37,17 @@ func (t teeReadStream) Close() error {
 	return wErr
 }
 
+func (t teeReadStream) Offset() int64 {
+	return t.r.Offset()
+}
+
 func (t teeReadStream) ByteCount() int64 {
 	return t.r.ByteCount()
 }
 
 // TeeReadStream is like TeeReader but it takes an fs.ReadStream
-// instead of an io.Reader.
+// instead of an io.Reader. Note that only reads through Read are
+// written to w, and not ReadAt.
 func TeeReadStream(r fs.ReadStream, w io.Writer) fs.ReadStream {
 	return teeReadStream{r, w}
 }

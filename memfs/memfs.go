@@ -76,7 +76,7 @@ func (r readerCloser) Close() error { return nil }
 
 // MakeReadStream returns a fs.ReadStream with the given data.
 func MakeReadStream(data []byte) fs.ReadStream {
-	return fs.ReadCloserToStream(readerCloser{bytes.NewReader(data)}, int64(len(data)))
+	return fs.ReadReadAtCloserToStream(readerCloser{bytes.NewReader(data)}, int64(len(data)))
 }
 
 func (mfs MemFS) getReadStream(path string) (fs.ReadStream, error) {
