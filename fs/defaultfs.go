@@ -32,7 +32,7 @@ func (fs defaultFS) getReadStream(path string) (ReadStream, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ReadCloserToStream(f, s.Size()), nil
+	return ReadReadAtCloserToStream(f, s.Size()), nil
 }
 
 // GetReadStream calls os.Open and also uses (*File).Stat to get the

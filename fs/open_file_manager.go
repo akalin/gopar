@@ -77,6 +77,22 @@ func (crs checkingReadStream) Read(p []byte) (int, error) {
 	return crs.readStream.Read(p)
 }
 
+func (crs checkingReadStream) ReadAt(p []byte, off int64) (int, error) {
+	crs.h.Helper()
+	if err := crs.verifyNotClosed(); err != nil {
+		return 0, err
+	}
+	return crs.readStream.ReadAt(p, off)
+}
+
+func (crs checkingReadStream) Offset() int64 {
+	crs.h.Helper()
+	if err := crs.verifyNotClosed(); err != nil {
+		panic(err)
+	}
+	return crs.readStream.Offset()
+}
+
 func (crs checkingReadStream) ByteCount() int64 {
 	crs.h.Helper()
 	if err := crs.verifyNotClosed(); err != nil {

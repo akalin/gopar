@@ -23,6 +23,15 @@ func (trs testReadStream) Read(p []byte) (n int, err error) {
 	return trs.rs.Read(p)
 }
 
+func (trs testReadStream) ReadAt(p []byte, off int64) (n int, err error) {
+	trs.t.Helper()
+	defer func() {
+		trs.t.Helper()
+		trs.t.Logf("ReadAt(%q, %d bytes, %d) => (%d bytes, %v)", trs.path, len(p), off, n, err)
+	}()
+	return trs.rs.ReadAt(p, off)
+}
+
 func (trs testReadStream) Close() (err error) {
 	trs.t.Helper()
 	defer func() {
@@ -30,6 +39,15 @@ func (trs testReadStream) Close() (err error) {
 		trs.t.Logf("Close(%q) => (%v)", trs.path, err)
 	}()
 	return trs.rs.Close()
+}
+
+func (trs testReadStream) Offset() (offset int64) {
+	trs.t.Helper()
+	defer func() {
+		trs.t.Helper()
+		trs.t.Logf("Offset(%q) => (%d)", trs.path, offset)
+	}()
+	return trs.rs.Offset()
 }
 
 func (trs testReadStream) ByteCount() (byteCount int64) {

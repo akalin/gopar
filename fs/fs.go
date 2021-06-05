@@ -5,6 +5,13 @@ import (
 	"io"
 )
 
+// ReadReadAtCloser is the interface that groups the basic Read,
+// ReadAt, and Close methods.
+type ReadReadAtCloser interface {
+	io.ReadCloser
+	io.ReaderAt
+}
+
 // ReadStream defines the interface for streaming file reads. This is
 // usually implemented by *os.File, but there might be other
 // implementations for testing.
@@ -12,25 +19,41 @@ type ReadStream interface {
 	// This object must not be used once it is
 	// closed. Implementations should return an error in that
 	// case, or panic if that isn't possible.
-	io.ReadCloser
-	// TODO: Once streaming is used everywhere, evaluate whether
-	// we still need this function.
+	ReadReadAtCloser
+
+	// TODO: Once streaming is used everywhere, figure out which
+	// of these functions we still need.
+
+	// Offset returns the current offset of the ReadStream, like
+	// what would be returned by a call to Seek(0, io.SeekCurrent).
+	Offset() int64
 	ByteCount() int64
 }
 
-type readCloserStream struct {
-	io.ReadCloser
+type readReadAtCloserStream struct {
+	ReadReadAtCloser
+	offset    int64
 	byteCount int64
 }
 
-func (rcs readCloserStream) ByteCount() int64 {
-	return rcs.byteCount
+func (r *readReadAtCloserStream) Read(p []byte) (n int, err error) {
+	n, err = r.ReadReadAtCloser.Read(p)
+	r.offset += int64(n)
+	return n, err
 }
 
-// ReadCloserToStream makes and returns a ReadStream out of the given
-// ReadCloser and byte count.
-func ReadCloserToStream(readCloser io.ReadCloser, byteCount int64) ReadStream {
-	return readCloserStream{readCloser, byteCount}
+func (r readReadAtCloserStream) Offset() int64 {
+	return r.offset
+}
+
+func (r readReadAtCloserStream) ByteCount() int64 {
+	return r.byteCount
+}
+
+// ReadReadAtCloserToStream makes and returns a ReadStream out of the
+// given ReadReadAtCloser and byte count.
+func ReadReadAtCloserToStream(readReadAtCloser ReadReadAtCloser, byteCount int64) ReadStream {
+	return &readReadAtCloserStream{readReadAtCloser, 0, byteCount}
 }
 
 // WriteStream defines the interface for streaming file writes. This
