@@ -64,6 +64,26 @@ func (DoNothingDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount
 func (DoNothingDecoderDelegate) OnVolumeFileLoad(i uint64, path string, setHash [16]byte, dataByteCount int, err error) {
 }
 
+func newDecoder(fs fs.FS, delegate DecoderDelegate, indexFile string) *Decoder {
+	return &Decoder{fs, delegate, indexFile, volume{}, nil, 0, nil}
+}
+
+// NewDecoder reads the given index file, which usually has a .PAR
+// extension.
+func NewDecoder(delegate DecoderDelegate, indexFile string) *Decoder {
+	return newDecoder(fs.MakeDefaultFS(), delegate, indexFile)
+}
+
+func (d *Decoder) getFilePath(entry fileEntry) (string, error) {
+	filename := entry.filename
+	if filepath.Base(filename) != filename {
+		return "", errors.New("bad filename")
+	}
+
+	basePath := filepath.Dir(d.indexFile)
+	return filepath.Join(basePath, filename), nil
+}
+
 func readAndCheckVolume(filesystem fs.FS, path string, checkVolumeFn func(volume) error) (v volume, data []byte, err error) {
 	readStream, err := filesystem.GetReadStream(path)
 	if err != nil {
@@ -102,44 +122,25 @@ func checkIndexVolume(indexVolume volume) error {
 	return nil
 }
 
-func newDecoder(filesystem fs.FS, delegate DecoderDelegate, indexFile string) (decoder *Decoder, err error) {
-	indexVolume, data, err := readAndCheckVolume(filesystem, indexFile, checkIndexVolume)
-	delegate.OnVolumeFileLoad(0, indexFile, indexVolume.header.SetHash, len(data), err)
+// LoadIndexFile reads the data from the index file.
+func (d *Decoder) LoadIndexFile() error {
+	indexVolume, data, err := readAndCheckVolume(d.fs, d.indexFile, checkIndexVolume)
+	d.delegate.OnVolumeFileLoad(0, d.indexFile, indexVolume.header.SetHash, len(data), err)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	delegate.OnHeaderLoad(indexVolume.header.String())
+	d.delegate.OnHeaderLoad(indexVolume.header.String())
 	for i, entry := range indexVolume.entries {
-		delegate.OnFileEntryLoad(i+1, len(indexVolume.entries), entry.filename, entry.header.String())
+		d.delegate.OnFileEntryLoad(i+1, len(indexVolume.entries), entry.filename, entry.header.String())
 	}
 
 	// The comment could be in any encoding, so just pass it
 	// through as bytes.
-	delegate.OnCommentLoad(data)
+	d.delegate.OnCommentLoad(data)
 
-	return &Decoder{
-		filesystem, delegate,
-		indexFile, indexVolume,
-		nil,
-		0, nil,
-	}, nil
-}
-
-// NewDecoder reads the given index file, which usually has a .PAR
-// extension.
-func NewDecoder(delegate DecoderDelegate, indexFile string) (*Decoder, error) {
-	return newDecoder(fs.MakeDefaultFS(), delegate, indexFile)
-}
-
-func (d *Decoder) getFilePath(entry fileEntry) (string, error) {
-	filename := entry.filename
-	if filepath.Base(filename) != filename {
-		return "", errors.New("bad filename")
-	}
-
-	basePath := filepath.Dir(d.indexFile)
-	return filepath.Join(basePath, filename), nil
+	d.indexVolume = indexVolume
+	return nil
 }
 
 // LoadFileData loads existing file data into memory.

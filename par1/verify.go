@@ -53,7 +53,9 @@ func verify(fs fs.FS, parPath string, options VerifyOptions) (VerifyResult, erro
 		delegate = DoNothingVerifyDelegate{}
 	}
 
-	decoder, err := newDecoder(fs, delegate, parPath)
+	decoder := newDecoder(fs, delegate, parPath)
+
+	err = decoder.LoadIndexFile()
 	if err != nil {
 		return VerifyResult{}, err
 	}

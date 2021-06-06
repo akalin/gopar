@@ -51,7 +51,9 @@ func repair(fs fs.FS, parPath string, options RepairOptions) (RepairResult, erro
 		delegate = DoNothingRepairDelegate{}
 	}
 
-	decoder, err := newDecoder(fs, delegate, parPath)
+	decoder := newDecoder(fs, delegate, parPath)
+
+	err = decoder.LoadIndexFile()
 	if err != nil {
 		return RepairResult{}, err
 	}

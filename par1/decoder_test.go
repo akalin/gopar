@@ -151,7 +151,7 @@ func makeDecoderMemFS(workingDir string) memfs.MemFS {
 	})
 }
 
-func newDecoderForTest(t *testing.T, fs memfs.MemFS, indexFile string) (*Decoder, error) {
+func newDecoderForTest(t *testing.T, fs memfs.MemFS, indexFile string) *Decoder {
 	return newDecoder(testfs.MakeTestFS(t, fs), testDecoderDelegate{t}, indexFile)
 }
 
@@ -178,7 +178,8 @@ func testFileCounts(t *testing.T, workingDir string, useAbsPath bool) {
 	if useAbsPath {
 		parPath = filepath.Join(workingDir, parPath)
 	}
-	decoder, err := newDecoderForTest(t, fs, parPath)
+	decoder := newDecoderForTest(t, fs, parPath)
+	err := decoder.LoadIndexFile()
 	require.NoError(t, err)
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
@@ -259,7 +260,8 @@ func testVerifyAllData(t *testing.T, workingDir string, useAbsPath bool) {
 	if useAbsPath {
 		parPath = filepath.Join(workingDir, parPath)
 	}
-	decoder, err := newDecoderForTest(t, fs, parPath)
+	decoder := newDecoderForTest(t, fs, parPath)
+	err := decoder.LoadIndexFile()
 	require.NoError(t, err)
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
@@ -320,7 +322,8 @@ func TestBadFilename(t *testing.T) {
 
 	require.NoError(t, fs.WriteFile("file.par", indexVolumeBytes))
 
-	decoder, err := newDecoderForTest(t, fs, "file.par")
+	decoder := newDecoderForTest(t, fs, "file.par")
+	err = decoder.LoadIndexFile()
 	require.NoError(t, err)
 	err = decoder.LoadFileData()
 	require.Equal(t, errors.New("bad filename"), err)
@@ -340,7 +343,8 @@ func TestSetHashMismatch(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fs1.WriteFile("file.p02", p02Data))
 
-	decoder, err := newDecoderForTest(t, fs1, "file.par")
+	decoder := newDecoderForTest(t, fs1, "file.par")
+	err = decoder.LoadIndexFile()
 	require.NoError(t, err)
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
@@ -357,8 +361,7 @@ func testDecoderRepair(t *testing.T, workingDir string, useAbsPath bool) {
 	if useAbsPath {
 		parPath = filepath.Join(workingDir, parPath)
 	}
-	decoder, err := newDecoderForTest(t, fs, parPath)
-	require.NoError(t, err)
+	decoder := newDecoderForTest(t, fs, parPath)
 
 	r02Data, err := fs.ReadFile("file.r02")
 	require.NoError(t, err)
@@ -370,6 +373,8 @@ func testDecoderRepair(t *testing.T, workingDir string, useAbsPath bool) {
 	r04Data, err := fs.RemoveFile("file.r04")
 	require.NoError(t, err)
 
+	err = decoder.LoadIndexFile()
+	require.NoError(t, err)
 	err = decoder.LoadFileData()
 	require.NoError(t, err)
 	err = decoder.LoadParityData()
