@@ -47,7 +47,6 @@ func TestVolumeRoundTrip(t *testing.T) {
 			VolumeNumber:  5,
 		},
 		entries: fileEntries,
-		setHash: setHash,
 		data:    []byte{0x1, 0x2},
 	}
 

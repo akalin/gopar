@@ -37,7 +37,7 @@ type DecoderDelegate interface {
 	OnCommentLoad(comment []byte)
 	OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error)
 	OnDataFileWrite(i, n int, path string, byteCount int, err error)
-	OnVolumeFileLoad(i uint64, path string, storedSetHash, computedSetHash [16]byte, dataByteCount int, err error)
+	OnVolumeFileLoad(i uint64, path string, setHash [16]byte, dataByteCount int, err error)
 }
 
 // DoNothingDecoderDelegate is an implementation of DecoderDelegate
@@ -61,7 +61,7 @@ func (DoNothingDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount 
 func (DoNothingDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {}
 
 // OnVolumeFileLoad implements the DecoderDelegate interface.
-func (DoNothingDecoderDelegate) OnVolumeFileLoad(i uint64, path string, storedSetHash, computedSetHash [16]byte, dataByteCount int, err error) {
+func (DoNothingDecoderDelegate) OnVolumeFileLoad(i uint64, path string, setHash [16]byte, dataByteCount int, err error) {
 }
 
 func newDecoder(filesystem fs.FS, delegate DecoderDelegate, indexFile string) (*Decoder, error) {
@@ -82,7 +82,7 @@ func newDecoder(filesystem fs.FS, delegate DecoderDelegate, indexFile string) (*
 		}
 		return indexVolume, nil
 	}()
-	delegate.OnVolumeFileLoad(0, indexFile, indexVolume.header.SetHash, indexVolume.setHash, len(indexVolume.data), err)
+	delegate.OnVolumeFileLoad(0, indexFile, indexVolume.header.SetHash, len(indexVolume.data), err)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +205,6 @@ func (d *Decoder) LoadParityData() error {
 			}
 			// readVolume will close readStream.
 			parityVolume, err := readVolume(readStream)
-			// TODO: Check set hash.
 			if err != nil {
 				// TODO: Relax this check.
 				return volume{}, 0, err
@@ -235,7 +234,7 @@ func (d *Decoder) LoadParityData() error {
 			}
 			return parityVolume, byteCount, nil
 		}()
-		d.delegate.OnVolumeFileLoad(volumeNumber, volumePath, parityVolume.header.SetHash, parityVolume.setHash, byteCount, err)
+		d.delegate.OnVolumeFileLoad(volumeNumber, volumePath, parityVolume.header.SetHash, byteCount, err)
 		if os.IsNotExist(err) {
 			continue
 		} else if err != nil {

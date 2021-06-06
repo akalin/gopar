@@ -45,9 +45,9 @@ func (d testDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount in
 	d.t.Logf("OnDataFileWrite(%d, %d, %s, byteCount=%d, %v)", i, n, path, byteCount, err)
 }
 
-func (d testDecoderDelegate) OnVolumeFileLoad(i uint64, path string, storedSetHash, computedSetHash [16]byte, dataByteCount int, err error) {
+func (d testDecoderDelegate) OnVolumeFileLoad(i uint64, path string, setHash [16]byte, dataByteCount int, err error) {
 	d.t.Helper()
-	d.t.Logf("OnVolumeFileLoad(%d, %s, storedSetHash=%x, computedSetHash=%x, dataByteCount=%d, %v)", i, path, storedSetHash, computedSetHash, dataByteCount, err)
+	d.t.Logf("OnVolumeFileLoad(%d, %s, setHash=%x, dataByteCount=%d, %v)", i, path, setHash, dataByteCount, err)
 }
 
 func toSortedStrings(arr []string) []string {
