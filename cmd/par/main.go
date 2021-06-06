@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/signal"
@@ -12,6 +13,7 @@ import (
 	"runtime/pprof"
 	"strings"
 
+	"github.com/akalin/gopar/fs"
 	"github.com/akalin/gopar/par1"
 	"github.com/akalin/gopar/par2"
 	"github.com/akalin/gopar/par2cmdline"
@@ -50,8 +52,27 @@ func (par1LogDecoderDelegate) OnFileEntryLoad(i, n int, filename, entryInfo stri
 	fmt.Printf("[%d/%d] Loaded entry for %q: %s\n", i, n, filename, entryInfo)
 }
 
-func (par1LogDecoderDelegate) OnCommentLoad(comment []byte) {
-	fmt.Printf("Comment: %q\n", comment)
+func (par1LogDecoderDelegate) OnCommentLoad(commentReader io.Reader, commentByteCount int64) {
+	// TODO: Impose a limit on commentByteCount.
+	comment := make([]byte, commentByteCount)
+	var err error
+	if len(comment) > 0 {
+		var n int
+		n, err = fs.ReadFullEOF(commentReader, comment)
+		comment = comment[:n]
+	}
+	// The comment could be in any encoding, so just print it out
+	// as a quoted string.
+	if err != nil {
+		fmt.Printf("Error encountered when reading comment: %+v; ", err)
+		if int64(len(comment)) < commentByteCount {
+			fmt.Printf("partial comment (%d/%d bytes): %q\n", comment, len(comment), commentByteCount)
+		} else {
+			fmt.Printf("comment: %q\n", comment)
+		}
+	} else {
+		fmt.Printf("Comment: %q\n", comment)
+	}
 }
 
 func (par1LogDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error) {
@@ -74,7 +95,7 @@ func (par1LogDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount i
 	}
 }
 
-func (par1LogDecoderDelegate) OnVolumeFileLoad(i uint64, path string, setHash [16]byte, dataByteCount int, err error) {
+func (par1LogDecoderDelegate) OnVolumeFileLoad(i uint64, path string, setHash [16]byte, dataByteCount int64, err error) {
 	if os.IsNotExist(err) {
 		// Do nothing.
 	} else if err != nil {

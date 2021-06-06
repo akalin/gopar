@@ -3,6 +3,7 @@ package par1
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -34,10 +35,10 @@ type Decoder struct {
 type DecoderDelegate interface {
 	OnHeaderLoad(headerInfo string)
 	OnFileEntryLoad(i, n int, filename, entryInfo string)
-	OnCommentLoad(comment []byte)
+	OnCommentLoad(commentReader io.Reader, commentByteCount int64)
 	OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error)
 	OnDataFileWrite(i, n int, path string, byteCount int, err error)
-	OnVolumeFileLoad(i uint64, path string, setHash [16]byte, dataByteCount int, err error)
+	OnVolumeFileLoad(i uint64, path string, setHash [16]byte, dataByteCount int64, err error)
 }
 
 // DoNothingDecoderDelegate is an implementation of DecoderDelegate
@@ -51,7 +52,7 @@ func (DoNothingDecoderDelegate) OnHeaderLoad(headerInfo string) {}
 func (DoNothingDecoderDelegate) OnFileEntryLoad(i, n int, filename, entryInfo string) {}
 
 // OnCommentLoad implements the DecoderDelegate interface.
-func (DoNothingDecoderDelegate) OnCommentLoad(comment []byte) {}
+func (DoNothingDecoderDelegate) OnCommentLoad(commentReader io.Reader, commentByteCount int64) {}
 
 // OnDataFileLoad implements the DecoderDelegate interface.
 func (DoNothingDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount int, corrupt bool, err error) {
@@ -61,7 +62,7 @@ func (DoNothingDecoderDelegate) OnDataFileLoad(i, n int, path string, byteCount 
 func (DoNothingDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount int, err error) {}
 
 // OnVolumeFileLoad implements the DecoderDelegate interface.
-func (DoNothingDecoderDelegate) OnVolumeFileLoad(i uint64, path string, setHash [16]byte, dataByteCount int, err error) {
+func (DoNothingDecoderDelegate) OnVolumeFileLoad(i uint64, path string, setHash [16]byte, dataByteCount int64, err error) {
 }
 
 func newDecoder(fs fs.FS, delegate DecoderDelegate, indexFile string) *Decoder {
@@ -84,34 +85,32 @@ func (d *Decoder) getFilePath(entry fileEntry) (string, error) {
 	return filepath.Join(basePath, filename), nil
 }
 
-func readAndCheckVolume(filesystem fs.FS, path string, checkVolumeFn func(volume) error) (v volume, data []byte, err error) {
-	readStream, err := filesystem.GetReadStream(path)
+// Exactly one of readStream and err is non-nil, but then v may still
+// be non-empty even if err is non-nil.
+func readAndCheckVolume(filesystem fs.FS, path string, checkVolumeFn func(volume) error) (v volume, readStream fs.ReadStream, err error) {
+	readStream, err = filesystem.GetReadStream(path)
 	if err != nil {
 		return volume{}, nil, err
 	}
 
 	defer func() {
-		if readStream != nil {
-			fs.CloseCloser(readStream, &err)
+		if err != nil && readStream != nil {
+			_ = readStream.Close()
+			readStream = nil
 		}
 	}()
 
 	v, err = readVolume(readStream)
 	if err != nil {
-		return volume{}, nil, err
+		return volume{}, readStream, err
 	}
 
 	err = checkVolumeFn(v)
 	if err != nil {
-		return v, nil, err
+		return v, readStream, err
 	}
 
-	data, err = fs.ReadAndClose(readStream)
-	readStream = nil
-	if err != nil {
-		return v, nil, err
-	}
-	return v, data, nil
+	return v, readStream, nil
 }
 
 func checkIndexVolume(indexVolume volume) error {
@@ -123,21 +122,24 @@ func checkIndexVolume(indexVolume volume) error {
 }
 
 // LoadIndexFile reads the data from the index file.
-func (d *Decoder) LoadIndexFile() error {
-	indexVolume, data, err := readAndCheckVolume(d.fs, d.indexFile, checkIndexVolume)
-	d.delegate.OnVolumeFileLoad(0, d.indexFile, indexVolume.header.SetHash, len(data), err)
+func (d *Decoder) LoadIndexFile() (err error) {
+	indexVolume, readStream, err := readAndCheckVolume(d.fs, d.indexFile, checkIndexVolume)
+	var dataByteCount int64
+	if readStream != nil {
+		dataByteCount = readStream.ByteCount() - readStream.Offset()
+	}
+	d.delegate.OnVolumeFileLoad(0, d.indexFile, indexVolume.header.SetHash, dataByteCount, err)
 	if err != nil {
 		return err
 	}
+	defer fs.CloseCloser(readStream, &err)
 
 	d.delegate.OnHeaderLoad(indexVolume.header.String())
 	for i, entry := range indexVolume.entries {
 		d.delegate.OnFileEntryLoad(i+1, len(indexVolume.entries), entry.filename, entry.header.String())
 	}
 
-	// The comment could be in any encoding, so just pass it
-	// through as bytes.
-	d.delegate.OnCommentLoad(data)
+	d.delegate.OnCommentLoad(readStream, dataByteCount)
 
 	d.indexVolume = indexVolume
 	return nil
@@ -215,11 +217,16 @@ func checkParityVolume(parityVolume volume, expectedSetHash [16]byte, expectedVo
 }
 
 func (d *Decoder) loadParityFile(volumeNumber uint64, volumePath string, shardByteCount *int) (volume, []byte, error) {
-	parityVolume, data, err := readAndCheckVolume(d.fs, volumePath, func(parityVolume volume) error {
+	parityVolume, readStream, err := readAndCheckVolume(d.fs, volumePath, func(parityVolume volume) error {
 		return checkParityVolume(parityVolume, d.indexVolume.header.SetHash, volumeNumber)
 	})
 	if err != nil {
-		return parityVolume, data, err
+		return parityVolume, nil, err
+	}
+
+	data, err := fs.ReadAndClose(readStream)
+	if err != nil {
+		return parityVolume, nil, err
 	}
 
 	if len(data) == 0 {
@@ -257,7 +264,7 @@ func (d *Decoder) LoadParityData() error {
 		// TODO: Find the file case-insensitively.
 		volumePath := d.volumePath(volumeNumber)
 		parityVolume, data, err := d.loadParityFile(volumeNumber, volumePath, &shardByteCount)
-		d.delegate.OnVolumeFileLoad(volumeNumber, volumePath, parityVolume.header.SetHash, len(data), err)
+		d.delegate.OnVolumeFileLoad(volumeNumber, volumePath, parityVolume.header.SetHash, int64(len(data)), err)
 		if os.IsNotExist(err) {
 			continue
 		} else if err != nil {

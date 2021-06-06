@@ -3,6 +3,7 @@ package par1
 import (
 	"errors"
 	"fmt"
+	"io"
 	"path"
 	"path/filepath"
 	"sort"
@@ -30,8 +31,13 @@ func (d testDecoderDelegate) OnFileEntryLoad(i, n int, filename, entryInfo strin
 	d.t.Logf("OnFileEntryLoad(%d, %d, %s, %s)", i, n, filename, entryInfo)
 }
 
-func (d testDecoderDelegate) OnCommentLoad(comment []byte) {
+func (d testDecoderDelegate) OnCommentLoad(commentReader io.Reader, commentByteCount int64) {
 	d.t.Helper()
+	comment := make([]byte, commentByteCount)
+	if len(comment) > 0 {
+		_, err := fs.ReadFullEOF(commentReader, comment)
+		require.NoError(d.t, err)
+	}
 	d.t.Logf("OnCommentLoad(%q)", comment)
 }
 
@@ -45,7 +51,7 @@ func (d testDecoderDelegate) OnDataFileWrite(i, n int, path string, byteCount in
 	d.t.Logf("OnDataFileWrite(%d, %d, %s, byteCount=%d, %v)", i, n, path, byteCount, err)
 }
 
-func (d testDecoderDelegate) OnVolumeFileLoad(i uint64, path string, setHash [16]byte, dataByteCount int, err error) {
+func (d testDecoderDelegate) OnVolumeFileLoad(i uint64, path string, setHash [16]byte, dataByteCount int64, err error) {
 	d.t.Helper()
 	d.t.Logf("OnVolumeFileLoad(%d, %s, setHash=%x, dataByteCount=%d, %v)", i, path, setHash, dataByteCount, err)
 }
