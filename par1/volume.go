@@ -17,10 +17,7 @@ import (
 // volume. All other data should be the same for all volumes in a set
 // (identified by h.SetHash).
 type volume struct {
-	header header
-	// setHash is computed directly, and may differ from the one
-	// in header.
-	setHash [16]byte
+	header  header
 	entries []fileEntry
 	data    []byte
 }
@@ -111,6 +108,9 @@ func readVolume(readStream fs.ReadStream) (v volume, err error) {
 		}
 	}
 	setHash := computeSetHash(entries)
+	if setHash != header.SetHash {
+		return volume{}, errors.New("invalid set hash")
+	}
 
 	if uint64(readStream.Offset()) != header.DataOffset {
 		return volume{}, fmt.Errorf("a data offset %d, expected %d", readStream.Offset(), header.FileListOffset)
@@ -127,7 +127,7 @@ func readVolume(readStream fs.ReadStream) (v volume, err error) {
 		return volume{}, err
 	}
 
-	return volume{header, setHash, entries, data}, nil
+	return volume{header, entries, data}, nil
 }
 
 func writeVolume(v volume) ([]byte, error) {
