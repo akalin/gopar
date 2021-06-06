@@ -214,6 +214,27 @@ func checkParityVolume(parityVolume volume, expectedSetHash [16]byte, expectedVo
 	return nil
 }
 
+func (d *Decoder) loadParityFile(volumeNumber uint64, volumePath string, shardByteCount *int) (volume, []byte, error) {
+	parityVolume, data, err := readAndCheckVolume(d.fs, volumePath, func(parityVolume volume) error {
+		return checkParityVolume(parityVolume, d.indexVolume.header.SetHash, volumeNumber)
+	})
+	if err != nil {
+		return parityVolume, data, err
+	}
+
+	if len(data) == 0 {
+		// TODO: Relax this check.
+		return parityVolume, data, errors.New("no parity data in volume")
+	}
+	if *shardByteCount == 0 {
+		*shardByteCount = len(data)
+	} else if len(data) != *shardByteCount {
+		// TODO: Relax this check.
+		return parityVolume, data, errors.New("mismatched parity data byte counts")
+	}
+	return parityVolume, data, nil
+}
+
 // LoadParityData searches for parity volumes and loads them into
 // memory.
 func (d *Decoder) LoadParityData() error {
@@ -232,29 +253,10 @@ func (d *Decoder) LoadParityData() error {
 	parityData := make([][]byte, maxParityVolumeCount)
 	var maxI uint64
 	for i := uint64(0); i < maxParityVolumeCount; i++ {
-		// TODO: Find the file case-insensitively.
 		volumeNumber := i + 1
+		// TODO: Find the file case-insensitively.
 		volumePath := d.volumePath(volumeNumber)
-		parityVolume, data, err := func() (parityVolume volume, data []byte, err error) {
-			parityVolume, data, err = readAndCheckVolume(d.fs, volumePath, func(parityVolume volume) error {
-				return checkParityVolume(parityVolume, d.indexVolume.header.SetHash, volumeNumber)
-			})
-			if err != nil {
-				return parityVolume, data, err
-			}
-
-			if len(data) == 0 {
-				// TODO: Relax this check.
-				return parityVolume, data, errors.New("no parity data in volume")
-			}
-			if shardByteCount == 0 {
-				shardByteCount = len(data)
-			} else if len(data) != shardByteCount {
-				// TODO: Relax this check.
-				return parityVolume, data, errors.New("mismatched parity data byte counts")
-			}
-			return parityVolume, data, nil
-		}()
+		parityVolume, data, err := d.loadParityFile(volumeNumber, volumePath, &shardByteCount)
 		d.delegate.OnVolumeFileLoad(volumeNumber, volumePath, parityVolume.header.SetHash, len(data), err)
 		if os.IsNotExist(err) {
 			continue
