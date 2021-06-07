@@ -129,15 +129,14 @@ func ReadFullEOF(r io.Reader, buf []byte) (n int, err error) {
 	return n, err
 }
 
-// ReadAndClose reads all the data in the given io.ReadCloser into a
-// buffer and returns it, closing it in all cases.
+// ReadAll reads all the data in the given io.ReadCloser into a buffer
+// and returns it.
 //
 // If err == nil, the returned buffer will never be nil, even if it
 // has length 0.
 //
 // TODO: Make this function unnecessary.
-func ReadAndClose(readStream ReadStream) (data []byte, err error) {
-	defer closeCloser(readStream, &err)
+func ReadAll(readStream ReadStream) (data []byte, err error) {
 	byteCount := readStream.ByteCount()
 	if int64(int(byteCount)) != byteCount {
 		return nil, errors.New("file too big to read into memory")
@@ -150,6 +149,18 @@ func ReadAndClose(readStream ReadStream) (data []byte, err error) {
 		}
 	}
 	return data, nil
+}
+
+// ReadAndClose reads all the data in the given io.ReadCloser into a
+// buffer and returns it, closing it in all cases.
+//
+// If err == nil, the returned buffer will never be nil, even if it
+// has length 0.
+//
+// TODO: Make this function unnecessary.
+func ReadAndClose(readStream ReadStream) (data []byte, err error) {
+	defer closeCloser(readStream, &err)
+	return ReadAll(readStream)
 }
 
 // WriteAndClose write all the data in the given buffer to the given

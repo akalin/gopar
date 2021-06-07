@@ -12,13 +12,24 @@ import (
 )
 
 type fileInfo struct {
-	data      []byte
-	byteCount int
-	hasher    *hashutil.MD5HasherWith16k
+	readStream fs.ReadStream
+	hasher     *hashutil.MD5HasherWith16k
+}
+
+func makeFileInfo(fs fs.FS, path string) (fileInfo, error) {
+	readStream, err := fs.GetReadStream(path)
+	if err != nil {
+		return fileInfo{}, err
+	}
+	hasher := hashutil.MakeMD5HasherWith16k()
+	readStream = hashutil.TeeReadStream(readStream, hasher)
+	return fileInfo{readStream, hasher}, nil
 }
 
 func (f fileInfo) Close() error {
-	// TODO: Fill in once fileInfo holds ReadStreams.
+	if f.readStream != nil {
+		return f.readStream.Close()
+	}
 	return nil
 }
 
@@ -86,22 +97,15 @@ func (e *Encoder) LoadFileData() (err error) {
 		}
 	}()
 	for i, path := range e.filePaths {
-		hasher := hashutil.MakeMD5HasherWith16k()
-		data, err := func() ([]byte, error) {
-			readStream, err := e.fs.GetReadStream(path)
-			if err != nil {
-				return nil, err
-			}
-			return fs.ReadAndClose(hashutil.TeeReadStream(readStream, hasher))
-		}()
-		e.delegate.OnDataFileLoad(i+1, len(e.filePaths), path, len(data), err)
+		fileInfo, err := makeFileInfo(e.fs, path)
+		byteCount := fileInfo.readStream.ByteCount()
+		e.delegate.OnDataFileLoad(i+1, len(e.filePaths), path, int(byteCount), err)
 		if err != nil {
 			return err
 		}
-
-		fileData[i] = fileInfo{data, len(data), hasher}
-		if len(data) > shardByteCount {
-			shardByteCount = len(data)
+		fileData[i] = fileInfo
+		if int(byteCount) > shardByteCount {
+			shardByteCount = int(byteCount)
 		}
 	}
 
@@ -110,23 +114,31 @@ func (e *Encoder) LoadFileData() (err error) {
 	return nil
 }
 
-func (e *Encoder) buildShards() [][]byte {
+func (e *Encoder) buildShards() ([][]byte, error) {
 	shards := make([][]byte, len(e.fileData)+e.volumeCount)
 	for i, info := range e.fileData {
-		padding := make([]byte, e.shardByteCount-info.byteCount)
-		shards[i] = append(info.data, padding...)
+		data, err := fs.ReadAll(info.readStream)
+		if err != nil {
+			return nil, err
+		}
+		byteCount := info.readStream.ByteCount()
+		padding := make([]byte, e.shardByteCount-int(byteCount))
+		shards[i] = append(data, padding...)
 	}
 
 	for i := 0; i < e.volumeCount; i++ {
 		shards[len(e.fileData)+i] = make([]byte, e.shardByteCount)
 	}
 
-	return shards
+	return shards, nil
 }
 
 // ComputeParityData computes the parity data for the files.
 func (e *Encoder) ComputeParityData() error {
-	shards := e.buildShards()
+	shards, err := e.buildShards()
+	if err != nil {
+		return err
+	}
 
 	rs, err := reedsolomon.New(len(e.fileData), e.volumeCount, reedsolomon.WithPAR1Matrix())
 	if err != nil {
@@ -152,7 +164,7 @@ func (e *Encoder) Write(indexPath string) error {
 		entry := fileEntry{
 			header: fileEntryHeader{
 				Status:    status,
-				FileBytes: uint64(info.byteCount),
+				FileBytes: uint64(info.readStream.ByteCount()),
 				Hash:      hash,
 				Hash16k:   hash16k,
 			},
