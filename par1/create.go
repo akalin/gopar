@@ -57,8 +57,8 @@ func checkExtension(parPath string) error {
 	return nil
 }
 
-func create(fs fs.FS, parPath string, filePaths []string, options CreateOptions) error {
-	err := checkExtension(parPath)
+func create(fs fs.FS, parPath string, filePaths []string, options CreateOptions) (err error) {
+	err = checkExtension(parPath)
 	if err != nil {
 		return err
 	}
@@ -93,6 +93,12 @@ func create(fs fs.FS, parPath string, filePaths []string, options CreateOptions)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		closeErr := encoder.Close()
+		if err == nil {
+			err = closeErr
+		}
+	}()
 
 	err = encoder.LoadFileData()
 	if err != nil {

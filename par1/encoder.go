@@ -17,6 +17,24 @@ type fileInfo struct {
 	hasher    *hashutil.MD5HasherWith16k
 }
 
+func (f fileInfo) Close() error {
+	// TODO: Fill in once fileInfo holds ReadStreams.
+	return nil
+}
+
+type fileInfoList []fileInfo
+
+func (l fileInfoList) Close() error {
+	var firstErr error
+	for _, info := range l {
+		err := info.Close()
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 // An Encoder keeps track of all information needed to create parity
 // volumes for a set of data files, and write them out to parity files
 // (.PAR, .P00, .P01, etc.).
@@ -28,7 +46,7 @@ type Encoder struct {
 	volumeCount int
 
 	shardByteCount int
-	fileData       []fileInfo
+	fileData       fileInfoList
 	parityData     [][]byte
 }
 
@@ -59,9 +77,14 @@ func NewEncoder(delegate EncoderDelegate, filePaths []string, volumeCount int) (
 }
 
 // LoadFileData loads the file data into memory.
-func (e *Encoder) LoadFileData() error {
+func (e *Encoder) LoadFileData() (err error) {
 	shardByteCount := 0
-	fileData := make([]fileInfo, len(e.filePaths))
+	fileData := make(fileInfoList, len(e.filePaths))
+	defer func() {
+		if err != nil {
+			_ = fileData.Close()
+		}
+	}()
 	for i, path := range e.filePaths {
 		hasher := hashutil.MakeMD5HasherWith16k()
 		data, err := func() ([]byte, error) {
@@ -196,4 +219,9 @@ func (e *Encoder) Write(indexPath string) error {
 	}
 
 	return nil
+}
+
+// Close closes any files opened by the encoder.
+func (e *Encoder) Close() error {
+	return e.fileData.Close()
 }

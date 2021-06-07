@@ -39,6 +39,11 @@ func newEncoderForTest(t *testing.T, fs memfs.MemFS, filePaths []string, volumeC
 	return newEncoder(testfs.MakeTestFS(t, fs), testEncoderDelegate{t}, filePaths, volumeCount)
 }
 
+func closeEncoder(t *testing.T, encoder *Encoder) {
+	err := encoder.Close()
+	require.NoError(t, err)
+}
+
 func TestEncodeParity(t *testing.T) {
 	fs := makeEncoderMemFS(memfs.RootDir())
 
@@ -46,6 +51,7 @@ func TestEncodeParity(t *testing.T) {
 
 	encoder, err := newEncoderForTest(t, fs, paths, 3)
 	require.NoError(t, err)
+	defer closeEncoder(t, encoder)
 
 	err = encoder.LoadFileData()
 	require.NoError(t, err)
@@ -87,6 +93,7 @@ func testWriteParity(t *testing.T, workingDir string, useAbsPath bool) {
 
 	encoder, err := newEncoderForTest(t, fs, paths, 3)
 	require.NoError(t, err)
+	defer closeEncoder(t, encoder)
 
 	err = encoder.LoadFileData()
 	require.NoError(t, err)
