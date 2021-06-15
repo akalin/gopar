@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/akalin/gopar/fs"
+	"github.com/stretchr/testify/require"
 )
 
 type testReadStream struct {
@@ -45,14 +46,17 @@ func (trs testReadStream) String() string {
 }
 
 type testFS struct {
-	t  *testing.T
-	fs fs.FS
+	t   *testing.T
+	fs  fs.FS
+	ofm fs.OpenFileManager
 }
 
 // MakeTestFS returns a fs.FS implementation that wraps the existing
 // implementation, logging everything to the given *testing.T.
-func MakeTestFS(t *testing.T, fs fs.FS) fs.FS {
-	return testFS{t, fs}
+func MakeTestFS(t *testing.T, delegateFS fs.FS) fs.FS {
+	testFS := testFS{t, delegateFS, fs.MakeOpenFileManager()}
+	t.Cleanup(testFS.requireNoOpenFiles)
+	return testFS
 }
 
 func (fs testFS) ReadFile(path string) (data []byte, err error) {
@@ -64,18 +68,22 @@ func (fs testFS) ReadFile(path string) (data []byte, err error) {
 	return fs.fs.ReadFile(path)
 }
 
-func (fs testFS) GetReadStream(path string) (readStream fs.ReadStream, err error) {
+func (fs testFS) getReadStream(path string) (readStream fs.ReadStream, err error) {
 	fs.t.Helper()
 	defer func() {
 		fs.t.Helper()
 		fs.t.Logf("GetReadStream(%q) => (%v, %v)", path, readStream, err)
 	}()
-
 	readStream, err = fs.fs.GetReadStream(path)
 	if readStream != nil {
 		readStream = testReadStream{fs.t, path, readStream}
 	}
 	return readStream, err
+}
+
+func (fs testFS) GetReadStream(path string) (readStream fs.ReadStream, err error) {
+	fs.t.Helper()
+	return fs.ofm.GetReadStream(path, fs.getReadStream)
 }
 
 func (fs testFS) FindWithPrefixAndSuffix(prefix, suffix string) (matches []string, err error) {
@@ -94,4 +102,10 @@ func (fs testFS) WriteFile(path string, data []byte) (err error) {
 		fs.t.Logf("WriteFile(%q, %d bytes) => %v", path, len(data), err)
 	}()
 	return fs.fs.WriteFile(path, data)
+}
+
+func (fs testFS) requireNoOpenFiles() {
+	for _, path := range fs.ofm.GetOpenFilePaths() {
+		require.Failf(fs.t, "open file detected", "%q is still open", path)
+	}
 }

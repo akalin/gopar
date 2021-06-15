@@ -48,12 +48,13 @@ func toAbsPath(workingDir, path string) string {
 type MemFS struct {
 	workingDir string
 	fileData   map[string][]byte
+	ofm        fs.OpenFileManager
 }
 
 // MakeMemFS makes a MemFS from the given working directory and file
 // data.
 func MakeMemFS(workingDir string, fileData map[string][]byte) MemFS {
-	return MemFS{workingDir, fileDataToAbsPaths(workingDir, fileData)}
+	return MemFS{workingDir, fileDataToAbsPaths(workingDir, fileData), fs.MakeOpenFileManager()}
 }
 
 // ReadFile returns the data of the file at the given path, which may
@@ -73,6 +74,14 @@ type readerCloser struct {
 
 func (r readerCloser) Close() error { return nil }
 
+func (mfs MemFS) getReadStream(path string) (fs.ReadStream, error) {
+	absPath := toAbsPath(mfs.workingDir, path)
+	if data, ok := mfs.fileData[absPath]; ok {
+		return fs.ReadCloserToStream(readerCloser{bytes.NewReader(data)}, int64(len(data))), nil
+	}
+	return nil, os.ErrNotExist
+}
+
 // GetReadStream returns an fs.ReadStream for the file at the given
 // path, which may be absolute or relative (to the working directory),
 // as well as its size. If the file doesn't exist, os.ErrNotExist is
@@ -80,11 +89,7 @@ func (r readerCloser) Close() error { return nil }
 //
 // Exactly one of the returned ReadStream and error is non-nil.
 func (mfs MemFS) GetReadStream(path string) (fs.ReadStream, error) {
-	absPath := toAbsPath(mfs.workingDir, path)
-	if data, ok := mfs.fileData[absPath]; ok {
-		return fs.ReadCloserToStream(readerCloser{bytes.NewReader(data)}, int64(len(data))), nil
-	}
-	return nil, os.ErrNotExist
+	return mfs.ofm.GetReadStream(path, mfs.getReadStream)
 }
 
 // FindWithPrefixAndSuffix returns all files whose path matches the
