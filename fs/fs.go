@@ -6,6 +6,9 @@ import "io"
 // usually implemented by *os.File, but there might be other
 // implementations for testing.
 type ReadStream interface {
+	// This object must not be used once it is
+	// closed. Implementations should return an error in that
+	// case, or panic if that isn't possible.
 	io.ReadCloser
 	// TODO: Once streaming is used everywhere, evaluate whether
 	// we still need this function.
@@ -35,6 +38,10 @@ type FS interface {
 	ReadFile(path string) ([]byte, error)
 	// GetReadStream returns a ReadStream to read the file at the
 	// given path.
+	//
+	// Only one ReadStream may be open per (normalized)
+	// path. Implementations should return an error in case
+	// GetReadStream is called on a path with an open ReadStream.
 	//
 	// Implementations must guarantee that exactly one of the
 	// returned ReadStream and error is non-nil.
