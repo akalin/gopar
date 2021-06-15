@@ -188,58 +188,104 @@ func testFileCounts(t *testing.T, workingDir string, useAbsPath bool) {
 	if useAbsPath {
 		parPath = filepath.Join(workingDir, parPath)
 	}
-	decoder := newDecoderForTest(t, fs, parPath)
-	defer closeCloser(t, decoder)
 
-	err := decoder.LoadIndexFile()
-	require.NoError(t, err)
-	err = decoder.LoadFileData()
-	require.NoError(t, err)
-	err = decoder.LoadParityData()
-	require.NoError(t, err)
+	func() {
+		decoder := newDecoderForTest(t, fs, parPath)
+		defer closeCloser(t, decoder)
 
-	require.Equal(t, FileCounts{
-		UsableDataFileCount:   dataFileCount,
-		UsableParityFileCount: parityFileCount,
-	}, decoder.FileCounts())
+		err := decoder.LoadIndexFile()
+		require.NoError(t, err)
+		err = decoder.LoadFileData()
+		require.NoError(t, err)
+		err = decoder.LoadParityData()
+		require.NoError(t, err)
 
-	perturbFile(t, fs, "file.r04")
-	err = decoder.LoadFileData()
-	require.NoError(t, err)
-	require.Equal(t, FileCounts{
-		UsableDataFileCount:   dataFileCount - 1,
-		UnusableDataFileCount: 1,
-		UsableParityFileCount: parityFileCount,
-	}, decoder.FileCounts())
+		require.Equal(t, FileCounts{
+			UsableDataFileCount:   dataFileCount,
+			UsableParityFileCount: parityFileCount,
+		}, decoder.FileCounts())
+	}()
 
-	unperturbFile(t, fs, "file.r04")
-	err = decoder.LoadFileData()
-	require.NoError(t, err)
-	require.Equal(t, FileCounts{
-		UsableDataFileCount:   dataFileCount,
-		UsableParityFileCount: parityFileCount,
-	}, decoder.FileCounts())
+	func() {
+		perturbFile(t, fs, "file.r04")
+
+		decoder := newDecoderForTest(t, fs, parPath)
+		defer closeCloser(t, decoder)
+
+		err := decoder.LoadIndexFile()
+		require.NoError(t, err)
+		err = decoder.LoadFileData()
+		require.NoError(t, err)
+		err = decoder.LoadParityData()
+		require.NoError(t, err)
+
+		require.Equal(t, FileCounts{
+			UsableDataFileCount:   dataFileCount - 1,
+			UnusableDataFileCount: 1,
+			UsableParityFileCount: parityFileCount,
+		}, decoder.FileCounts())
+	}()
+
+	func() {
+		unperturbFile(t, fs, "file.r04")
+
+		decoder := newDecoderForTest(t, fs, parPath)
+		defer closeCloser(t, decoder)
+
+		err := decoder.LoadIndexFile()
+		require.NoError(t, err)
+		err = decoder.LoadFileData()
+		require.NoError(t, err)
+		err = decoder.LoadParityData()
+		require.NoError(t, err)
+
+		require.Equal(t, FileCounts{
+			UsableDataFileCount:   dataFileCount,
+			UsableParityFileCount: parityFileCount,
+		}, decoder.FileCounts())
+	}()
 
 	p03Data, err := fs.RemoveFile("file.p03")
 	require.NoError(t, err)
-	err = decoder.LoadParityData()
-	require.NoError(t, err)
-	require.Equal(t, FileCounts{
-		UsableDataFileCount:     dataFileCount,
-		UsableParityFileCount:   parityFileCount - 1,
-		UnusableParityFileCount: 0,
-	}, decoder.FileCounts())
 
-	require.NoError(t, fs.WriteFile("file.p03", p03Data))
-	_, err = fs.RemoveFile("file.p02")
-	require.NoError(t, err)
-	err = decoder.LoadParityData()
-	require.NoError(t, err)
-	require.Equal(t, FileCounts{
-		UsableDataFileCount:     dataFileCount,
-		UsableParityFileCount:   parityFileCount - 1,
-		UnusableParityFileCount: 1,
-	}, decoder.FileCounts())
+	func() {
+		decoder := newDecoderForTest(t, fs, parPath)
+		defer closeCloser(t, decoder)
+
+		err := decoder.LoadIndexFile()
+		require.NoError(t, err)
+		err = decoder.LoadFileData()
+		require.NoError(t, err)
+		err = decoder.LoadParityData()
+		require.NoError(t, err)
+
+		require.Equal(t, FileCounts{
+			UsableDataFileCount:     dataFileCount,
+			UsableParityFileCount:   parityFileCount - 1,
+			UnusableParityFileCount: 0,
+		}, decoder.FileCounts())
+	}()
+
+	func() {
+		require.NoError(t, fs.WriteFile("file.p03", p03Data))
+		_, err = fs.RemoveFile("file.p02")
+
+		decoder := newDecoderForTest(t, fs, parPath)
+		defer closeCloser(t, decoder)
+
+		err := decoder.LoadIndexFile()
+		require.NoError(t, err)
+		err = decoder.LoadFileData()
+		require.NoError(t, err)
+		err = decoder.LoadParityData()
+		require.NoError(t, err)
+
+		require.Equal(t, FileCounts{
+			UsableDataFileCount:     dataFileCount,
+			UsableParityFileCount:   parityFileCount - 1,
+			UnusableParityFileCount: 1,
+		}, decoder.FileCounts())
+	}()
 }
 
 func runOnExampleWorkingDirs(t *testing.T, testFn func(*testing.T, string, bool)) {
@@ -272,50 +318,99 @@ func testVerifyAllData(t *testing.T, workingDir string, useAbsPath bool) {
 	if useAbsPath {
 		parPath = filepath.Join(workingDir, parPath)
 	}
-	decoder := newDecoderForTest(t, fs, parPath)
-	defer closeCloser(t, decoder)
 
-	err := decoder.LoadIndexFile()
-	require.NoError(t, err)
-	err = decoder.LoadFileData()
-	require.NoError(t, err)
-	err = decoder.LoadParityData()
-	require.NoError(t, err)
+	func() {
+		decoder := newDecoderForTest(t, fs, parPath)
+		defer closeCloser(t, decoder)
 
-	ok, err := decoder.VerifyAllData()
-	require.NoError(t, err)
-	require.True(t, ok)
+		err := decoder.LoadIndexFile()
+		require.NoError(t, err)
+		err = decoder.LoadFileData()
+		require.NoError(t, err)
+		err = decoder.LoadParityData()
+		require.NoError(t, err)
 
-	perturbFile(t, fs, "file.r04")
-	err = decoder.LoadFileData()
-	require.NoError(t, err)
-	_, err = decoder.VerifyAllData()
-	expectedErr := errors.New("shard sizes do not match")
-	require.Equal(t, expectedErr, err)
+		ok, err := decoder.VerifyAllData()
+		require.NoError(t, err)
+		require.True(t, ok)
+	}()
 
-	unperturbFile(t, fs, "file.r04")
-	err = decoder.LoadFileData()
-	require.NoError(t, err)
-	ok, err = decoder.VerifyAllData()
-	require.NoError(t, err)
-	require.True(t, ok)
+	func() {
+		perturbFile(t, fs, "file.r04")
+
+		decoder := newDecoderForTest(t, fs, parPath)
+		defer closeCloser(t, decoder)
+
+		err := decoder.LoadIndexFile()
+		require.NoError(t, err)
+
+		err = decoder.LoadFileData()
+		require.NoError(t, err)
+		err = decoder.LoadParityData()
+		require.NoError(t, err)
+
+		_, err = decoder.VerifyAllData()
+		expectedErr := errors.New("shard sizes do not match")
+		require.Equal(t, expectedErr, err)
+	}()
+
+	func() {
+		unperturbFile(t, fs, "file.r04")
+
+		decoder := newDecoderForTest(t, fs, parPath)
+		defer closeCloser(t, decoder)
+
+		err := decoder.LoadIndexFile()
+		require.NoError(t, err)
+		err = decoder.LoadFileData()
+		require.NoError(t, err)
+		err = decoder.LoadParityData()
+		require.NoError(t, err)
+
+		ok, err := decoder.VerifyAllData()
+		require.NoError(t, err)
+		require.True(t, ok)
+	}()
 
 	p03Data, err := fs.RemoveFile("file.p03")
 	require.NoError(t, err)
-	err = decoder.LoadParityData()
-	require.NoError(t, err)
-	ok, err = decoder.VerifyAllData()
-	require.NoError(t, err)
-	require.True(t, ok)
 
-	require.NoError(t, fs.WriteFile("file.p03", p03Data))
-	_, err = fs.RemoveFile("file.p02")
-	require.NoError(t, err)
-	err = decoder.LoadParityData()
-	require.NoError(t, err)
-	_, err = decoder.VerifyAllData()
-	expectedErr = errors.New("shard sizes do not match")
-	require.Equal(t, expectedErr, err)
+	func() {
+		decoder := newDecoderForTest(t, fs, parPath)
+		defer closeCloser(t, decoder)
+
+		err = decoder.LoadIndexFile()
+		require.NoError(t, err)
+		err = decoder.LoadFileData()
+		require.NoError(t, err)
+		err = decoder.LoadParityData()
+		require.NoError(t, err)
+
+		ok, err := decoder.VerifyAllData()
+		require.NoError(t, err)
+		require.True(t, ok)
+
+	}()
+
+	func() {
+		require.NoError(t, fs.WriteFile("file.p03", p03Data))
+		_, err = fs.RemoveFile("file.p02")
+		require.NoError(t, err)
+
+		decoder := newDecoderForTest(t, fs, parPath)
+		defer closeCloser(t, decoder)
+
+		err := decoder.LoadIndexFile()
+		require.NoError(t, err)
+		err = decoder.LoadFileData()
+		require.NoError(t, err)
+		err = decoder.LoadParityData()
+		require.NoError(t, err)
+
+		_, err = decoder.VerifyAllData()
+		expectedErr := errors.New("shard sizes do not match")
+		require.Equal(t, expectedErr, err)
+	}()
 }
 
 func TestVerifyAllData(t *testing.T) {

@@ -24,7 +24,7 @@ type Decoder struct {
 	indexFile   string
 	indexVolume volume
 
-	fileData [][]byte
+	fileReadStreams []fs.ReadStream
 
 	shardByteCount int
 	parityData     [][]byte
@@ -147,8 +147,13 @@ func (d *Decoder) LoadIndexFile() (err error) {
 }
 
 // LoadFileData loads existing file data into memory.
-func (d *Decoder) LoadFileData() error {
-	fileData := make([][]byte, 0, len(d.indexVolume.entries))
+func (d *Decoder) LoadFileData() (err error) {
+	fileReadStreams := make([]fs.ReadStream, 0, len(d.indexVolume.entries))
+	defer func() {
+		if err != nil {
+			_ = closeAll(fileReadStreams)
+		}
+	}()
 
 	for i, entry := range d.indexVolume.entries {
 		if !entry.header.Status.savedInVolumeSet() {
@@ -160,38 +165,62 @@ func (d *Decoder) LoadFileData() error {
 			return err
 		}
 
-		data, corrupt, err := func() ([]byte, bool, error) {
-			readStream, err := d.fs.GetReadStream(path)
+		readStream, corrupt, err := func() (readStream fs.ReadStream, corrupt bool, err error) {
+			readStream, err = d.fs.GetReadStream(path)
 			if os.IsNotExist(err) {
 				return nil, true, err
 			} else if err != nil {
 				return nil, false, err
 			}
-			hasher := hashutil.MakeMD5HashCheckerWith16k(entry.header.Hash16k, entry.header.Hash, false)
-			data, err := fs.ReadAndClose(hashutil.TeeReadStream(readStream, hasher))
+
+			defer func() {
+				if err != nil && readStream != nil {
+					_ = readStream.Close()
+					readStream = nil
+				}
+			}()
+
+			err = func() error {
+				hasher := hashutil.MakeMD5HashCheckerWith16k(entry.header.Hash16k, entry.header.Hash, false)
+				// Use Copy instead of CopyN because
+				// we don't want to drop non-EOF
+				// errors even if we copy enough
+				// bytes.
+				written, err := io.Copy(hasher, io.NewSectionReader(readStream, 0, readStream.ByteCount()))
+				if err != nil {
+					return err
+				} else if written < readStream.ByteCount() {
+					return io.EOF
+				}
+				return hasher.Close()
+			}()
 			if _, ok := err.(hashutil.HashMismatchError); ok {
-				return nil, true, err
+				return readStream, true, err
 			} else if err != nil {
-				return nil, false, err
+				return readStream, false, err
 			}
-			return data, false, nil
+			return readStream, false, nil
 		}()
-		d.delegate.OnDataFileLoad(i+1, len(d.indexVolume.entries), path, len(data), corrupt, err)
+		var byteCount int
+		if readStream != nil {
+			byteCount = int(readStream.ByteCount())
+		}
+		d.delegate.OnDataFileLoad(i+1, len(d.indexVolume.entries), path, byteCount, corrupt, err)
 		if corrupt {
-			fileData = append(fileData, nil)
+			fileReadStreams = append(fileReadStreams, nil)
 			continue
 		} else if err != nil {
 			return err
 		}
 
-		fileData = append(fileData, data)
+		fileReadStreams = append(fileReadStreams, readStream)
 	}
 
-	if len(fileData) == 0 {
+	if len(fileReadStreams) == 0 {
 		return errors.New("no file data found")
 	}
 
-	d.fileData = fileData
+	d.fileReadStreams = fileReadStreams
 	return nil
 }
 
@@ -281,11 +310,15 @@ func (d *Decoder) LoadParityData() error {
 	return nil
 }
 
-func (d *Decoder) buildShards() [][]byte {
-	shards := make([][]byte, len(d.fileData)+len(d.parityData))
-	for i, data := range d.fileData {
-		if data == nil {
+func (d *Decoder) buildShards() ([][]byte, error) {
+	shards := make([][]byte, len(d.fileReadStreams)+len(d.parityData))
+	for i, readStream := range d.fileReadStreams {
+		if readStream == nil {
 			continue
+		}
+		data, err := fs.ReadRemaining(readStream)
+		if err != nil {
+			return nil, err
 		}
 		padding := make([]byte, d.shardByteCount-len(data))
 		shards[i] = append(data, padding...)
@@ -295,14 +328,14 @@ func (d *Decoder) buildShards() [][]byte {
 		if data == nil {
 			continue
 		}
-		shards[len(d.fileData)+i] = data
+		shards[len(d.fileReadStreams)+i] = data
 	}
 
-	return shards
+	return shards, nil
 }
 
 func (d *Decoder) newReedSolomon() (reedsolomon.Encoder, error) {
-	return reedsolomon.New(len(d.fileData), len(d.parityData), reedsolomon.WithPAR1Matrix())
+	return reedsolomon.New(len(d.fileReadStreams), len(d.parityData), reedsolomon.WithPAR1Matrix())
 }
 
 // FileCounts contains file counts which can be used to deduce whether
@@ -353,8 +386,8 @@ func (d *Decoder) FileCounts() FileCounts {
 	usableDataFileCount := 0
 	unusableDataFileCount := 0
 
-	for _, data := range d.fileData {
-		if data == nil {
+	for _, readStream := range d.fileReadStreams {
+		if readStream == nil {
 			unusableDataFileCount++
 		} else {
 			usableDataFileCount++
@@ -390,7 +423,10 @@ func (d *Decoder) VerifyAllData() (ok bool, err error) {
 		return false, err
 	}
 
-	shards := d.buildShards()
+	shards, err := d.buildShards()
+	if err != nil {
+		return false, err
+	}
 
 	return rs.Verify(shards)
 }
@@ -407,7 +443,10 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 		return nil, err
 	}
 
-	shards := d.buildShards()
+	shards, err := d.buildShards()
+	if err != nil {
+		return nil, err
+	}
 
 	err = rs.Reconstruct(shards)
 	if err != nil {
@@ -427,13 +466,13 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 
 	var repairedPaths []string
 
-	for i, data := range d.fileData {
-		if data != nil {
+	for i, readStream := range d.fileReadStreams {
+		if readStream != nil {
 			continue
 		}
 
 		entry := d.indexVolume.entries[i]
-		data = shards[i][:entry.header.FileBytes]
+		data := shards[i][:entry.header.FileBytes]
 		if err := hashutil.CheckMD5Hashes(data, entry.header.Hash16k, entry.header.Hash, true); err != nil {
 			return repairedPaths, err
 		}
@@ -450,13 +489,12 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 			}
 			return fs.WriteAndClose(writeStream, data)
 		}()
-		d.delegate.OnDataFileWrite(i+1, len(d.fileData), path, len(data), err)
+		d.delegate.OnDataFileWrite(i+1, len(d.fileReadStreams), path, len(data), err)
 		if err != nil {
 			return repairedPaths, err
 		}
 
 		repairedPaths = append(repairedPaths, path)
-		d.fileData[i] = data
 	}
 
 	// TODO: Repair missing parity volumes, too, and then make
@@ -465,7 +503,22 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 	return repairedPaths, nil
 }
 
+func closeAll(readStreams []fs.ReadStream) error {
+	var firstErr error
+	for i, readStream := range readStreams {
+		if readStream == nil {
+			continue
+		}
+		closeErr := readStream.Close()
+		readStreams[i] = nil
+		if firstErr == nil {
+			firstErr = closeErr
+		}
+	}
+	return firstErr
+}
+
 // Close the decoder and any files it may have open.
 func (d *Decoder) Close() error {
-	return nil
+	return closeAll(d.fileReadStreams)
 }
