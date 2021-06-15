@@ -161,6 +161,10 @@ func newDecoderForTest(t *testing.T, fs memfs.MemFS, indexFile string) *Decoder 
 	return newDecoder(testfs.MakeTestFS(t, fs), testDecoderDelegate{t}, indexFile)
 }
 
+func closeCloser(t *testing.T, closer io.Closer) {
+	require.NoError(t, closer.Close())
+}
+
 func perturbFile(t *testing.T, fs memfs.MemFS, path string) {
 	data, err := fs.ReadFile(path)
 	require.NoError(t, err)
@@ -185,6 +189,8 @@ func testFileCounts(t *testing.T, workingDir string, useAbsPath bool) {
 		parPath = filepath.Join(workingDir, parPath)
 	}
 	decoder := newDecoderForTest(t, fs, parPath)
+	defer closeCloser(t, decoder)
+
 	err := decoder.LoadIndexFile()
 	require.NoError(t, err)
 	err = decoder.LoadFileData()
@@ -267,6 +273,8 @@ func testVerifyAllData(t *testing.T, workingDir string, useAbsPath bool) {
 		parPath = filepath.Join(workingDir, parPath)
 	}
 	decoder := newDecoderForTest(t, fs, parPath)
+	defer closeCloser(t, decoder)
+
 	err := decoder.LoadIndexFile()
 	require.NoError(t, err)
 	err = decoder.LoadFileData()
@@ -329,6 +337,8 @@ func TestBadFilename(t *testing.T) {
 	require.NoError(t, fs.WriteFile("file.par", indexVolumeBytes))
 
 	decoder := newDecoderForTest(t, fs, "file.par")
+	defer closeCloser(t, decoder)
+
 	err = decoder.LoadIndexFile()
 	require.NoError(t, err)
 	err = decoder.LoadFileData()
@@ -350,6 +360,8 @@ func TestSetHashMismatch(t *testing.T) {
 	require.NoError(t, fs1.WriteFile("file.p02", p02Data))
 
 	decoder := newDecoderForTest(t, fs1, "file.par")
+	defer closeCloser(t, decoder)
+
 	err = decoder.LoadIndexFile()
 	require.NoError(t, err)
 	err = decoder.LoadFileData()
@@ -368,6 +380,7 @@ func testDecoderRepair(t *testing.T, workingDir string, useAbsPath bool) {
 		parPath = filepath.Join(workingDir, parPath)
 	}
 	decoder := newDecoderForTest(t, fs, parPath)
+	defer closeCloser(t, decoder)
 
 	r02Data, err := fs.ReadFile("file.r02")
 	require.NoError(t, err)

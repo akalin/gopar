@@ -40,8 +40,8 @@ func Repair(parPath string, options RepairOptions) (RepairResult, error) {
 	return repair(fs.MakeDefaultFS(), parPath, options)
 }
 
-func repair(fs fs.FS, parPath string, options RepairOptions) (RepairResult, error) {
-	err := checkExtension(parPath)
+func repair(filesystem fs.FS, parPath string, options RepairOptions) (result RepairResult, err error) {
+	err = checkExtension(parPath)
 	if err != nil {
 		return RepairResult{}, err
 	}
@@ -51,7 +51,8 @@ func repair(fs fs.FS, parPath string, options RepairOptions) (RepairResult, erro
 		delegate = DoNothingRepairDelegate{}
 	}
 
-	decoder := newDecoder(fs, delegate, parPath)
+	decoder := newDecoder(filesystem, delegate, parPath)
+	defer fs.CloseCloser(decoder, &err)
 
 	err = decoder.LoadIndexFile()
 	if err != nil {

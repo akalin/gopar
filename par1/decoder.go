@@ -70,7 +70,8 @@ func newDecoder(fs fs.FS, delegate DecoderDelegate, indexFile string) *Decoder {
 }
 
 // NewDecoder reads the given index file, which usually has a .PAR
-// extension.
+// extension. The returned Decoder must be closed when it is not
+// needed anymore.
 func NewDecoder(delegate DecoderDelegate, indexFile string) *Decoder {
 	return newDecoder(fs.MakeDefaultFS(), delegate, indexFile)
 }
@@ -462,4 +463,9 @@ func (d *Decoder) Repair(checkParity bool) ([]string, error) {
 	// sure d.VerifyAllData() passes.
 
 	return repairedPaths, nil
+}
+
+// Close the decoder and any files it may have open.
+func (d *Decoder) Close() error {
+	return nil
 }

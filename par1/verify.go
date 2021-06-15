@@ -42,8 +42,8 @@ func Verify(parPath string, options VerifyOptions) (VerifyResult, error) {
 	return verify(fs.MakeDefaultFS(), parPath, options)
 }
 
-func verify(fs fs.FS, parPath string, options VerifyOptions) (VerifyResult, error) {
-	err := checkExtension(parPath)
+func verify(filesystem fs.FS, parPath string, options VerifyOptions) (result VerifyResult, err error) {
+	err = checkExtension(parPath)
 	if err != nil {
 		return VerifyResult{}, err
 	}
@@ -53,7 +53,8 @@ func verify(fs fs.FS, parPath string, options VerifyOptions) (VerifyResult, erro
 		delegate = DoNothingVerifyDelegate{}
 	}
 
-	decoder := newDecoder(fs, delegate, parPath)
+	decoder := newDecoder(filesystem, delegate, parPath)
+	defer fs.CloseCloser(decoder, &err)
 
 	err = decoder.LoadIndexFile()
 	if err != nil {

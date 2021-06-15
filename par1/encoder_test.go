@@ -106,6 +106,7 @@ func testWriteParity(t *testing.T, workingDir string, useAbsPath bool) {
 	}
 
 	decoder := newDecoderForTest(t, fs, parPath)
+	defer closeCloser(t, decoder)
 
 	err = decoder.LoadIndexFile()
 	require.NoError(t, err)

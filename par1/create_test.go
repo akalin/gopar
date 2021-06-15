@@ -31,6 +31,7 @@ func testCreate(t *testing.T, workingDir string, useAbsPath bool, options Create
 	}
 
 	decoder := newDecoderForTest(t, fs, parPath)
+	defer closeCloser(t, decoder)
 
 	err = decoder.LoadIndexFile()
 	require.NoError(t, err)
