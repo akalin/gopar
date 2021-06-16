@@ -26,8 +26,8 @@ type Decoder struct {
 
 	fileReadStreams []fs.ReadStream
 
-	shardByteCount int
-	parityData     [][]byte
+	shardByteCount    int64
+	parityReadStreams []fs.ReadStream
 }
 
 // DecoderDelegate holds methods that are called during the decode
@@ -246,35 +246,38 @@ func checkParityVolume(parityVolume volume, expectedSetHash [16]byte, expectedVo
 	return nil
 }
 
-func (d *Decoder) loadParityFile(volumeNumber uint64, volumePath string, shardByteCount *int) (volume, []byte, error) {
-	parityVolume, readStream, err := readAndCheckVolume(d.fs, volumePath, func(parityVolume volume) error {
+func (d *Decoder) loadParityFile(volumeNumber uint64, volumePath string, shardByteCount *int64) (parityVolume volume, readStream fs.ReadStream, err error) {
+	parityVolume, readStream, err = readAndCheckVolume(d.fs, volumePath, func(parityVolume volume) error {
 		return checkParityVolume(parityVolume, d.indexVolume.header.SetHash, volumeNumber)
 	})
 	if err != nil {
 		return parityVolume, nil, err
 	}
 
-	data, err := fs.ReadAndClose(readStream)
-	if err != nil {
-		return parityVolume, nil, err
-	}
+	defer func() {
+		if err != nil && readStream != nil {
+			_ = readStream.Close()
+			readStream = nil
+		}
+	}()
 
-	if len(data) == 0 {
+	remainingBytes := readStream.ByteCount() - readStream.Offset()
+	if remainingBytes == 0 {
 		// TODO: Relax this check.
-		return parityVolume, data, errors.New("no parity data in volume")
+		return parityVolume, readStream, errors.New("no parity data in volume")
 	}
 	if *shardByteCount == 0 {
-		*shardByteCount = len(data)
-	} else if len(data) != *shardByteCount {
+		*shardByteCount = remainingBytes
+	} else if remainingBytes != *shardByteCount {
 		// TODO: Relax this check.
-		return parityVolume, data, errors.New("mismatched parity data byte counts")
+		return parityVolume, readStream, errors.New("mismatched parity data byte counts")
 	}
-	return parityVolume, data, nil
+	return parityVolume, readStream, nil
 }
 
 // LoadParityData searches for parity volumes and loads them into
 // memory.
-func (d *Decoder) LoadParityData() error {
+func (d *Decoder) LoadParityData() (err error) {
 	// TODO: Support searching for volume data without relying on
 	// filenames.
 
@@ -286,32 +289,44 @@ func (d *Decoder) LoadParityData() error {
 		maxParityVolumeCount = 99
 	}
 
-	shardByteCount := 0
-	parityData := make([][]byte, maxParityVolumeCount)
+	var shardByteCount int64
+	parityReadStreams := make([]fs.ReadStream, maxParityVolumeCount)
+	defer func() {
+		if err != nil {
+			_ = closeAll(parityReadStreams)
+		}
+	}()
+
 	var maxI uint64
 	for i := uint64(0); i < maxParityVolumeCount; i++ {
 		volumeNumber := i + 1
 		// TODO: Find the file case-insensitively.
 		volumePath := d.volumePath(volumeNumber)
-		parityVolume, data, err := d.loadParityFile(volumeNumber, volumePath, &shardByteCount)
-		d.delegate.OnVolumeFileLoad(volumeNumber, volumePath, parityVolume.header.SetHash, int64(len(data)), err)
+		parityVolume, readStream, err := d.loadParityFile(volumeNumber, volumePath, &shardByteCount)
+		var byteCount int64
+		if readStream != nil {
+			byteCount = readStream.ByteCount()
+		}
+		d.delegate.OnVolumeFileLoad(volumeNumber, volumePath, parityVolume.header.SetHash, byteCount, err)
 		if os.IsNotExist(err) {
+			err = nil
 			continue
 		} else if err != nil {
 			return err
 		}
 
-		parityData[i] = data
+		parityReadStreams[i] = readStream
 		maxI = i
 	}
 
 	d.shardByteCount = shardByteCount
-	d.parityData = parityData[:maxI+1]
+	d.parityReadStreams = parityReadStreams[:maxI+1]
+
 	return nil
 }
 
 func (d *Decoder) buildShards() ([][]byte, error) {
-	shards := make([][]byte, len(d.fileReadStreams)+len(d.parityData))
+	shards := make([][]byte, len(d.fileReadStreams)+len(d.parityReadStreams))
 	for i, readStream := range d.fileReadStreams {
 		if readStream == nil {
 			continue
@@ -320,13 +335,17 @@ func (d *Decoder) buildShards() ([][]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		padding := make([]byte, d.shardByteCount-len(data))
+		padding := make([]byte, d.shardByteCount-int64(len(data)))
 		shards[i] = append(data, padding...)
 	}
 
-	for i, data := range d.parityData {
-		if data == nil {
+	for i, readStream := range d.parityReadStreams {
+		if readStream == nil {
 			continue
+		}
+		data, err := fs.ReadRemaining(readStream)
+		if err != nil {
+			return nil, err
 		}
 		shards[len(d.fileReadStreams)+i] = data
 	}
@@ -335,7 +354,7 @@ func (d *Decoder) buildShards() ([][]byte, error) {
 }
 
 func (d *Decoder) newReedSolomon() (reedsolomon.Encoder, error) {
-	return reedsolomon.New(len(d.fileReadStreams), len(d.parityData), reedsolomon.WithPAR1Matrix())
+	return reedsolomon.New(len(d.fileReadStreams), len(d.parityReadStreams), reedsolomon.WithPAR1Matrix())
 }
 
 // FileCounts contains file counts which can be used to deduce whether
@@ -397,8 +416,8 @@ func (d *Decoder) FileCounts() FileCounts {
 	usableParityFileCount := 0
 	unusableParityFileCount := 0
 
-	for _, data := range d.parityData {
-		if data == nil {
+	for _, readStream := range d.parityReadStreams {
+		if readStream == nil {
 			unusableParityFileCount++
 		} else {
 			usableParityFileCount++
@@ -520,5 +539,10 @@ func closeAll(readStreams []fs.ReadStream) error {
 
 // Close the decoder and any files it may have open.
 func (d *Decoder) Close() error {
-	return closeAll(d.fileReadStreams)
+	fileErr := closeAll(d.fileReadStreams)
+	parityErr := closeAll(d.parityReadStreams)
+	if fileErr != nil {
+		return fileErr
+	}
+	return parityErr
 }
