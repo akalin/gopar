@@ -161,6 +161,7 @@ func ReadFullEOF(r io.Reader, buf []byte) (n int, err error) {
 	return n, err
 }
 
+// ReadRemaining TODO: fill in.
 func ReadRemaining(readStream ReadStream) (data []byte, err error) {
 	bytesRemaining := readStream.ByteCount() - readStream.Offset()
 	if int64(int(bytesRemaining)) != bytesRemaining {
