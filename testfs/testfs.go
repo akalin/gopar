@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/akalin/gopar/fs"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 )
 
 type testReadStream struct {
@@ -152,6 +152,6 @@ func (fs testFS) GetWriteStream(path string) (writeStream fs.WriteStream, err er
 
 func (fs testFS) requireNoOpenFiles() {
 	for _, path := range fs.ofm.GetOpenFilePaths() {
-		require.Failf(fs.t, "open file detected", "%q is still open", path)
+		assert.Failf(fs.t, "open file detected", "%q is still open", path)
 	}
 }
