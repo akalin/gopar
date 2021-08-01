@@ -206,6 +206,7 @@ func benchmarkApplyMatrix(b *testing.B, config applyMatrixBenchmarkConfig, apply
 }
 
 func BenchmarkApplyMatrix(b *testing.B) {
+	gf2p16.LoadCaches()
 	configs := []applyMatrixBenchmarkConfig{
 		{3, 4, 1024},
 		{3, 4, 1024 * 1024},

@@ -2,4 +2,4 @@
 
 package gf2p16
 
-func platformInit() {}
+func platformPreloadCaches() {}

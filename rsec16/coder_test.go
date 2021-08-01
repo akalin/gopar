@@ -130,6 +130,7 @@ func benchmarkParityMatrix(b *testing.B, benchmarkFn func(*testing.B, func(int, 
 }
 
 func BenchmarkMakeReconstructionMatrix(b *testing.B) {
+	gf2p16.LoadCaches()
 	for _, config := range []struct {
 		dataShards   int
 		parityShards int

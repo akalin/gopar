@@ -200,6 +200,8 @@ func benchMulByteSliceLE(b *testing.B, byteCount int) {
 }
 
 func BenchmarkMulByteSliceLE(b *testing.B) {
+	LoadCaches()
+	b.ResetTimer()
 	runMulBenchmark(b, benchMulByteSliceLE)
 }
 

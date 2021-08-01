@@ -1,30 +1,56 @@
 package gf2p16
 
+import (
+	"sync"
+)
+
 type mulTable64Entry struct {
 	s0Low, s4Low, s8Low, s12Low     [1 << 4]byte
 	s0High, s4High, s8High, s12High [1 << 4]byte
 }
 
-var mulTable64 [1 << 16]mulTable64Entry
-
-func platformInit() {
-	for i := 0; i < len(mulTable64); i++ {
-		for j := 0; j < len(mulTable64[i].s0Low); j++ {
-			t0 := T(i).Times(T(j))
-			mulTable64[i].s0Low[j] = byte(t0)
-			mulTable64[i].s0High[j] = byte(t0 >> 8)
-
-			t1 := T(i).Times(T(j << 4))
-			mulTable64[i].s4Low[j] = byte(t1)
-			mulTable64[i].s4High[j] = byte(t1 >> 8)
-
-			t2 := T(i).Times(T(j << 8))
-			mulTable64[i].s8Low[j] = byte(t2)
-			mulTable64[i].s8High[j] = byte(t2 >> 8)
-
-			t3 := T(i).Times(T(j << 12))
-			mulTable64[i].s12Low[j] = byte(t3)
-			mulTable64[i].s12High[j] = byte(t3 >> 8)
-		}
+func platformPreloadCaches() {
+	for i := range mulTable64Cache {
+		T(i).mulTable64Entry()
 	}
+}
+
+var mulTable64Cache [1 << 16]*mulTable64Entry
+var mulTableCache64Mutex sync.RWMutex
+
+func (t T) mulTable64Entry() *mulTable64Entry {
+	if cachesLoaded {
+		return mulTable64Cache[t]
+	}
+	mulTableCache64Mutex.RLock()
+	entry := mulTable64Cache[t]
+	if entry != nil {
+		mulTableCache64Mutex.RUnlock()
+		return entry
+	}
+	mulTableCache64Mutex.RUnlock()
+	mulTableCache64Mutex.Lock()
+	defer mulTableCache64Mutex.Unlock()
+	if mulTable64Cache[t] == nil {
+		entry := mulTable64Entry{}
+		for j := 0; j < len(entry.s0Low); j++ {
+			tt := t.Times(T(j))
+			entry.s0Low[j] = byte(tt)
+			entry.s0High[j] = byte(tt >> 8)
+
+			tt = t.Times(T(j << 4))
+			entry.s4Low[j] = byte(tt)
+			entry.s4High[j] = byte(tt >> 8)
+
+			tt = t.Times(T(j << 8))
+			entry.s8Low[j] = byte(tt)
+			entry.s8High[j] = byte(tt >> 8)
+
+			tt = t.Times(T(j << 12))
+			entry.s12Low[j] = byte(tt)
+			entry.s12High[j] = byte(tt >> 8)
+		}
+		mulTable64Cache[t] = &entry
+	}
+	return mulTable64Cache[t]
 }

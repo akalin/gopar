@@ -9,6 +9,8 @@ import (
 	"github.com/klauspost/cpuid/v2"
 )
 
+//go:generate go run ./internal/gen -out coder_gen.go
+
 // DefaultNumGoroutines returns a default value for the numGoroutines
 // parameter to pass into NewCoderCauchy and
 // NewCoderPAR2Vandermonde. This is not necessarily GOMAXPROCS.
@@ -60,19 +62,6 @@ func NewCoderCauchy(dataShards, parityShards, numGoroutines int) (Coder, error) 
 
 	parityMatrix := newCauchyParityMatrix(dataShards, parityShards)
 	return Coder{dataShards, parityShards, numGoroutines, parityMatrix}, nil
-}
-
-var generators []gf2p16.T
-
-func init() {
-	// TODO: Generate this table at compile time.
-	for i := 0; i < (1 << 16); i++ {
-		if i%3 == 0 || i%5 == 0 || i%17 == 0 || i%257 == 0 {
-			continue
-		}
-		g := gf2p16.T(2).Pow(uint32(i))
-		generators = append(generators, g)
-	}
 }
 
 func newVandermondeParityMatrix(dataShards, parityShards int) gf2p16.Matrix {

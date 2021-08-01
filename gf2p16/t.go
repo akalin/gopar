@@ -1,9 +1,40 @@
 package gf2p16
 
-import "github.com/akalin/gopar/gf2"
+import (
+	"sync"
+)
+
+//go:generate go run ./internal/gen -generator logTable -out t_logtable_gen.go
+//go:generate go run ./internal/gen -generator expTable -out t_exptable_gen.go
 
 // T is an element of GF(2^16).
 type T uint16
+
+var mulTableCache [1 << 16]*mulTableEntry
+var mulTableCacheMutex sync.RWMutex
+
+func (t T) mulTableEntry() *mulTableEntry {
+	if cachesLoaded {
+		return mulTableCache[t]
+	}
+	mulTableCacheMutex.RLock()
+	entry := mulTableCache[t]
+	if entry != nil {
+		mulTableCacheMutex.RUnlock()
+		return entry
+	}
+	mulTableCacheMutex.RUnlock()
+	mulTableCacheMutex.Lock()
+	defer mulTableCacheMutex.Unlock()
+	if mulTableCache[t] == nil {
+		mulTableCache[t] = &mulTableEntry{}
+		for j := 0; j < 256; j++ {
+			mulTableCache[t].s0[j] = t.Times(T(j))
+			mulTableCache[t].s8[j] = t.Times(T(j << 8))
+		}
+	}
+	return mulTableCache[t]
+}
 
 // Plus returns the sum of t and u as elements of GF(2^16), which is
 // just the bitwise xor of the two.
@@ -19,52 +50,22 @@ func (t T) Minus(u T) T {
 
 const order = 1 << 16
 
-var logTable [order - 1]uint16
-var expTable [order - 1]T
-
 type mulTableEntry struct {
 	s0, s8 [1 << 8]T
 }
 
-var mulTable [1 << 16]mulTableEntry
+var cachesLoaded bool
 
-func init() {
-	// TODO: Generate tables at compile time.
-
-	// m is the irreducible polynomial of degree 16 used to model
-	// GF(2^16). m was chosen to match the PAR2 spec.
-	const m gf2.Poly64 = 0x1100b
-
-	// g is a generator of GF(2^16).
-	const g T = 3
-
-	x := T(1)
-	for p := 0; p < order-1; p++ {
-		if x == 1 && p != 0 {
-			panic("repeated power (1)")
-		} else if x != 1 && logTable[x-1] != 0 {
-			panic("repeated power")
-		}
-		if expTable[p] != 0 {
-			panic("repeated exponent")
-		}
-
-		logTable[x-1] = uint16(p)
-		expTable[p] = x
-		_, r := gf2.Poly64(x).Times(gf2.Poly64(g)).Div(m)
-		x = T(r)
+// LoadCaches preloads mulTableCache and mulTable64Cache
+func LoadCaches() {
+	if cachesLoaded {
+		return
 	}
-
-	// Since we've filled in logTable and expTable, we can use
-	// T.Times below.
-	for i := 0; i < len(mulTable); i++ {
-		for j := 0; j < len(mulTable[i].s0); j++ {
-			mulTable[i].s0[j] = T(i).Times(T(j))
-			mulTable[i].s8[j] = T(i).Times(T(j << 8))
-		}
+	for i := range mulTableCache {
+		T(i).mulTableEntry()
 	}
-
-	platformInit()
+	platformPreloadCaches()
+	cachesLoaded = true
 }
 
 // Times returns the product of t and u as elements of GF(2^16).

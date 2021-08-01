@@ -197,7 +197,7 @@ func TestMulAltMapSSSE3Unsafe(t *testing.T) {
 
 	outLow := [2][16]byte{filler, filler}
 	outHigh := [2][16]byte{filler, filler}
-	mulAltMapSSSE3Unsafe(&mulTable64[c], &inLow, &inHigh, &outLow[0], &outHigh[0])
+	mulAltMapSSSE3Unsafe(c.mulTable64Entry(), &inLow, &inHigh, &outLow[0], &outHigh[0])
 
 	require.Equal(t, expectedOutLow, outLow)
 	require.Equal(t, expectedOutHigh, outHigh)
@@ -221,7 +221,7 @@ func TestMulSliceAltMapSSSE3Unsafe(t *testing.T) {
 	mulByteSliceLEGeneric(c, inStandard, expectedOut[:len(in)])
 	standardToAltMapSliceSSSE3Unsafe(expectedOut, expectedOut)
 
-	mulSliceAltMapSSSE3Unsafe(&mulTable64[c], in, out)
+	mulSliceAltMapSSSE3Unsafe(c.mulTable64Entry(), in, out)
 
 	require.Equal(t, expectedOut, out)
 }
@@ -246,7 +246,7 @@ func TestMulSSSE3Unsafe(t *testing.T) {
 
 	out0 := [2][16]byte{filler, filler}
 	out1 := [2][16]byte{filler, filler}
-	mulSSSE3Unsafe(&mulTable64[c], &in0, &in1, &out0[0], &out1[0])
+	mulSSSE3Unsafe(c.mulTable64Entry(), &in0, &in1, &out0[0], &out1[0])
 
 	require.Equal(t, expectedOut0, out0)
 	require.Equal(t, expectedOut1, out1)
@@ -267,7 +267,7 @@ func TestMulSliceSSSE3Unsafe(t *testing.T) {
 
 	mulByteSliceLEGeneric(c, in, expectedOut[:len(in)])
 
-	mulSliceSSSE3Unsafe(&mulTable64[c], in, out)
+	mulSliceSSSE3Unsafe(c.mulTable64Entry(), in, out)
 
 	require.Equal(t, expectedOut, out)
 }
@@ -292,7 +292,7 @@ func TestMulAndAddSSSE3Unsafe(t *testing.T) {
 
 	out0 := [2][16]byte{filler, filler}
 	out1 := out0
-	mulAndAddSSSE3Unsafe(&mulTable64[c], &in0, &in1, &out0[0], &out1[0])
+	mulAndAddSSSE3Unsafe(c.mulTable64Entry(), &in0, &in1, &out0[0], &out1[0])
 
 	require.Equal(t, expectedOut0, out0)
 	require.Equal(t, expectedOut1, out1)
@@ -313,7 +313,7 @@ func TestMulAndAddSliceSSSE3Unsafe(t *testing.T) {
 
 	mulAndAddByteSliceLEGeneric(c, in, expectedOut[:len(in)])
 
-	mulAndAddSliceSSSE3Unsafe(&mulTable64[c], in, out)
+	mulAndAddSliceSSSE3Unsafe(c.mulTable64Entry(), in, out)
 
 	require.Equal(t, expectedOut, out)
 }
