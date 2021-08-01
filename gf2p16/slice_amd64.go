@@ -28,13 +28,13 @@ func mulByteSliceLE(c T, in, out []byte, useSSSE3 bool) {
 	}
 	start := 0
 	if useSSSE3 && len(in) >= 32 {
-		mulSliceSSSE3Unsafe(&mulTable64[c], in, out)
+		mulSliceSSSE3Unsafe(c.mulTable64Entry(), in, out)
 		start = len(in) - (len(in) % 32)
 		if start == len(in) {
 			return
 		}
 	}
-	mulByteSliceLEUnsafe(&mulTable[c], in[start:], out[start:])
+	mulByteSliceLEUnsafe(c.mulTableEntry(), in[start:], out[start:])
 }
 
 // MulAndAddByteSliceLE treats in and out as arrays of Ts stored in
@@ -53,13 +53,13 @@ func mulAndAddByteSliceLE(c T, in, out []byte, useSSSE3 bool) {
 	}
 	start := 0
 	if useSSSE3 && len(in) >= 32 {
-		mulAndAddSliceSSSE3Unsafe(&mulTable64[c], in, out)
+		mulAndAddSliceSSSE3Unsafe(c.mulTable64Entry(), in, out)
 		start = len(in) - (len(in) % 32)
 		if start == len(in) {
 			return
 		}
 	}
-	mulAndAddByteSliceLEUnsafe(&mulTable[c], in[start:], out[start:])
+	mulAndAddByteSliceLEUnsafe(c.mulTableEntry(), in[start:], out[start:])
 }
 
 func castTToByteSlice(ts []T) []byte {

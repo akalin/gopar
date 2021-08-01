@@ -94,7 +94,7 @@ func TestMulTable(t *testing.T) {
 	c := T(rand.Int())
 	expectedCX := c.Times(x)
 
-	cEntry := &mulTable[c]
+	cEntry := c.mulTableEntry()
 	cx := cEntry.s0[x&0xff] ^ cEntry.s8[(x>>8)&0xff]
 
 	require.Equal(t, expectedCX, cx)
